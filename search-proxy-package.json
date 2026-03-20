@@ -1,0 +1,15 @@
+{
+  "name": "attar-code-search-proxy",
+  "version": "1.0.0",
+  "description": "Search proxy for attar-code: web search + fetch + vector knowledge base",
+  "main": "search-proxy.js",
+  "scripts": {
+    "start": "node search-proxy.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "axios": "^1.6.0",
+    "cheerio": "^1.0.0",
+    "pdf-parse": "^1.1.1"
+  }
+}
