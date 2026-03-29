@@ -1,0 +1,182 @@
+{
+  "technology": "nestjs",
+  "version": 1,
+  "patterns": [
+    {
+      "id": "NEST_CANT_RESOLVE_DEPS",
+      "category": "di",
+      "severity": "error",
+      "match": "Nest can'?t resolve dependencies of the (\\w+)",
+      "captures": ["providerName"],
+      "rootCause": "NestJS dependency injection cannot resolve one or more dependencies for '{providerName}'. A required provider is not available in the module where '{providerName}' is declared.",
+      "prescription": "Ensure all dependencies of '{providerName}' are listed in the 'providers' array of the module, or imported from another module that exports them. Use @Inject() with a token for non-class dependencies. Check for circular dependencies.",
+      "codeBlock": "// In the module that uses {providerName}:\n@Module({\n  imports: [OtherModule],  // import modules that export needed providers\n  providers: [MyService, MyRepository],  // register local providers\n})\nexport class AppModule {}",
+      "conditions": []
+    },
+    {
+      "id": "NEST_UNKNOWN_ELEMENT",
+      "category": "module",
+      "severity": "error",
+      "match": "(?:Unknown element|Nest could not find).*'?(\\w+)'?.*(?:in|module).*'?(\\w+)'?",
+      "captures": ["element", "moduleName"],
+      "rootCause": "The element '{element}' is not recognized in module '{moduleName}'. It is not declared in the exports of the module that provides it, or the providing module is not imported.",
+      "prescription": "Add '{element}' to the 'exports' array of the module that declares it. Then import that module into '{moduleName}'. Every provider/controller used across modules must be explicitly exported.",
+      "codeBlock": "// In the module that owns the provider:\n@Module({\n  providers: [MyService],\n  exports: [MyService],  // must export to share\n})\nexport class SharedModule {}\n\n// In the consuming module:\n@Module({\n  imports: [SharedModule],  // import the module\n})\nexport class AppModule {}",
+      "conditions": []
+    },
+    {
+      "id": "NEST_CIRCULAR_DEPENDENCY",
+      "category": "module",
+      "severity": "error",
+      "match": "Circular dependency (?:between|detected).*(?:modules?)?",
+      "captures": [],
+      "rootCause": "Two or more modules depend on each other, creating a circular import chain. NestJS cannot resolve the dependency graph.",
+      "prescription": "Use forwardRef(() => ModuleName) to break the circular dependency. Consider restructuring by extracting shared logic into a separate module. Use the ModuleRef API for lazy resolution.",
+      "codeBlock": "// Break circular dependency with forwardRef:\n@Module({\n  imports: [forwardRef(() => ModuleB)],\n})\nexport class ModuleA {}\n\n// In the provider:\n@Injectable()\nexport class ServiceA {\n  constructor(\n    @Inject(forwardRef(() => ServiceB))\n    private serviceB: ServiceB,\n  ) {}\n}",
+      "conditions": []
+    },
+    {
+      "id": "NEST_GRAPHQL_INPUT_TYPE",
+      "category": "module",
+      "severity": "error",
+      "match": "Cannot determine a GraphQL input type for.*'?(\\w+)'?",
+      "captures": ["typeName"],
+      "rootCause": "NestJS GraphQL cannot resolve '{typeName}' as a valid GraphQL input type. The class may be missing @InputType() decorator or has properties with unregistered types.",
+      "prescription": "Add @InputType() decorator to the class. Ensure all property types are scalar types or other registered input types. Use @Field() decorator on each property with explicit type functions for complex types.",
+      "codeBlock": "@InputType()\nexport class CreateUserInput {\n  @Field()\n  name: string;\n\n  @Field(() => Int)\n  age: number;\n\n  @Field(() => [String], { nullable: true })\n  tags?: string[];\n}",
+      "conditions": []
+    },
+    {
+      "id": "NEST_INVALID_PROVIDER",
+      "category": "di",
+      "severity": "error",
+      "match": "(?:Invalid provider|undefined.*provider|Nest could not select.*provider)",
+      "captures": [],
+      "rootCause": "A provider registration is invalid. This usually means a provider is undefined (possibly due to a circular import), missing @Injectable() decorator, or the token does not match.",
+      "prescription": "Ensure the provider class has the @Injectable() decorator. Check that the import of the provider class is not 'undefined' (circular file imports). Verify custom providers use the correct 'provide' token.",
+      "codeBlock": "@Injectable()  // must have this decorator\nexport class MyService {\n  constructor(private readonly repo: MyRepository) {}\n}\n\n// Custom provider:\n{\n  provide: 'CONFIG',\n  useValue: { port: 3000 },\n}",
+      "conditions": []
+    },
+    {
+      "id": "NEST_MICROSERVICE_REFUSED",
+      "category": "di",
+      "severity": "error",
+      "match": "(?:ECONNREFUSED|Connection refused).*(?:microservice|transport|nats|redis|rmq|kafka|grpc)",
+      "captures": [],
+      "rootCause": "The NestJS microservice could not connect to its transport layer (Redis, NATS, RabbitMQ, Kafka, gRPC). The transport server may not be running or the connection configuration is incorrect.",
+      "prescription": "Verify the transport server is running and accessible. Check the host, port, and credentials in the ClientsModule.register() configuration. For Docker, use the service name as the host.",
+      "codeBlock": "// Verify transport config:\nClientsModule.register([\n  {\n    name: 'MY_SERVICE',\n    transport: Transport.REDIS,\n    options: {\n      host: 'localhost',  // check this\n      port: 6379,         // check this\n    },\n  },\n]);",
+      "conditions": []
+    },
+    {
+      "id": "NEST_VALIDATION_PIPE",
+      "category": "validation",
+      "severity": "error",
+      "match": "(?:property (\\w+) should not exist|An instance of validate.*has failed the validation|Validation failed)",
+      "captures": ["propertyName"],
+      "rootCause": "Request validation failed. The request body contains properties not defined in the DTO, or required properties are missing/invalid. The ValidationPipe with whitelist option strips unknown properties.",
+      "prescription": "Ensure the request body matches the DTO definition. Add class-validator decorators to all expected properties. If you want to allow extra properties, disable the 'whitelist' option on ValidationPipe.",
+      "codeBlock": "// DTO with validation:\nexport class CreateUserDto {\n  @IsString()\n  @IsNotEmpty()\n  name: string;\n\n  @IsEmail()\n  email: string;\n\n  @IsOptional()\n  @IsInt()\n  age?: number;\n}\n\n// Global pipe setup (main.ts):\napp.useGlobalPipes(new ValidationPipe({\n  whitelist: true,\n  forbidNonWhitelisted: true,\n  transform: true,\n}));",
+      "conditions": []
+    },
+    {
+      "id": "NEST_TYPEORM_METADATA",
+      "category": "database",
+      "severity": "error",
+      "match": "EntityMetadataNotFoundError:.*metadata for ['\"]?(\\w+)['\"]?.*was not found",
+      "captures": ["entityName"],
+      "rootCause": "TypeORM cannot find metadata for entity '{entityName}'. The entity is not registered in the TypeORM module configuration or is missing @Entity() decorator.",
+      "prescription": "Add '{entityName}' to the 'entities' array in TypeOrmModule.forRoot() or use TypeOrmModule.forFeature([{entityName}]) in the module. Ensure the class has the @Entity() decorator.",
+      "codeBlock": "// Register entity in module:\n@Module({\n  imports: [\n    TypeOrmModule.forFeature([User, Post]),  // register entities here\n  ],\n})\nexport class UsersModule {}\n\n// Entity class:\n@Entity()\nexport class User {\n  @PrimaryGeneratedColumn()\n  id: number;\n}",
+      "conditions": []
+    },
+    {
+      "id": "NEST_TYPEORM_CONNECTION",
+      "category": "database",
+      "severity": "error",
+      "match": "Connection ['\"]?(\\w+)['\"]? was not found",
+      "captures": ["connectionName"],
+      "rootCause": "The TypeORM connection '{connectionName}' was not found. It was not configured in TypeOrmModule.forRoot() or the connection name does not match.",
+      "prescription": "Verify the connection name in TypeOrmModule.forRoot({ name: '{connectionName}' }). If using the default connection, do not specify a name. Ensure the database module is imported in the root AppModule.",
+      "codeBlock": "// Default connection (most common):\nTypeOrmModule.forRoot({\n  type: 'postgres',\n  host: 'localhost',\n  port: 5432,\n  database: 'mydb',\n  entities: [__dirname + '/**/*.entity{.ts,.js}'],\n})",
+      "conditions": []
+    },
+    {
+      "id": "NEST_GUARD_UNDEFINED",
+      "category": "routing",
+      "severity": "error",
+      "match": "Cannot read propert(?:y|ies) of undefined.*(?:guard|interceptor|pipe)",
+      "captures": [],
+      "rootCause": "A guard, interceptor, or pipe is receiving undefined where it expects a value. This is often caused by the ExecutionContext not containing the expected data, or a missing decorator.",
+      "prescription": "Ensure the guard/interceptor accesses the correct context (HTTP, WebSocket, RPC). Check that required decorators like @SetMetadata() are applied. Verify the request object has the expected properties (e.g., user from auth middleware).",
+      "codeBlock": "// Guard accessing metadata correctly:\n@Injectable()\nexport class RolesGuard implements CanActivate {\n  constructor(private reflector: Reflector) {}\n\n  canActivate(context: ExecutionContext): boolean {\n    const roles = this.reflector.get<string[]>('roles', context.getHandler());\n    if (!roles) return true;  // no roles required\n    const request = context.switchToHttp().getRequest();\n    return roles.includes(request.user?.role);\n  }\n}",
+      "conditions": []
+    },
+    {
+      "id": "NEST_NOT_A_MODULE",
+      "category": "module",
+      "severity": "error",
+      "match": "(?:is not a module|Module.*is not decorated with @Module)",
+      "captures": [],
+      "rootCause": "A class imported as a module does not have the @Module() decorator. NestJS requires all modules to be decorated with @Module().",
+      "prescription": "Add the @Module() decorator to the class. Ensure you are importing the module class, not a provider or controller. Check that the import path resolves to the correct file.",
+      "codeBlock": "// Every module needs @Module decorator:\n@Module({\n  imports: [],\n  controllers: [MyController],\n  providers: [MyService],\n  exports: [MyService],\n})\nexport class MyModule {}",
+      "conditions": []
+    },
+    {
+      "id": "NEST_INJECTABLE_MISSING",
+      "category": "di",
+      "severity": "error",
+      "match": "@Injectable\\(\\) (?:is )?missing|cannot create an instance of.*without.*@Injectable",
+      "captures": [],
+      "rootCause": "A provider or service class is missing the @Injectable() decorator. NestJS cannot manage dependency injection for classes without this decorator.",
+      "prescription": "Add @Injectable() decorator to the class. Ensure 'emitDecoratorMetadata' and 'experimentalDecorators' are true in tsconfig.json.",
+      "codeBlock": "import { Injectable } from '@nestjs/common';\n\n@Injectable()\nexport class MyService {\n  // NestJS can now inject dependencies\n  constructor(private readonly repo: MyRepository) {}\n}",
+      "conditions": []
+    },
+    {
+      "id": "NEST_EADDRINUSE",
+      "category": "routing",
+      "severity": "error",
+      "match": "EADDRINUSE:.*address already in use.*:(\\d+)",
+      "captures": ["port"],
+      "rootCause": "Port {port} is already in use by another process. The NestJS server or WebSocket gateway cannot bind to this port.",
+      "prescription": "Find and stop the process using port {port}: 'lsof -i :{port}' (Unix) or 'netstat -ano | findstr :{port}' (Windows). Alternatively, change the port in your application configuration.",
+      "codeBlock": "# Find the process using the port:\nlsof -i :{port}  # Linux/macOS\nnetstat -ano | findstr :{port}  # Windows\n\n# Kill the process:\nkill -9 <PID>\n\n# Or change the port in main.ts:\nawait app.listen(3001);  // use a different port",
+      "conditions": []
+    },
+    {
+      "id": "NEST_TESTING_MODULE",
+      "category": "di",
+      "severity": "error",
+      "match": "Cannot find module '@nestjs/testing'",
+      "captures": [],
+      "rootCause": "The @nestjs/testing package is not installed. It is required for writing unit and integration tests with NestJS.",
+      "prescription": "Install the package as a dev dependency: npm install --save-dev @nestjs/testing. Ensure it is compatible with your @nestjs/core version.",
+      "codeBlock": "npm install --save-dev @nestjs/testing\n\n// Usage in tests:\nimport { Test, TestingModule } from '@nestjs/testing';\n\nconst module: TestingModule = await Test.createTestingModule({\n  providers: [MyService],\n}).compile();\n\nconst service = module.get<MyService>(MyService);",
+      "conditions": []
+    },
+    {
+      "id": "NEST_CLASS_VALIDATOR",
+      "category": "validation",
+      "severity": "error",
+      "match": "(?:class-validator|class-transformer).*(?:not found|Cannot find module|is not a function)",
+      "captures": [],
+      "rootCause": "The class-validator and/or class-transformer packages are not installed. These are required for NestJS ValidationPipe and DTO transformation.",
+      "prescription": "Install both packages: npm install class-validator class-transformer. These are peer dependencies of NestJS and must be installed separately.",
+      "codeBlock": "npm install class-validator class-transformer\n\n// Then use in DTOs:\nimport { IsString, IsEmail, IsNotEmpty } from 'class-validator';\n\nexport class CreateUserDto {\n  @IsString()\n  @IsNotEmpty()\n  name: string;\n\n  @IsEmail()\n  email: string;\n}",
+      "conditions": []
+    },
+    {
+      "id": "NEST_DECORATOR_NOT_APPLIED",
+      "category": "module",
+      "severity": "error",
+      "match": "Reflect\\.getMetadata.*undefined|metadata.*is not defined.*decorator",
+      "captures": [],
+      "rootCause": "TypeScript decorator metadata is not being emitted. The tsconfig.json is missing the required compiler options for NestJS decorators to work.",
+      "prescription": "Ensure tsconfig.json has 'emitDecoratorMetadata': true and 'experimentalDecorators': true. Install the 'reflect-metadata' package and import it at the top of main.ts.",
+      "codeBlock": "// tsconfig.json:\n{\n  \"compilerOptions\": {\n    \"emitDecoratorMetadata\": true,\n    \"experimentalDecorators\": true\n  }\n}\n\n// main.ts (at the very top):\nimport 'reflect-metadata';",
+      "conditions": []
+    }
+  ]
+}

@@ -3686,6 +3686,31 @@ print(json.dumps({"sheet": ws.title, "headers": headers, "rows": rows[:200], "to
       const dir = args.dirpath ? path.resolve(SESSION.cwd, args.dirpath) : SESSION.cwd;
       printToolRunning("detect_build_system", dir);
       const detectors = [
+        // Framework-specific detectors BEFORE generic package.json
+        { marker: "nest-cli.json", fn: () => {
+          const hasPnpm = fs.existsSync(path.join(dir, "pnpm-lock.yaml"));
+          const hasYarn = fs.existsSync(path.join(dir, "yarn.lock"));
+          const pm = hasPnpm ? "pnpm" : hasYarn ? "yarn" : "npm";
+          return { tech: "NestJS", pm, install: `${pm} install`, build: "nest build", test: `${pm} run test`, start: "nest start --watch", lint: `${pm} run lint`, config: "nest-cli.json" };
+        }},
+        { marker: "next.config.js", fn: () => {
+          const hasPnpm = fs.existsSync(path.join(dir, "pnpm-lock.yaml"));
+          const hasYarn = fs.existsSync(path.join(dir, "yarn.lock"));
+          const pm = hasPnpm ? "pnpm" : hasYarn ? "yarn" : "npm";
+          return { tech: "Next.js", pm, install: `${pm} install`, build: "next build", test: `${pm} test`, start: "next dev", lint: "next lint", config: "next.config.js" };
+        }},
+        { marker: "next.config.mjs", fn: () => {
+          const hasPnpm = fs.existsSync(path.join(dir, "pnpm-lock.yaml"));
+          const hasYarn = fs.existsSync(path.join(dir, "yarn.lock"));
+          const pm = hasPnpm ? "pnpm" : hasYarn ? "yarn" : "npm";
+          return { tech: "Next.js", pm, install: `${pm} install`, build: "next build", test: `${pm} test`, start: "next dev", lint: "next lint", config: "next.config.mjs" };
+        }},
+        { marker: "next.config.ts", fn: () => {
+          const hasPnpm = fs.existsSync(path.join(dir, "pnpm-lock.yaml"));
+          const hasYarn = fs.existsSync(path.join(dir, "yarn.lock"));
+          const pm = hasPnpm ? "pnpm" : hasYarn ? "yarn" : "npm";
+          return { tech: "Next.js", pm, install: `${pm} install`, build: "next build", test: `${pm} test`, start: "next dev", lint: "next lint", config: "next.config.ts" };
+        }},
         { marker: "package.json", fn: () => {
           const pkg = JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf-8"));
           const s = pkg.scripts || {};
@@ -3704,9 +3729,36 @@ print(json.dumps({"sheet": ws.title, "headers": headers, "rows": rows[:200], "to
         { marker: "pyproject.toml", fn: () => ({ tech:"Python", install:"pip install -e .", build:"python -m build", test:"python -m pytest", start:"python main.py", lint:"flake8 .", config:"pyproject.toml" }) },
         { marker: "requirements.txt", fn: () => ({ tech:"Python", install:"pip install -r requirements.txt", build:"(none)", test:"python -m pytest", start:"python main.py", lint:"flake8 .", config:"requirements.txt" }) },
         { marker: "Makefile", fn: () => ({ tech:"C/C++", install:"(none)", build:"make", test:"make test", start:"make run", lint:"make lint", config:"Makefile" }) },
+        { marker: "CMakeLists.txt", fn: () => ({ tech:"C/C++", install:"(none)", build:"cmake --build build", test:"ctest --test-dir build", start:"./build/main", lint:"(none)", config:"CMakeLists.txt" }) },
+        { marker: "*.csproj", fn: () => {
+          const csproj = fs.readdirSync(dir).find(f => f.endsWith(".csproj"));
+          return { tech: "C#", install: "dotnet restore", build: "dotnet build", test: "dotnet test", start: "dotnet run", lint: "(none)", config: csproj || "*.csproj" };
+        }},
+        { marker: "*.sln", fn: () => {
+          const sln = fs.readdirSync(dir).find(f => f.endsWith(".sln"));
+          return { tech: "C#", install: "dotnet restore", build: "dotnet build", test: "dotnet test", start: "dotnet run", lint: "(none)", config: sln || "*.sln" };
+        }},
+        { marker: "composer.json", fn: () => {
+          const comp = JSON.parse(fs.readFileSync(path.join(dir, "composer.json"), "utf-8"));
+          const isLaravel = fs.existsSync(path.join(dir, "artisan"));
+          const isSymfony = fs.existsSync(path.join(dir, "symfony.lock"));
+          const fw = isLaravel ? "Laravel" : isSymfony ? "Symfony" : "";
+          return { tech: fw ? `PHP/${fw}` : "PHP", install: "composer install", build: isLaravel ? "php artisan optimize" : "(none)",
+            test: isLaravel ? "php artisan test" : "./vendor/bin/phpunit", start: isLaravel ? "php artisan serve" : (isSymfony ? "symfony server:start" : "php -S localhost:8000 -t public"),
+            lint: "./vendor/bin/phpstan analyze", config: "composer.json" };
+        }},
       ];
       let d = null;
-      for (const det of detectors) { if (fs.existsSync(path.join(dir, det.marker))) { try { d = det.fn(); } catch (err) { debugLog(err.message); } if (d) break; } }
+      for (const det of detectors) {
+        let found = false;
+        if (det.marker.includes("*")) {
+          // Glob pattern (e.g., "*.csproj") — scan directory
+          try { found = fs.readdirSync(dir).some(f => f.endsWith(det.marker.replace("*", ""))); } catch { found = false; }
+        } else {
+          found = fs.existsSync(path.join(dir, det.marker));
+        }
+        if (found) { try { d = det.fn(); } catch (err) { debugLog(err.message); } if (d) break; }
+      }
       if (!d) { printToolDone("Unknown"); return `No build system detected in ${dir}. Searched: ${detectors.map(x=>x.marker).join(", ")}`; }
       printToolDone(d.tech);
       return `Technology: ${d.tech}\nConfig: ${d.config}\nInstall: ${d.install}\nBuild: ${d.build}\nTest: ${d.test}\nStart: ${d.start}\nLint: ${d.lint}${d.pm ? `\nPackage manager: ${d.pm}` : ""}`;
@@ -5320,7 +5372,12 @@ function loadErrorPatternsExternal(projectType) {
     "Java": ["java"],
     "Java/Maven": ["java"],
     "Java/Gradle": ["java"],
-    "C/C++": [],
+    "C/C++": ["cpp"],
+    "PHP": ["php"],
+    "C#": ["csharp"],
+    "NestJS": ["nestjs", "typescript", "nodejs"],
+    "Next.js": ["nextjs", "typescript", "nodejs"],
+    "React Native": ["reactnative", "typescript", "nodejs"],
   };
   const techs = techMap[projectType] || [];
   for (const tech of techs) {
@@ -5335,6 +5392,8 @@ function loadErrorPatternsExternal(projectType) {
     "Node.js": "typescript", "Node.js/TypeScript": "typescript",
     "Python": "python", "Go": "go", "Rust": "rust",
     "Java": "java", "Java/Maven": "java", "Java/Gradle": "java",
+    "C/C++": "cpp", "PHP": "php", "C#": "csharp",
+    "NestJS": "typescript", "Next.js": "typescript", "React Native": "typescript",
   };
   const pluginName = pluginTechMap[projectType];
   if (pluginName) {

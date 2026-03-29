@@ -1,0 +1,248 @@
+{
+  "technology": "php",
+  "version": 1,
+  "patterns": [
+    {
+      "id": "PHP_PARSE_ERROR",
+      "category": "syntax",
+      "severity": "error",
+      "match": "Parse error:\\s+syntax error,\\s+unexpected\\s+(?:token\\s+)?['\"]?([^'\"\\s,]+)",
+      "captures": ["token"],
+      "rootCause": "PHP encountered an unexpected token '{token}' while parsing the source file. This usually means a missing semicolon, bracket, or parenthesis on a preceding line.",
+      "prescription": "Check the line reported and the line above it for missing semicolons, unclosed brackets, or mismatched parentheses. Common causes: missing ';' at end of statement, unclosed string literal, or extra/missing braces.",
+      "codeBlock": "// BEFORE (wrong)\n$x = 5\n$y = 10;\n\n// AFTER (correct)\n$x = 5;\n$y = 10;",
+      "conditions": []
+    },
+    {
+      "id": "PHP_CLASS_NOT_FOUND",
+      "category": "runtime",
+      "severity": "error",
+      "match": "Fatal error:.*Class ['\"]([\\w\\\\]+)['\"]\\s+not found",
+      "captures": ["className"],
+      "rootCause": "The class '{className}' was referenced but PHP could not locate its definition. This often means the class file was not included, the namespace is wrong, or the autoloader is not configured.",
+      "prescription": "Verify the namespace and class name match the file path (PSR-4). Run 'composer dump-autoload' to regenerate the autoloader. Check that the file containing '{className}' exists and is properly namespaced.",
+      "codeBlock": "// Fix autoloading:\ncomposer dump-autoload\n\n// Or verify the namespace matches:\nnamespace App\\Models;\nclass User { }  // file must be at app/Models/User.php",
+      "conditions": []
+    },
+    {
+      "id": "PHP_UNDEFINED_FUNCTION",
+      "category": "runtime",
+      "severity": "error",
+      "match": "Fatal error:.*Call to undefined function\\s+(\\w+)\\(\\)",
+      "captures": ["funcName"],
+      "rootCause": "The function '{funcName}' was called but does not exist. It may be from a PHP extension that is not installed, a missing include, or a typo.",
+      "prescription": "Check for typos in '{funcName}'. If it belongs to a PHP extension (e.g., curl, mbstring, gd), install the extension: sudo apt install php-{extension}. If user-defined, ensure the file is included.",
+      "codeBlock": "# Install missing PHP extension:\nsudo apt install php-mbstring php-curl php-gd\n\n# Then restart your web server:\nsudo systemctl restart php-fpm",
+      "conditions": []
+    },
+    {
+      "id": "PHP_UNDEFINED_METHOD",
+      "category": "runtime",
+      "severity": "error",
+      "match": "Fatal error:.*Call to undefined method\\s+([\\w\\\\]+)::(\\w+)\\(\\)",
+      "captures": ["className", "methodName"],
+      "rootCause": "The method '{methodName}' does not exist on class '{className}'. It may be a typo, a missing trait, or the wrong class instance.",
+      "prescription": "Check that '{methodName}' is defined in '{className}' or its parent classes/traits. Verify the object is the expected type. Check for case-sensitivity issues.",
+      "codeBlock": null,
+      "conditions": []
+    },
+    {
+      "id": "PHP_CANNOT_REDECLARE",
+      "category": "runtime",
+      "severity": "error",
+      "match": "Fatal error:.*Cannot redeclare\\s+(?:class\\s+)?([\\w\\\\]+)",
+      "captures": ["name"],
+      "rootCause": "'{name}' has already been declared. This happens when a file is included multiple times or two files define the same class/function.",
+      "prescription": "Use require_once or include_once instead of require/include. If using Composer autoloading, remove manual require statements. Check for duplicate class definitions across files.",
+      "codeBlock": "// BEFORE (wrong)\nrequire 'helpers.php';\nrequire 'helpers.php';  // double include\n\n// AFTER (correct)\nrequire_once 'helpers.php';",
+      "conditions": []
+    },
+    {
+      "id": "PHP_MEMORY_EXHAUSTED",
+      "category": "runtime",
+      "severity": "error",
+      "match": "Allowed memory size of (\\d+) bytes exhausted",
+      "captures": ["memoryLimit"],
+      "rootCause": "The script exceeded the PHP memory limit of {memoryLimit} bytes. This is often caused by loading large datasets into memory, infinite loops, or memory leaks.",
+      "prescription": "Increase memory_limit in php.ini or at runtime with ini_set('memory_limit', '512M'). For large data, use generators, chunked processing, or streaming instead of loading everything at once.",
+      "codeBlock": "// Increase memory at runtime:\nini_set('memory_limit', '512M');\n\n// Better: use generators for large datasets\nfunction readLargeFile($path) {\n    $handle = fopen($path, 'r');\n    while (($line = fgets($handle)) !== false) {\n        yield $line;\n    }\n    fclose($handle);\n}",
+      "conditions": []
+    },
+    {
+      "id": "PHP_MAX_EXECUTION_TIME",
+      "category": "runtime",
+      "severity": "error",
+      "match": "Maximum execution time of (\\d+) seconds exceeded",
+      "captures": ["timeLimit"],
+      "rootCause": "The script ran for longer than the max_execution_time limit of {timeLimit} seconds. This often indicates an infinite loop, slow database query, or blocking external API call.",
+      "prescription": "For long-running tasks, increase max_execution_time in php.ini or use set_time_limit(). For CLI scripts, note that max_execution_time defaults to 0 (unlimited). Consider moving heavy work to a queue (Laravel Horizon, Symfony Messenger).",
+      "codeBlock": "// Increase time limit for this script:\nset_time_limit(300);  // 5 minutes\n\n// Or in php.ini:\n// max_execution_time = 300",
+      "conditions": []
+    },
+    {
+      "id": "PHP_UNDEFINED_VARIABLE",
+      "category": "runtime",
+      "severity": "warning",
+      "match": "(?:Warning|Notice):.*Undefined variable:?\\s+\\$?(\\w+)",
+      "captures": ["varName"],
+      "rootCause": "The variable '${varName}' is used before being assigned a value. In PHP 8+, this triggers a warning instead of a notice.",
+      "prescription": "Initialize the variable before use: ${varName} = null; or ${varName} = ''. Use the null coalescing operator ?? to provide defaults, or isset() to check existence.",
+      "codeBlock": "// BEFORE (wrong)\necho $name;\n\n// AFTER (correct)\n$name = $name ?? 'default';\necho $name;",
+      "conditions": []
+    },
+    {
+      "id": "PHP_UNDEFINED_INDEX",
+      "category": "runtime",
+      "severity": "warning",
+      "match": "(?:Warning|Notice):.*Undefined (?:index|offset|array key):?\\s+(\\w+)",
+      "captures": ["keyName"],
+      "rootCause": "The array key '{keyName}' does not exist in the array being accessed.",
+      "prescription": "Use isset($array['{keyName}']) or array_key_exists('{keyName}', $array) before accessing. In PHP 7+, use the null coalescing operator: $array['{keyName}'] ?? 'default'.",
+      "codeBlock": "// BEFORE (wrong)\n$value = $data['key'];\n\n// AFTER (correct)\n$value = $data['key'] ?? null;",
+      "conditions": []
+    },
+    {
+      "id": "PHP_TYPE_ERROR",
+      "category": "runtime",
+      "severity": "error",
+      "match": "TypeError:.*Argument #(\\d+).*must be of type (\\w+),\\s+(\\w+) given",
+      "captures": ["argNum", "expectedType", "actualType"],
+      "rootCause": "Argument #{argNum} expects type '{expectedType}' but received '{actualType}'. PHP's strict type system (declare(strict_types=1)) enforces type declarations.",
+      "prescription": "Cast or convert the value to '{expectedType}' before passing it. Check the function signature and ensure you are passing the correct data type. If using strict_types, explicit casts are required.",
+      "codeBlock": "// BEFORE (wrong)\nfunction add(int $a, int $b): int { return $a + $b; }\nadd('5', 3);  // TypeError with strict_types\n\n// AFTER (correct)\nadd((int)'5', 3);",
+      "conditions": []
+    },
+    {
+      "id": "PHP_PDO_CONNECTION_REFUSED",
+      "category": "database",
+      "severity": "error",
+      "match": "PDOException:.*SQLSTATE\\[HY000\\].*Connection refused",
+      "captures": [],
+      "rootCause": "PHP cannot connect to the database server. The database service may not be running, the host/port is wrong, or a firewall is blocking the connection.",
+      "prescription": "Verify the database server is running (systemctl status mysql/postgresql). Check the host, port, and credentials in your .env or config file. Ensure the database server accepts connections from the application host.",
+      "codeBlock": "# Check if database is running:\nsystemctl status mysql\nsystemctl status postgresql\n\n# Test connection:\nmysql -h 127.0.0.1 -u root -p\npsql -h 127.0.0.1 -U postgres",
+      "conditions": []
+    },
+    {
+      "id": "PHP_PDO_TABLE_NOT_FOUND",
+      "category": "database",
+      "severity": "error",
+      "match": "SQLSTATE\\[42S02\\]:.*Table '([\\w.]+)' doesn't exist",
+      "captures": ["tableName"],
+      "rootCause": "The database table '{tableName}' does not exist. Migrations may not have been run, or the table name is misspelled.",
+      "prescription": "Run database migrations to create the table. For Laravel: php artisan migrate. For raw SQL: verify the table name matches your schema. Check the database name in your connection config.",
+      "codeBlock": "# Laravel:\nphp artisan migrate\n\n# Check existing tables:\nphp artisan db:show\n\n# Or in MySQL:\nSHOW TABLES;",
+      "conditions": []
+    },
+    {
+      "id": "PHP_COMPOSER_REQUIREMENTS",
+      "category": "composer",
+      "severity": "error",
+      "match": "Your requirements could not be resolved to an installable set of packages",
+      "captures": [],
+      "rootCause": "Composer cannot find a compatible set of package versions. There are conflicting version requirements between dependencies, or a required PHP version/extension is missing.",
+      "prescription": "Run 'composer why-not vendor/package version' to see conflicts. Try 'composer update --with-all-dependencies'. Check that your PHP version matches the requirements. Use '--ignore-platform-reqs' as a last resort.",
+      "codeBlock": "# Diagnose conflicts:\ncomposer why-not vendor/package 2.0\n\n# Update with dependency resolution:\ncomposer update --with-all-dependencies\n\n# Check PHP version requirements:\ncomposer check-platform-reqs",
+      "conditions": []
+    },
+    {
+      "id": "PHP_COMPOSER_NOTHING_TO_INSTALL",
+      "category": "composer",
+      "severity": "warning",
+      "match": "Nothing to install,? update,? or remove",
+      "captures": [],
+      "rootCause": "Composer found no changes to apply. The composer.lock file already matches the installed packages. This may mean the package was not added to composer.json.",
+      "prescription": "If you want to add a new package, use 'composer require vendor/package'. If you updated composer.json manually, run 'composer update vendor/package'. Delete the vendor directory and re-run 'composer install' to force a fresh install.",
+      "codeBlock": "# Add a new package:\ncomposer require vendor/package\n\n# Force reinstall:\nrm -rf vendor\ncomposer install",
+      "conditions": []
+    },
+    {
+      "id": "PHP_LARAVEL_ROUTE_NOT_DEFINED",
+      "category": "laravel",
+      "severity": "error",
+      "match": "Route \\[([\\w.]+)\\] not defined",
+      "captures": ["routeName"],
+      "rootCause": "The named route '{routeName}' was referenced (e.g., in route() helper) but no route with that name is registered.",
+      "prescription": "Run 'php artisan route:list' to see all registered routes. Add ->name('{routeName}') to the route definition. Clear the route cache with 'php artisan route:clear'.",
+      "codeBlock": "// Define a named route:\nRoute::get('/users', [UserController::class, 'index'])->name('{routeName}');\n\n// Clear route cache:\nphp artisan route:clear",
+      "conditions": []
+    },
+    {
+      "id": "PHP_LARAVEL_MODEL_NOT_FOUND",
+      "category": "laravel",
+      "severity": "error",
+      "match": "Class ['\"]?(App\\\\Models\\\\(\\w+))['\"]?\\s+not found",
+      "captures": ["fullClass", "modelName"],
+      "rootCause": "The Eloquent model '{modelName}' could not be found at the expected namespace '{fullClass}'. The file may be missing, misnamed, or in the wrong directory.",
+      "prescription": "Create the model with 'php artisan make:model {modelName}'. Verify the file exists at app/Models/{modelName}.php and the namespace is App\\Models. Run 'composer dump-autoload' to refresh the autoloader.",
+      "codeBlock": "# Create the model:\nphp artisan make:model {modelName}\n\n# Or with migration:\nphp artisan make:model {modelName} -m\n\n# Regenerate autoloader:\ncomposer dump-autoload",
+      "conditions": []
+    },
+    {
+      "id": "PHP_LARAVEL_CSRF_MISMATCH",
+      "category": "laravel",
+      "severity": "error",
+      "match": "CSRF token mismatch",
+      "captures": [],
+      "rootCause": "The CSRF token in the request does not match the one stored in the session. This happens when the form is missing the @csrf directive, the session has expired, or the token was not included in an AJAX request.",
+      "prescription": "Add @csrf to Blade forms. For AJAX requests, include the X-CSRF-TOKEN header from the meta tag. Check that the session driver is working (file permissions, Redis connection, etc.).",
+      "codeBlock": "<!-- In Blade forms: -->\n<form method=\"POST\" action=\"/submit\">\n    @csrf\n    <!-- form fields -->\n</form>\n\n<!-- For AJAX (with Axios): -->\n<meta name=\"csrf-token\" content=\"{{ csrf_token() }}\">\n<script>\naxios.defaults.headers.common['X-CSRF-TOKEN'] =\n    document.querySelector('meta[name=\"csrf-token\"]').content;\n</script>",
+      "conditions": []
+    },
+    {
+      "id": "PHP_LARAVEL_UNDEFINED_PROPERTY",
+      "category": "laravel",
+      "severity": "error",
+      "match": "Undefined property:.*\\$?(\\w+).*on model\\s+(\\w+)",
+      "captures": ["property", "model"],
+      "rootCause": "The property '{property}' does not exist on the '{model}' Eloquent model. This may mean the database column is missing, the accessor is not defined, or a relationship is not loaded.",
+      "prescription": "Verify the column '{property}' exists in the database table. Check for typos. If it's a relationship, ensure the method is defined on the model and use ->load('{property}') or eager load with ::with('{property}').",
+      "codeBlock": null,
+      "conditions": []
+    },
+    {
+      "id": "PHP_ARTISAN_COMMAND_NOT_FOUND",
+      "category": "laravel",
+      "severity": "error",
+      "match": "Command ['\"]([\\w:]+)['\"] is not defined",
+      "captures": ["commandName"],
+      "rootCause": "The Artisan command '{commandName}' does not exist. It may be from a package that is not installed, or a custom command that was not registered.",
+      "prescription": "Run 'php artisan list' to see available commands. If it's from a package, install it with Composer. If custom, register it in app/Console/Kernel.php or check that the command class exists.",
+      "codeBlock": "# List all available commands:\nphp artisan list\n\n# Search for a specific command:\nphp artisan list | grep {commandName}",
+      "conditions": []
+    },
+    {
+      "id": "PHP_PHPUNIT_ASSERTION",
+      "category": "runtime",
+      "severity": "error",
+      "match": "Failed asserting that (.+)",
+      "captures": ["assertion"],
+      "rootCause": "A PHPUnit test assertion failed: {assertion}. The actual value did not match the expected value.",
+      "prescription": "Review the test case to understand what was expected vs. what was produced. Check the code under test for logic errors. Use $this->assertEquals() with descriptive messages for clearer failure output.",
+      "codeBlock": "// Add descriptive messages to assertions:\n$this->assertEquals(\n    $expected,\n    $actual,\n    'User count should match after import'\n);",
+      "conditions": []
+    },
+    {
+      "id": "PHP_RETURN_TYPE_ERROR",
+      "category": "runtime",
+      "severity": "error",
+      "match": "TypeError:.*Return value (?:of|must be of type) ([\\w\\\\]+)::(\\w+)\\(\\) must be of type (\\w+),\\s+(\\w+) returned",
+      "captures": ["className", "methodName", "expectedType", "actualType"],
+      "rootCause": "Method '{className}::{methodName}' declares a return type of '{expectedType}' but actually returned '{actualType}'.",
+      "prescription": "Ensure the method returns the correct type. Add explicit type casting or fix the logic to return the declared type. If the method can return null, use a nullable return type: ?{expectedType}.",
+      "codeBlock": "// BEFORE (wrong)\nfunction getName(): string {\n    return null;  // TypeError\n}\n\n// AFTER (correct)\nfunction getName(): ?string {\n    return null;  // OK with nullable type\n}",
+      "conditions": []
+    },
+    {
+      "id": "PHP_JSON_ERROR",
+      "category": "runtime",
+      "severity": "error",
+      "match": "json_(?:decode|encode)\\(\\):.*(?:Syntax error|Malformed UTF-8|Control character)",
+      "captures": [],
+      "rootCause": "JSON encoding or decoding failed due to malformed input. The string may contain invalid UTF-8 characters, control characters, or have syntax errors.",
+      "prescription": "Validate JSON input with json_last_error() after decoding. For encoding, ensure strings are valid UTF-8 with mb_convert_encoding(). Use JSON_THROW_ON_ERROR flag in PHP 7.3+ for exceptions instead of silent failures.",
+      "codeBlock": "// Safe JSON decoding with error handling:\n$data = json_decode($json, true, 512, JSON_THROW_ON_ERROR);\n\n// Or check manually:\n$data = json_decode($json, true);\nif (json_last_error() !== JSON_ERROR_NONE) {\n    throw new RuntimeException('JSON error: ' . json_last_error_msg());\n}",
+      "conditions": []
+    }
+  ]
+}

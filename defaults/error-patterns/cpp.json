@@ -1,0 +1,193 @@
+{
+  "technology": "cpp",
+  "version": 1,
+  "patterns": [
+    {
+      "id": "CPP_UNDECLARED_IDENTIFIER",
+      "category": "compiler",
+      "severity": "error",
+      "match": "error:.*use of undeclared identifier '(\\w+)'",
+      "captures": ["identifier"],
+      "rootCause": "The identifier '{identifier}' is used but has not been declared in the current scope. It may be a missing #include, an undeclared variable, or a typo.",
+      "prescription": "Declare '{identifier}' before use, add the appropriate #include header, or check for typos. If it is from the std namespace, ensure 'using namespace std;' or prefix with 'std::'.",
+      "codeBlock": "#include <string>\n\nstd::string name = \"hello\";  // use std:: prefix",
+      "conditions": []
+    },
+    {
+      "id": "CPP_EXPECTED_SEMICOLON",
+      "category": "compiler",
+      "severity": "error",
+      "match": "error:.*expected '?;'? after (?:expression|declaration|statement)",
+      "captures": [],
+      "rootCause": "A semicolon is missing at the end of a statement or declaration. In C/C++, every statement must end with a semicolon.",
+      "prescription": "Add a semicolon at the end of the indicated line. Also check for missing semicolons after class/struct definitions (before the closing brace).",
+      "codeBlock": "// BEFORE (wrong)\nclass Foo {\n    int x;\n}  // missing semicolon after class\n\n// AFTER (correct)\nclass Foo {\n    int x;\n};  // semicolon required after class definition",
+      "conditions": []
+    },
+    {
+      "id": "CPP_NO_MATCHING_FUNCTION",
+      "category": "compiler",
+      "severity": "error",
+      "match": "error:.*no matching function for call to '([\\w:]+)'",
+      "captures": ["funcName"],
+      "rootCause": "No overload of '{funcName}' matches the provided arguments. The argument types, count, or const-qualifiers may be incorrect.",
+      "prescription": "Check the function signature of '{funcName}' and adjust the arguments to match. Verify implicit conversions are valid. If it is a template function, ensure template arguments can be deduced correctly.",
+      "codeBlock": null,
+      "conditions": []
+    },
+    {
+      "id": "CPP_CANNOT_CONVERT",
+      "category": "compiler",
+      "severity": "error",
+      "match": "error:.*cannot (?:implicitly )?convert '([\\w:*&<>]+)' to '([\\w:*&<>]+)'",
+      "captures": ["fromType", "toType"],
+      "rootCause": "Cannot convert from '{fromType}' to '{toType}'. There is no implicit conversion between these types.",
+      "prescription": "Add an explicit cast using static_cast<{toType}>(value). If converting between pointer types, ensure the types are related. Avoid reinterpret_cast unless absolutely necessary.",
+      "codeBlock": "// Use static_cast for safe conversions:\nint i = static_cast<int>(doubleValue);\n\n// For polymorphic types:\nDerived* d = dynamic_cast<Derived*>(basePtr);",
+      "conditions": []
+    },
+    {
+      "id": "CPP_REDEFINITION",
+      "category": "compiler",
+      "severity": "error",
+      "match": "error:.*redefinition of '(\\w+)'",
+      "captures": ["name"],
+      "rootCause": "'{name}' has been defined more than once. This usually happens when a header file is included multiple times without include guards.",
+      "prescription": "Add include guards (#ifndef/#define/#endif) or #pragma once to the header file. Ensure the definition appears in only one source (.cpp) file, with a declaration in the header.",
+      "codeBlock": "// Use #pragma once (modern):\n#pragma once\nclass MyClass { };\n\n// Or traditional include guards:\n#ifndef MY_CLASS_H\n#define MY_CLASS_H\nclass MyClass { };\n#endif",
+      "conditions": []
+    },
+    {
+      "id": "CPP_UNKNOWN_TYPE",
+      "category": "compiler",
+      "severity": "error",
+      "match": "error:.*unknown type name '(\\w+)'",
+      "captures": ["typeName"],
+      "rootCause": "The type '{typeName}' is not recognized. The header defining it may not be included, or it may be in a namespace that has not been specified.",
+      "prescription": "Add the #include for the header that defines '{typeName}'. If it is in a namespace, use the fully qualified name (e.g., std::{typeName}). Check for forward declaration requirements.",
+      "codeBlock": "#include <vector>    // for std::vector\n#include <string>    // for std::string\n#include <map>       // for std::map",
+      "conditions": []
+    },
+    {
+      "id": "CPP_EXPECTED_UNQUALIFIED_ID",
+      "category": "compiler",
+      "severity": "error",
+      "match": "error:.*expected unqualified-id",
+      "captures": [],
+      "rootCause": "The compiler expected a name (identifier) but found something else. Common causes: extra semicolons, misplaced braces, or using a reserved keyword as an identifier.",
+      "prescription": "Check for extra semicolons after #include directives, misplaced braces, or accidentally using a C++ keyword (class, int, etc.) as a variable or function name.",
+      "codeBlock": null,
+      "conditions": []
+    },
+    {
+      "id": "CPP_IMPLICIT_CONVERSION_WARNING",
+      "category": "compiler",
+      "severity": "warning",
+      "match": "warning:.*implicit conversion (?:from '([\\w:]+)' to '([\\w:]+)'|loses (?:integer )?precision)",
+      "captures": ["fromType", "toType"],
+      "rootCause": "An implicit type conversion may lose data (e.g., converting double to int truncates, or converting 64-bit to 32-bit may lose precision).",
+      "prescription": "Use an explicit cast to acknowledge the conversion: static_cast<TargetType>(value). If precision loss is unacceptable, change the target variable's type to match the source.",
+      "codeBlock": "// Make the conversion explicit:\nint count = static_cast<int>(doubleValue);  // acknowledge truncation\n\n// Or use the wider type:\nsize_t index = container.size();  // instead of int index",
+      "conditions": []
+    },
+    {
+      "id": "CPP_UNDEFINED_REFERENCE",
+      "category": "linker",
+      "severity": "error",
+      "match": "undefined reference to `([^'`]+)'?",
+      "captures": ["symbol"],
+      "rootCause": "The linker cannot find the definition of '{symbol}'. The function or variable is declared but not defined in any linked object file or library.",
+      "prescription": "Ensure the source file containing the definition of '{symbol}' is compiled and linked. Add the library to your linker flags (-l flag or target_link_libraries in CMake). Check for name mangling issues when mixing C and C++ (use extern \"C\").",
+      "codeBlock": "# Link the missing library:\ng++ main.o -o app -lmylib -lpthread\n\n# CMake:\ntarget_link_libraries(myapp PRIVATE mylib pthread)",
+      "conditions": []
+    },
+    {
+      "id": "CPP_MULTIPLE_DEFINITION",
+      "category": "linker",
+      "severity": "error",
+      "match": "multiple definition of `([^'`]+)'?",
+      "captures": ["symbol"],
+      "rootCause": "'{symbol}' is defined in more than one translation unit. This often happens when a function or variable definition is placed in a header without 'inline' or include guards.",
+      "prescription": "Move the definition to a single .cpp file, or mark it as 'inline' if it must remain in the header. For global variables in headers, use 'inline' (C++17) or 'extern' with a separate definition file.",
+      "codeBlock": "// In header: declare only\nextern int globalVar;\ninline void helperFunc() { }\n\n// In one .cpp file: define\nint globalVar = 42;",
+      "conditions": []
+    },
+    {
+      "id": "CPP_INCLUDE_NOT_FOUND",
+      "category": "preprocessor",
+      "severity": "error",
+      "match": "fatal error:.*'([\\w/\\\\.-]+)'\\s+file not found",
+      "captures": ["headerFile"],
+      "rootCause": "The header file '{headerFile}' could not be found in any include path. The file may not be installed, or the include path is not configured.",
+      "prescription": "Install the library that provides '{headerFile}'. Add the include directory to your compiler flags (-I path) or CMakeLists.txt (include_directories or target_include_directories).",
+      "codeBlock": "# Install the development package:\nsudo apt install libboost-dev  # Debian/Ubuntu\nbrew install boost              # macOS\n\n# Add include path:\ng++ -I/usr/local/include main.cpp\n\n# CMake:\nfind_package(Boost REQUIRED)\ntarget_link_libraries(myapp Boost::headers)",
+      "conditions": []
+    },
+    {
+      "id": "CPP_SEGFAULT",
+      "category": "runtime",
+      "severity": "error",
+      "match": "Segmentation fault(?: \\(core dumped\\))?",
+      "captures": [],
+      "rootCause": "The program tried to access memory it does not own. Common causes: dereferencing a null or dangling pointer, buffer overflow, stack overflow from infinite recursion, or accessing freed memory.",
+      "prescription": "Compile with -g -fsanitize=address and run under Valgrind or AddressSanitizer to find the exact location. Use smart pointers (std::unique_ptr, std::shared_ptr) instead of raw pointers. Check all pointer dereferences for null.",
+      "codeBlock": "# Compile with AddressSanitizer:\ng++ -g -fsanitize=address -o app main.cpp\n./app\n\n# Or use Valgrind:\nvalgrind --leak-check=full ./app",
+      "conditions": []
+    },
+    {
+      "id": "CPP_DOUBLE_FREE",
+      "category": "runtime",
+      "severity": "error",
+      "match": "double free or corruption",
+      "captures": [],
+      "rootCause": "Memory was freed (deleted) twice. This corrupts the heap and can cause crashes. Common causes: calling delete on the same pointer twice, or a destructor freeing memory that was already freed elsewhere.",
+      "prescription": "Use smart pointers to manage ownership automatically. Set pointers to nullptr after deletion. Avoid manual new/delete; prefer std::vector, std::string, and std::unique_ptr.",
+      "codeBlock": "// BEFORE (dangerous)\nint* p = new int(42);\ndelete p;\ndelete p;  // double free!\n\n// AFTER (safe with smart pointer)\nauto p = std::make_unique<int>(42);\n// automatically freed when p goes out of scope",
+      "conditions": []
+    },
+    {
+      "id": "CPP_STACK_SMASHING",
+      "category": "runtime",
+      "severity": "error",
+      "match": "stack smashing detected",
+      "captures": [],
+      "rootCause": "A buffer overflow was detected on the stack. The program wrote past the end of a stack-allocated buffer, corrupting the stack canary. This is often caused by writing past array bounds or unbounded string operations.",
+      "prescription": "Replace fixed-size arrays with std::vector or std::array. Use bounds-checked functions (strncpy instead of strcpy, snprintf instead of sprintf). Compile with -fsanitize=address to pinpoint the exact overflow.",
+      "codeBlock": "// BEFORE (dangerous)\nchar buf[10];\nstrcpy(buf, longString);  // overflow!\n\n// AFTER (safe)\nstd::string buf = longString;  // dynamic, safe\n\n// Or with bounds checking:\nchar buf[10];\nstrncpy(buf, longString, sizeof(buf) - 1);\nbuf[sizeof(buf) - 1] = '\\0';",
+      "conditions": []
+    },
+    {
+      "id": "CPP_CMAKE_PACKAGE_NOT_FOUND",
+      "category": "compiler",
+      "severity": "error",
+      "match": "CMake Error.*[Cc]ould not find (?:a )?package (?:configuration file|provided by) ['\"]?([\\w-]+)",
+      "captures": ["packageName"],
+      "rootCause": "CMake could not find the package '{packageName}'. The development library is not installed, or CMake does not know where to find it.",
+      "prescription": "Install the development package for '{packageName}'. Set CMAKE_PREFIX_PATH to the installation directory if it is in a non-standard location. Use 'cmake --find-package' to debug.",
+      "codeBlock": "# Install the package:\nsudo apt install lib{packageName}-dev  # Debian/Ubuntu\nbrew install {packageName}              # macOS\n\n# Or set the search path:\ncmake -DCMAKE_PREFIX_PATH=/usr/local ..",
+      "conditions": []
+    },
+    {
+      "id": "CPP_TEMPLATE_ERROR",
+      "category": "compiler",
+      "severity": "error",
+      "match": "error:.*no (?:type|member) named '(\\w+)' in '([\\w:<>]+)'",
+      "captures": ["memberName", "typeName"],
+      "rootCause": "The type '{typeName}' does not have a member named '{memberName}'. This often appears in template instantiation errors where a type does not satisfy the template's requirements.",
+      "prescription": "Check that the type used with the template provides the required member '{memberName}'. For C++20 concepts, verify the type satisfies the concept constraints. Review the template documentation for type requirements.",
+      "codeBlock": null,
+      "conditions": []
+    },
+    {
+      "id": "CPP_VIRTUAL_DESTRUCTOR",
+      "category": "compiler",
+      "severity": "warning",
+      "match": "warning:.*delete called on.*that has virtual functions but non-virtual destructor",
+      "captures": [],
+      "rootCause": "A class with virtual functions is being deleted through a base pointer, but the base class destructor is not virtual. This causes undefined behavior and memory leaks.",
+      "prescription": "Add a virtual destructor to the base class. Any class intended to be used polymorphically (with virtual functions) should have a virtual destructor.",
+      "codeBlock": "// BEFORE (wrong)\nclass Base {\npublic:\n    virtual void foo();\n    ~Base();  // non-virtual!\n};\n\n// AFTER (correct)\nclass Base {\npublic:\n    virtual void foo();\n    virtual ~Base() = default;  // virtual destructor\n};",
+      "conditions": []
+    }
+  ]
+}

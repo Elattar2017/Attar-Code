@@ -1,0 +1,226 @@
+{
+  "technology": "csharp",
+  "version": 1,
+  "patterns": [
+    {
+      "id": "CS0246",
+      "category": "compiler",
+      "severity": "error",
+      "match": "CS0246:.*type or namespace name '(\\w+)'.*could not be found",
+      "captures": ["typeName"],
+      "rootCause": "The type or namespace '{typeName}' could not be found. A using directive or assembly reference may be missing.",
+      "prescription": "Add the appropriate 'using' directive at the top of the file. If the type is from a NuGet package, install it with 'dotnet add package'. Check for typos in the type name.",
+      "codeBlock": "// Add the missing using directive:\nusing System.Collections.Generic;\nusing Newtonsoft.Json;\n\n// Or install the NuGet package:\n// dotnet add package PackageName",
+      "conditions": []
+    },
+    {
+      "id": "CS1061",
+      "category": "compiler",
+      "severity": "error",
+      "match": "CS1061:.*'(\\w+)'.*does not contain a definition for '(\\w+)'",
+      "captures": ["typeName", "memberName"],
+      "rootCause": "The type '{typeName}' does not have a member named '{memberName}'. This could be a typo, a missing extension method, or the wrong type.",
+      "prescription": "Verify the spelling of '{memberName}'. Check that you are using the correct type. If it is an extension method, add the appropriate 'using' directive (e.g., using System.Linq).",
+      "codeBlock": "// Common fix: add LINQ for collection methods\nusing System.Linq;\n\nvar first = list.FirstOrDefault();",
+      "conditions": []
+    },
+    {
+      "id": "CS0103",
+      "category": "compiler",
+      "severity": "error",
+      "match": "CS0103:.*name '(\\w+)' does not exist in the current context",
+      "captures": ["name"],
+      "rootCause": "The name '{name}' is not declared in the current scope. It may be a variable that was not defined, a class that was not imported, or a typo.",
+      "prescription": "Declare '{name}' before using it, or add the correct 'using' directive if it is a type. Check for scoping issues (e.g., variable declared inside a different block).",
+      "codeBlock": null,
+      "conditions": []
+    },
+    {
+      "id": "CS0029",
+      "category": "compiler",
+      "severity": "error",
+      "match": "CS0029:.*Cannot implicitly convert type '([\\w.<>\\[\\]]+)' to '([\\w.<>\\[\\]]+)'",
+      "captures": ["sourceType", "targetType"],
+      "rootCause": "Cannot implicitly convert from '{sourceType}' to '{targetType}'. C# requires explicit casting when no implicit conversion exists.",
+      "prescription": "Add an explicit cast: ({targetType})value, use a conversion method like Convert.ToInt32(), or fix the type mismatch in the logic. For nullable types, use the null-conditional operator or explicit null checks.",
+      "codeBlock": "// Explicit cast:\nint number = (int)doubleValue;\n\n// Safe conversion:\nint number = Convert.ToInt32(stringValue);\n\n// Nullable:\nint? nullable = GetValue();\nint value = nullable ?? 0;",
+      "conditions": []
+    },
+    {
+      "id": "CS0117",
+      "category": "compiler",
+      "severity": "error",
+      "match": "CS0117:.*'(\\w+)' does not contain a definition for '(\\w+)'",
+      "captures": ["typeName", "memberName"],
+      "rootCause": "The static member '{memberName}' does not exist on type '{typeName}'. The member may have been removed, renamed, or is in a different class.",
+      "prescription": "Check the API documentation for '{typeName}' to find the correct member name. The method may be an instance method rather than a static method, or it may exist in a different version of the library.",
+      "codeBlock": null,
+      "conditions": []
+    },
+    {
+      "id": "CS0428",
+      "category": "compiler",
+      "severity": "error",
+      "match": "CS0428:.*Cannot convert method group '(\\w+)' to non-delegate type",
+      "captures": ["methodName"],
+      "rootCause": "The method '{methodName}' was referenced without parentheses, so C# treats it as a method group rather than invoking it.",
+      "prescription": "Add parentheses to invoke the method: {methodName}(). If you intend to pass the method as a delegate, cast it to the appropriate delegate type.",
+      "codeBlock": "// BEFORE (wrong)\nvar result = myObject.GetValue;\n\n// AFTER (correct)\nvar result = myObject.GetValue();",
+      "conditions": []
+    },
+    {
+      "id": "CS8600",
+      "category": "compiler",
+      "severity": "warning",
+      "match": "CS8600:.*Converting null literal or possible null value to non-nullable type",
+      "captures": [],
+      "rootCause": "A possibly null value is being assigned to a non-nullable reference type. This can lead to NullReferenceException at runtime.",
+      "prescription": "Make the target type nullable by adding '?', add a null check before assignment, or use the null-forgiving operator '!' if you are certain the value is not null.",
+      "codeBlock": "// BEFORE (warning)\nstring name = GetName();  // may return null\n\n// AFTER (option 1: nullable type)\nstring? name = GetName();\n\n// AFTER (option 2: null check)\nstring name = GetName() ?? \"default\";",
+      "conditions": []
+    },
+    {
+      "id": "CS8602",
+      "category": "compiler",
+      "severity": "warning",
+      "match": "CS8602:.*Dereference of a possibly null reference",
+      "captures": [],
+      "rootCause": "A member is being accessed on a reference that may be null. This can cause a NullReferenceException at runtime.",
+      "prescription": "Add a null check before accessing the member, use the null-conditional operator '?.', or use the null-forgiving operator '!' if the value is guaranteed non-null.",
+      "codeBlock": "// BEFORE (warning)\nvar length = name.Length;\n\n// AFTER (null-conditional)\nvar length = name?.Length ?? 0;\n\n// AFTER (null check)\nif (name is not null)\n    var length = name.Length;",
+      "conditions": []
+    },
+    {
+      "id": "CS_NULL_REFERENCE",
+      "category": "runtime",
+      "severity": "error",
+      "match": "System\\.NullReferenceException:.*Object reference not set to an instance of an object",
+      "captures": [],
+      "rootCause": "A method or property was called on a null object reference. The variable was not initialized or was set to null before use.",
+      "prescription": "Add null checks before accessing object members. Use the null-conditional operator (?.) and null-coalescing operator (??). Check that objects are properly initialized. Enable nullable reference types (#nullable enable) to catch these at compile time.",
+      "codeBlock": "// Use null-conditional and null-coalescing:\nvar name = user?.Profile?.Name ?? \"Unknown\";\n\n// Enable nullable reference types in .csproj:\n// <Nullable>enable</Nullable>",
+      "conditions": []
+    },
+    {
+      "id": "CS_INVALID_OPERATION_SEQUENCE",
+      "category": "runtime",
+      "severity": "error",
+      "match": "System\\.InvalidOperationException:.*Sequence contains no (?:matching )?elements?",
+      "captures": [],
+      "rootCause": "A LINQ method like First(), Single(), or Last() was called on an empty sequence. These methods throw when the sequence has no elements.",
+      "prescription": "Use FirstOrDefault(), SingleOrDefault(), or LastOrDefault() instead, which return null/default for empty sequences. Add a check for Any() before calling First() if you need to handle the empty case differently.",
+      "codeBlock": "// BEFORE (throws on empty)\nvar item = list.First(x => x.Id == id);\n\n// AFTER (safe)\nvar item = list.FirstOrDefault(x => x.Id == id);\nif (item is null)\n    throw new NotFoundException($\"Item {id} not found\");",
+      "conditions": []
+    },
+    {
+      "id": "CS_ARGUMENT_EXCEPTION",
+      "category": "runtime",
+      "severity": "error",
+      "match": "System\\.Argument(?:Null)?Exception:.*(?:Value cannot be null|was null).*(?:Parameter name: '?(\\w+)'?)?",
+      "captures": ["paramName"],
+      "rootCause": "A method received a null or invalid argument. The parameter '{paramName}' was null or did not meet the method's validation requirements.",
+      "prescription": "Ensure the argument is not null before passing it. Add guard clauses at method entry points. Use ArgumentNullException.ThrowIfNull() in .NET 6+.",
+      "codeBlock": "// .NET 6+ guard clause:\npublic void Process(string input)\n{\n    ArgumentNullException.ThrowIfNull(input);\n    // proceed safely\n}",
+      "conditions": []
+    },
+    {
+      "id": "CS_HTTP_CONNECTION_REFUSED",
+      "category": "runtime",
+      "severity": "error",
+      "match": "System\\.Net\\.Http\\.HttpRequestException:.*Connection refused",
+      "captures": [],
+      "rootCause": "An HTTP request failed because the target server refused the connection. The server may not be running, the URL may be wrong, or a firewall is blocking the connection.",
+      "prescription": "Verify the target server is running and accessible. Check the URL, port, and protocol (http vs https). For Docker environments, use the container name or service name instead of localhost.",
+      "codeBlock": null,
+      "conditions": []
+    },
+    {
+      "id": "CS_NUGET_RESOLVE",
+      "category": "nuget",
+      "severity": "error",
+      "match": "Unable to resolve dependency.*'([\\w.]+)'",
+      "captures": ["packageName"],
+      "rootCause": "NuGet could not resolve the dependency for package '{packageName}'. There may be conflicting version requirements or the package does not exist in the configured sources.",
+      "prescription": "Run 'dotnet restore --verbosity detailed' to see the full resolution log. Check that the package name and version exist on nuget.org. Clear the NuGet cache with 'dotnet nuget locals all --clear' and retry.",
+      "codeBlock": "# Clear NuGet cache and restore:\ndotnet nuget locals all --clear\ndotnet restore\n\n# Check available versions:\ndotnet package search {packageName}",
+      "conditions": []
+    },
+    {
+      "id": "CS_NUGET_RESTORE_FAILED",
+      "category": "nuget",
+      "severity": "error",
+      "match": "(?:Package restore failed|Unable to load the service index for source)",
+      "captures": [],
+      "rootCause": "NuGet package restore failed. This can be caused by network issues, invalid NuGet source configuration, or authentication problems with private feeds.",
+      "prescription": "Check your NuGet.config for correct source URLs. Verify network connectivity to nuget.org. For private feeds, ensure credentials are configured. Try 'dotnet nuget list source' to see configured sources.",
+      "codeBlock": "# List configured NuGet sources:\ndotnet nuget list source\n\n# Add a source:\ndotnet nuget add source https://api.nuget.org/v3/index.json -n nuget.org\n\n# Restore with verbose output:\ndotnet restore --verbosity detailed",
+      "conditions": []
+    },
+    {
+      "id": "CS_EF_UPDATE_ERROR",
+      "category": "aspnet",
+      "severity": "error",
+      "match": "(?:An error occurred while (?:saving|updating) (?:the entity changes|entries)|DbUpdateException)",
+      "captures": [],
+      "rootCause": "Entity Framework Core failed to save changes to the database. This can be caused by constraint violations (unique, foreign key, not null), concurrency conflicts, or connection issues.",
+      "prescription": "Check the inner exception for the specific database error. Common causes: duplicate key violation, null value in non-nullable column, foreign key reference to non-existent record. Wrap SaveChanges in a try-catch and log the inner exception.",
+      "codeBlock": "try\n{\n    await context.SaveChangesAsync();\n}\ncatch (DbUpdateException ex)\n{\n    var innerMessage = ex.InnerException?.Message;\n    logger.LogError(\"DB save failed: {Error}\", innerMessage);\n    throw;\n}",
+      "conditions": []
+    },
+    {
+      "id": "CS_DI_RESOLVE",
+      "category": "aspnet",
+      "severity": "error",
+      "match": "Unable to resolve service for type '([\\w.]+)'",
+      "captures": ["serviceType"],
+      "rootCause": "The dependency injection container cannot resolve '{serviceType}'. The service was not registered in the DI container in Program.cs (or Startup.cs).",
+      "prescription": "Register the service in Program.cs using builder.Services.AddScoped<{serviceType}>(), AddTransient, or AddSingleton. If it's an interface, register the implementation: builder.Services.AddScoped<IService, ServiceImpl>();",
+      "codeBlock": "// In Program.cs:\nbuilder.Services.AddScoped<IMyService, MyService>();\nbuilder.Services.AddScoped<MyRepository>();\n\n// Or use AddTransient/AddSingleton as appropriate",
+      "conditions": []
+    },
+    {
+      "id": "CS_ASPNET_NO_ROUTE",
+      "category": "aspnet",
+      "severity": "error",
+      "match": "No route matches the supplied values",
+      "captures": [],
+      "rootCause": "ASP.NET could not find a route matching the provided controller/action/parameters. The route may not be registered, the action method name may not match, or route constraints are not satisfied.",
+      "prescription": "Verify the route is defined in the controller with [Route], [HttpGet], [HttpPost] attributes. Check that the controller is properly discovered (must end with 'Controller' or have [ApiController]). Run the app and check /swagger for available endpoints.",
+      "codeBlock": "[ApiController]\n[Route(\"api/[controller]\")]\npublic class UsersController : ControllerBase\n{\n    [HttpGet(\"{id}\")]\n    public IActionResult GetUser(int id) { ... }\n}",
+      "conditions": []
+    },
+    {
+      "id": "CS_BUILD_FAILED",
+      "category": "compiler",
+      "severity": "error",
+      "match": "Build FAILED",
+      "captures": [],
+      "rootCause": "The .NET build process failed. There are one or more compilation errors in the project.",
+      "prescription": "Run 'dotnet build' to see all error messages. Fix each compiler error starting from the first one (later errors are often caused by earlier ones). Check for missing NuGet packages, incorrect target framework, or syntax errors.",
+      "codeBlock": "# Build with detailed output:\ndotnet build --verbosity detailed\n\n# Restore packages first:\ndotnet restore\ndotnet build",
+      "conditions": []
+    },
+    {
+      "id": "CS_MSB4018",
+      "category": "compiler",
+      "severity": "error",
+      "match": "MSB4018:.*\"(\\w+)\".*task failed unexpectedly",
+      "captures": ["taskName"],
+      "rootCause": "The MSBuild task '{taskName}' crashed. This is usually caused by a corrupted NuGet package cache, incompatible SDK version, or a bug in a build tool.",
+      "prescription": "Clean the build output and NuGet cache, then rebuild. If the error persists, check that your .NET SDK version matches the project's target framework. Update the SDK or the problematic package.",
+      "codeBlock": "# Clean and rebuild:\ndotnet clean\ndotnet nuget locals all --clear\ndotnet restore\ndotnet build\n\n# Check SDK version:\ndotnet --info",
+      "conditions": []
+    },
+    {
+      "id": "CS_ASYNC_VOID",
+      "category": "runtime",
+      "severity": "error",
+      "match": "(?:An async void method|async void.*threw an unhandled exception|The method.*returned.*before the asynchronous operation completed)",
+      "captures": [],
+      "rootCause": "An async void method threw an exception or the async operation was not awaited. Async void methods cannot be awaited and their exceptions crash the process.",
+      "prescription": "Change 'async void' to 'async Task' and await the call. The only valid use of async void is for event handlers. Ensure all async methods are properly awaited.",
+      "codeBlock": "// BEFORE (dangerous)\nasync void ProcessData() {\n    await DoWork();  // exception crashes process\n}\n\n// AFTER (correct)\nasync Task ProcessData() {\n    await DoWork();  // exception can be caught\n}",
+      "conditions": []
+    }
+  ]
+}

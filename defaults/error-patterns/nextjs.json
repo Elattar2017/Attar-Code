@@ -1,0 +1,182 @@
+{
+  "technology": "nextjs",
+  "version": 1,
+  "patterns": [
+    {
+      "id": "NEXT_HYDRATION_MISMATCH",
+      "category": "hydration",
+      "severity": "error",
+      "match": "(?:Hydration failed because the initial UI does not match|Text content does not match server-rendered HTML|There was an error while hydrating)",
+      "captures": [],
+      "rootCause": "The HTML rendered on the server does not match what the client tried to render. This is caused by browser-only APIs (window, localStorage), dynamic content (Date.now(), Math.random()), or invalid HTML nesting.",
+      "prescription": "Move browser-only code into useEffect or behind a mounted state check. Ensure server and client render identical markup. Check for invalid HTML nesting (e.g., <p> inside <p>, <div> inside <p>).",
+      "codeBlock": "// BEFORE (causes hydration mismatch)\nexport default function Page() {\n  return <p>Time: {Date.now()}</p>\n}\n\n// AFTER (client-only rendering)\n'use client';\nimport { useState, useEffect } from 'react';\n\nexport default function Page() {\n  const [time, setTime] = useState<number | null>(null);\n  useEffect(() => setTime(Date.now()), []);\n  return <p>Time: {time ?? 'Loading...'}</p>\n}",
+      "conditions": []
+    },
+    {
+      "id": "NEXT_USE_CLIENT_BOUNDARY",
+      "category": "build",
+      "severity": "error",
+      "match": "You're importing a component that needs (?:useState|useEffect|useRef|useContext|createContext|useReducer|useCallback|useMemo)",
+      "captures": [],
+      "rootCause": "A React hook is used in a Server Component. Hooks like useState, useEffect, and useRef only work in Client Components. By default, all components in the app/ directory are Server Components.",
+      "prescription": "Add 'use client' directive at the top of the file that uses hooks. Alternatively, extract the interactive part into a separate Client Component and import it into the Server Component.",
+      "codeBlock": "// Add 'use client' at the very top of the file:\n'use client';\n\nimport { useState } from 'react';\n\nexport default function Counter() {\n  const [count, setCount] = useState(0);\n  return <button onClick={() => setCount(c => c + 1)}>{count}</button>;\n}",
+      "conditions": []
+    },
+    {
+      "id": "NEXT_EVENT_HANDLER_TO_CLIENT",
+      "category": "build",
+      "severity": "error",
+      "match": "Event handlers cannot be passed to Client Component props",
+      "captures": [],
+      "rootCause": "A Server Component is trying to pass an event handler function (onClick, onChange, etc.) as a prop to a Client Component. Functions cannot be serialized across the server-client boundary.",
+      "prescription": "Move the event handler into the Client Component itself. If the handler needs server logic, use a Server Action (async function with 'use server') instead.",
+      "codeBlock": "// BEFORE (wrong - passing handler from server)\n// page.tsx (Server Component)\nexport default function Page() {\n  const handleClick = () => console.log('clicked');\n  return <Button onClick={handleClick} />;  // Error!\n}\n\n// AFTER (correct - handler inside client component)\n// Button.tsx\n'use client';\nexport default function Button() {\n  return <button onClick={() => console.log('clicked')}>Click</button>;\n}",
+      "conditions": []
+    },
+    {
+      "id": "NEXT_DYNAMIC_SERVER_USAGE",
+      "category": "build",
+      "severity": "error",
+      "match": "(?:Dynamic server usage|could not be rendered statically|used.*headers|used.*cookies).*generateStaticParams",
+      "captures": [],
+      "rootCause": "A page using generateStaticParams is also using dynamic APIs (headers(), cookies(), searchParams). Static generation cannot access request-time data.",
+      "prescription": "Remove dynamic API usage from statically generated pages, or switch to dynamic rendering by exporting 'const dynamic = \"force-dynamic\"'. Use generateStaticParams only for pages that can be fully rendered at build time.",
+      "codeBlock": "// Option 1: Force dynamic rendering\nexport const dynamic = 'force-dynamic';\n\n// Option 2: Remove dynamic APIs and use static data\nexport async function generateStaticParams() {\n  const posts = await getPosts();\n  return posts.map(p => ({ slug: p.slug }));\n}",
+      "conditions": []
+    },
+    {
+      "id": "NEXT_MODULE_NOT_FOUND",
+      "category": "build",
+      "severity": "error",
+      "match": "Module not found: Can't resolve '([^']+)'",
+      "captures": ["moduleName"],
+      "rootCause": "The module '{moduleName}' could not be resolved. It may not be installed, the import path may be wrong, or it is a Node.js module being used in a client bundle.",
+      "prescription": "Install the package: npm install {moduleName}. If it is a path import, check for typos and verify the file exists. If it is a Node.js-only module (fs, path, crypto), move the usage to a Server Component, API route, or use a browser-compatible alternative.",
+      "codeBlock": "# Install the missing package:\nnpm install {moduleName}\n\n# If it's a Node.js module used client-side, move to server:\n// app/api/route.ts (server-side only)\nimport fs from 'fs';",
+      "conditions": []
+    },
+    {
+      "id": "NEXT_IMAGE_DIMENSIONS",
+      "category": "image",
+      "severity": "error",
+      "match": "Image with src ['\"]?([^'\"\\s]+)['\"]? (?:must use|has no) (?:\"width\" and \"height\"|width.*height)",
+      "captures": ["imageSrc"],
+      "rootCause": "The next/image component requires explicit width and height props for remote images, or the 'fill' prop to fill the parent container.",
+      "prescription": "Add width and height props to the Image component, or use the 'fill' prop with a positioned parent container. For local images, import them directly for automatic dimension detection.",
+      "codeBlock": "import Image from 'next/image';\n\n// Option 1: Explicit dimensions\n<Image src=\"/photo.jpg\" width={800} height={600} alt=\"Photo\" />\n\n// Option 2: Fill parent container\n<div style={{ position: 'relative', width: '100%', height: '400px' }}>\n  <Image src=\"/photo.jpg\" fill alt=\"Photo\" style={{ objectFit: 'cover' }} />\n</div>\n\n// Option 3: Import local image (auto dimensions)\nimport photo from './photo.jpg';\n<Image src={photo} alt=\"Photo\" />",
+      "conditions": []
+    },
+    {
+      "id": "NEXT_NOT_FOUND",
+      "category": "routing",
+      "severity": "error",
+      "match": "NEXT_NOT_FOUND|notFound\\(\\) was called",
+      "captures": [],
+      "rootCause": "The notFound() function was called or the requested page does not exist. In the App Router, this triggers the closest not-found.tsx boundary.",
+      "prescription": "Create a not-found.tsx file in the appropriate route segment to customize the 404 page. If notFound() is called conditionally, ensure the condition is correct and the data fetch is working.",
+      "codeBlock": "// app/not-found.tsx\nexport default function NotFound() {\n  return (\n    <div>\n      <h2>Not Found</h2>\n      <p>Could not find the requested resource</p>\n    </div>\n  );\n}\n\n// In a page/layout:\nimport { notFound } from 'next/navigation';\n\nexport default async function Page({ params }) {\n  const post = await getPost(params.id);\n  if (!post) notFound();\n  return <Article post={post} />;\n}",
+      "conditions": []
+    },
+    {
+      "id": "NEXT_MIDDLEWARE_EXPORT",
+      "category": "routing",
+      "severity": "error",
+      "match": "Middleware must export a (?:default|middleware) function",
+      "captures": [],
+      "rootCause": "The middleware.ts file does not export a function named 'middleware' or the export is malformed. Next.js requires a named export called 'middleware'.",
+      "prescription": "Export a function named 'middleware' from middleware.ts at the project root (or src/ directory). Optionally export a 'config' object with a 'matcher' to control which routes the middleware applies to.",
+      "codeBlock": "// middleware.ts (at project root or src/)\nimport { NextResponse } from 'next/server';\nimport type { NextRequest } from 'next/server';\n\nexport function middleware(request: NextRequest) {\n  return NextResponse.next();\n}\n\nexport const config = {\n  matcher: ['/dashboard/:path*', '/api/:path*'],\n};",
+      "conditions": []
+    },
+    {
+      "id": "NEXT_API_RESPONSE_BODY",
+      "category": "api",
+      "severity": "error",
+      "match": "(?:API resolved without sending a response|Expected response body|Route handler did not return a Response)",
+      "captures": [],
+      "rootCause": "An API route or route handler resolved without sending a response. In the App Router, route handlers must return a Response object.",
+      "prescription": "Ensure every code path in the route handler returns a Response. Use NextResponse.json() for JSON responses. Add error handling to catch and respond to exceptions.",
+      "codeBlock": "// App Router route handler (app/api/users/route.ts):\nimport { NextResponse } from 'next/server';\n\nexport async function GET() {\n  try {\n    const users = await getUsers();\n    return NextResponse.json(users);\n  } catch (error) {\n    return NextResponse.json(\n      { error: 'Failed to fetch users' },\n      { status: 500 }\n    );\n  }\n}",
+      "conditions": []
+    },
+    {
+      "id": "NEXT_SERVER_ACTION_FAILED",
+      "category": "api",
+      "severity": "error",
+      "match": "(?:Failed to find Server Action|Server Actions must be async|Server Action.*is not a function)",
+      "captures": [],
+      "rootCause": "A Server Action could not be found or is improperly defined. Server Actions must be async functions marked with 'use server' directive.",
+      "prescription": "Ensure the function is marked with 'use server' (either at the function level or file level). Server Actions must be async. If defined in a separate file, add 'use server' at the top of that file.",
+      "codeBlock": "// Option 1: Inline server action\nexport default function Form() {\n  async function submitForm(formData: FormData) {\n    'use server';\n    const name = formData.get('name');\n    await saveToDb(name);\n  }\n  return <form action={submitForm}>...</form>;\n}\n\n// Option 2: Separate file (app/actions.ts)\n'use server';\n\nexport async function submitForm(formData: FormData) {\n  const name = formData.get('name');\n  await saveToDb(name);\n}",
+      "conditions": []
+    },
+    {
+      "id": "NEXT_PRERENDER_ERROR",
+      "category": "build",
+      "severity": "error",
+      "match": "Error occurred prerendering page ['\"]?(/[\\w/-]*)['\"]?",
+      "captures": ["pagePath"],
+      "rootCause": "An error occurred while prerendering the page '{pagePath}' at build time. The page component threw an error during static generation.",
+      "prescription": "Check the build logs for the underlying error. Common causes: API calls to a server that is not running during build, missing environment variables, or unhandled null data. Add error boundaries and null checks.",
+      "codeBlock": "// Add error handling to data fetching:\nexport default async function Page() {\n  try {\n    const data = await fetchData();\n    if (!data) return <div>No data available</div>;\n    return <Content data={data} />;\n  } catch (error) {\n    return <div>Failed to load page</div>;\n  }\n}\n\n// Or skip prerendering for this page:\nexport const dynamic = 'force-dynamic';",
+      "conditions": []
+    },
+    {
+      "id": "NEXT_TURBOPACK_COMPILE",
+      "category": "build",
+      "severity": "error",
+      "match": "(?:Turbopack|turbo):.*failed to compile|(?:turbopack).*error",
+      "captures": [],
+      "rootCause": "Turbopack failed to compile the project. This may be due to unsupported syntax, incompatible webpack plugins, or configuration issues specific to Turbopack.",
+      "prescription": "Check if the error is related to a webpack plugin or loader not yet supported by Turbopack. Try running without --turbo flag to see if the issue is Turbopack-specific. Report incompatibilities to the Next.js GitHub issues.",
+      "codeBlock": "# Run without Turbopack to compare:\nnpx next dev\n\n# vs with Turbopack:\nnpx next dev --turbo",
+      "conditions": []
+    },
+    {
+      "id": "NEXT_EXTRA_ATTRIBUTES",
+      "category": "hydration",
+      "severity": "warning",
+      "match": "(?:Extra attributes from the server|Prop.*did not match.*Server|Warning.*Extra attributes)",
+      "captures": [],
+      "rootCause": "The server rendered HTML attributes that do not match what the client expects. This is commonly caused by browser extensions, CSS-in-JS libraries, or third-party scripts injecting attributes.",
+      "prescription": "If caused by browser extensions, this can usually be ignored. For CSS-in-JS (styled-components, emotion), ensure the server-side configuration is correct. Add suppressHydrationWarning to elements where mismatch is expected.",
+      "codeBlock": "// Suppress warning for known mismatches:\n<html suppressHydrationWarning>\n  <body suppressHydrationWarning>\n    {children}\n  </body>\n</html>\n\n// For styled-components, add the compiler config:\n// next.config.js\nmodule.exports = {\n  compiler: { styledComponents: true },\n};",
+      "conditions": []
+    },
+    {
+      "id": "NEXT_FONT_DOWNLOAD",
+      "category": "build",
+      "severity": "error",
+      "match": "next/font.*(?:Failed to (?:download|fetch) font|could not be loaded|NetworkError)",
+      "captures": [],
+      "rootCause": "next/font failed to download the font during build or development. This can be caused by network issues, firewall restrictions, or an invalid font configuration.",
+      "prescription": "Check your internet connection. If behind a proxy, configure HTTP_PROXY environment variable. For offline environments, download the font files manually and use next/font/local instead of next/font/google.",
+      "codeBlock": "// Use local fonts instead of Google Fonts:\nimport localFont from 'next/font/local';\n\nconst myFont = localFont({\n  src: './fonts/MyFont.woff2',\n  display: 'swap',\n});\n\nexport default function Layout({ children }) {\n  return <div className={myFont.className}>{children}</div>;\n}",
+      "conditions": []
+    },
+    {
+      "id": "NEXT_MISSING_SUSPENSE",
+      "category": "build",
+      "severity": "error",
+      "match": "(?:Missing Suspense boundary|useSearchParams.*must be wrapped in.*Suspense|should be wrapped in a suspense boundary)",
+      "captures": [],
+      "rootCause": "A component using useSearchParams() or other dynamic hooks is not wrapped in a Suspense boundary. Next.js requires Suspense boundaries for components that access dynamic request-time data during static rendering.",
+      "prescription": "Wrap the component that uses useSearchParams() in a <Suspense> boundary. This allows the page to be statically generated with a fallback while the dynamic content loads on the client.",
+      "codeBlock": "import { Suspense } from 'react';\nimport { SearchResults } from './SearchResults';\n\n// Wrap the dynamic component:\nexport default function Page() {\n  return (\n    <Suspense fallback={<div>Loading...</div>}>\n      <SearchResults />\n    </Suspense>\n  );\n}\n\n// SearchResults.tsx\n'use client';\nimport { useSearchParams } from 'next/navigation';\nexport function SearchResults() {\n  const params = useSearchParams();\n  return <div>Query: {params.get('q')}</div>;\n}",
+      "conditions": []
+    },
+    {
+      "id": "NEXT_METADATA_CONFLICT",
+      "category": "routing",
+      "severity": "error",
+      "match": "(?:You are attempting to export.*metadata.*from a.*client.*component|metadata.*generateMetadata.*cannot be used in client components)",
+      "captures": [],
+      "rootCause": "The metadata export or generateMetadata function is used in a Client Component. Metadata APIs are only available in Server Components.",
+      "prescription": "Remove 'use client' from the page or layout that exports metadata. If the page needs client interactivity, split it: keep the metadata in a Server Component parent and extract the interactive parts into a Client Component child.",
+      "codeBlock": "// page.tsx (Server Component - no 'use client')\nimport { ClientForm } from './ClientForm';\n\nexport const metadata = {\n  title: 'My Page',\n  description: 'Page description',\n};\n\nexport default function Page() {\n  return <ClientForm />;  // interactive part is a Client Component\n}\n\n// ClientForm.tsx\n'use client';\nexport function ClientForm() {\n  const [value, setValue] = useState('');\n  return <input value={value} onChange={e => setValue(e.target.value)} />;\n}",
+      "conditions": []
+    }
+  ]
+}

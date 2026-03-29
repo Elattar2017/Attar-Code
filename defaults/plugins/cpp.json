@@ -1,0 +1,1643 @@
+{
+  "metadata": {
+    "language": "C/C++",
+    "version": "1.0.0",
+    "description": "Error classification, dependency tracing, and fix ordering for C/C++ projects using gcc, g++, clang, clang++, ld, and cmake",
+    "toolchains": [
+      {
+        "name": "gcc",
+        "errorPrefix": null,
+        "errorFormat": "(?<file>[^\\s:]+):(?<line>\\d+):(?<column>\\d+): error: (?<message>.+)",
+        "errorFormatCaptures": ["file", "line", "column", "message"],
+        "outputStream": "stderr",
+        "supportsJsonOutput": false,
+        "jsonOutputFlag": null
+      },
+      {
+        "name": "gcc-warning",
+        "errorPrefix": null,
+        "errorFormat": "(?<file>[^\\s:]+):(?<line>\\d+):(?<column>\\d+): warning: (?<message>.+?)\\s*\\[-W(?<code>[^\\]]+)\\]",
+        "errorFormatCaptures": ["file", "line", "column", "message", "code"],
+        "outputStream": "stderr",
+        "supportsJsonOutput": false,
+        "jsonOutputFlag": null
+      },
+      {
+        "name": "g++",
+        "errorPrefix": null,
+        "errorFormat": "(?<file>[^\\s:]+):(?<line>\\d+):(?<column>\\d+): error: (?<message>.+)",
+        "errorFormatCaptures": ["file", "line", "column", "message"],
+        "outputStream": "stderr",
+        "supportsJsonOutput": false,
+        "jsonOutputFlag": null
+      },
+      {
+        "name": "clang",
+        "errorPrefix": null,
+        "errorFormat": "(?<file>[^\\s:]+):(?<line>\\d+):(?<column>\\d+): error: (?<message>.+)",
+        "errorFormatCaptures": ["file", "line", "column", "message"],
+        "outputStream": "stderr",
+        "supportsJsonOutput": true,
+        "jsonOutputFlag": "-fdiagnostics-format=json"
+      },
+      {
+        "name": "clang-warning",
+        "errorPrefix": null,
+        "errorFormat": "(?<file>[^\\s:]+):(?<line>\\d+):(?<column>\\d+): warning: (?<message>.+?)\\s*\\[-W(?<code>[^\\]]+)\\]",
+        "errorFormatCaptures": ["file", "line", "column", "message", "code"],
+        "outputStream": "stderr",
+        "supportsJsonOutput": true,
+        "jsonOutputFlag": "-fdiagnostics-format=json"
+      },
+      {
+        "name": "clang-note",
+        "errorPrefix": null,
+        "errorFormat": "(?<file>[^\\s:]+):(?<line>\\d+):(?<column>\\d+): note: (?<message>.+)",
+        "errorFormatCaptures": ["file", "line", "column", "message"],
+        "outputStream": "stderr",
+        "supportsJsonOutput": false,
+        "jsonOutputFlag": null
+      },
+      {
+        "name": "clang-fatal",
+        "errorPrefix": null,
+        "errorFormat": "(?<file>[^\\s:]+):(?<line>\\d+):(?<column>\\d+): fatal error: (?<message>.+)",
+        "errorFormatCaptures": ["file", "line", "column", "message"],
+        "outputStream": "stderr",
+        "supportsJsonOutput": false,
+        "jsonOutputFlag": null
+      },
+      {
+        "name": "linker-ld",
+        "errorPrefix": null,
+        "errorFormat": "(?<file>[^\\s:]+):\\s*(?<message>undefined reference to `(?<symbol>[^`]+)`)",
+        "errorFormatCaptures": ["file", "message", "symbol"],
+        "outputStream": "stderr",
+        "supportsJsonOutput": false,
+        "jsonOutputFlag": null
+      },
+      {
+        "name": "linker-ld-multiple",
+        "errorPrefix": null,
+        "errorFormat": "(?<file>[^\\s:]+):\\s*(?<message>multiple definition of `(?<symbol>[^`]+)`)",
+        "errorFormatCaptures": ["file", "message", "symbol"],
+        "outputStream": "stderr",
+        "supportsJsonOutput": false,
+        "jsonOutputFlag": null
+      },
+      {
+        "name": "cmake",
+        "errorPrefix": "CMake",
+        "errorFormat": "CMake Error(?:\\s+at\\s+(?<file>[^:]+):(?<line>\\d+))?[:\\s]+(?<message>.+)",
+        "errorFormatCaptures": ["file", "line", "message"],
+        "outputStream": "stderr",
+        "supportsJsonOutput": false,
+        "jsonOutputFlag": null
+      },
+      {
+        "name": "msvc",
+        "errorPrefix": null,
+        "errorFormat": "(?<file>[^\\s(]+)\\((?<line>\\d+)(?:,(?<column>\\d+))?\\):\\s*error\\s+(?<code>C\\d+):\\s*(?<message>.+)",
+        "errorFormatCaptures": ["file", "line", "column", "code", "message"],
+        "outputStream": "stderr",
+        "supportsJsonOutput": false,
+        "jsonOutputFlag": null
+      }
+    ],
+    "fileExtensions": [".c", ".cpp", ".cc", ".cxx", ".h", ".hpp", ".hxx", ".inl", ".ipp", ".tpp"],
+    "generatedBy": "plugin-generator-v1",
+    "generatedFor": "attar-code-smart-fix"
+  },
+
+  "errorCatalog": {
+    "categories": [
+      {
+        "id": "syntax",
+        "name": "Syntax and Parse Errors",
+        "description": "Errors in code structure, missing tokens, unexpected tokens, invalid declarations",
+        "defaultTracingBehavior": "local_only",
+        "errors": [
+          {
+            "code": "CPP_EXPECTED_SEMICOLON",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "expected '(?<token>;)' (?:after (?<context>.+)|at end of declaration)",
+            "match": "expected ';' (?:after (?<context>.+)|at end of declaration)",
+            "captures": [
+              { "name": "token", "role": "literal_value" },
+              { "name": "context", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "CPP_UNDECLARED_IDENTIFIER", "relationship": "caused_by_this", "sharedCapture": null, "resolution": "fix_this_first" },
+              { "code": "CPP_EXPECTED_UNQUALIFIED_ID", "relationship": "sometimes_together", "sharedCapture": null, "resolution": "fix_this_first" }
+            ],
+            "rootCause": "A semicolon is missing after a statement or declaration. In C/C++, most statements, declarations, and class/struct definitions must end with a semicolon.",
+            "prescription": "1. Add a semicolon at the indicated position.\n2. If the error is after a class or struct definition, add ';' after the closing brace.\n3. If this is after a macro expansion, check that the macro does not swallow a required semicolon.\n4. For enum class declarations, ensure the closing brace is followed by ';'.",
+            "codeBlock": "// BEFORE (error):\nclass Foo {\n    int x;\n}  // missing semicolon after class\n\n// AFTER (fix):\nclass Foo {\n    int x;\n};\n\n// BEFORE (error):\nint x = 5\nint y = 10;\n\n// AFTER (fix):\nint x = 5;\nint y = 10;",
+            "conditions": [
+              {
+                "when": "context contains class",
+                "rootCause": "A class or struct definition is missing the trailing semicolon after the closing brace. This is a common mistake, especially for programmers coming from languages that don't require it.",
+                "prescription": "Add ';' immediately after the closing brace of the class/struct definition.",
+                "codeBlock": "// BEFORE:\nclass MyClass {\npublic:\n    void doStuff();\n}\n\n// AFTER:\nclass MyClass {\npublic:\n    void doStuff();\n};"
+              }
+            ]
+          },
+          {
+            "code": "CPP_EXPECTED_UNQUALIFIED_ID",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "expected unqualified-id(?:\\s+(?<context>.+))?",
+            "match": "expected unqualified-id",
+            "captures": [
+              { "name": "context", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.05,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "CPP_EXPECTED_SEMICOLON", "relationship": "sometimes_together", "sharedCapture": null, "resolution": "fix_other_first" }
+            ],
+            "rootCause": "The compiler expected a declaration name (identifier) but found something else. This typically happens when a keyword is used as an identifier, a macro expands to unexpected tokens, or there is a stray token at the top level.",
+            "prescription": "1. Check for stray tokens or misplaced punctuation at the indicated location.\n2. Verify that no C++ keyword is being used as a variable or function name.\n3. If this follows a macro, expand the macro to check for syntax issues.\n4. Ensure the file encoding is correct (no invisible characters).",
+            "codeBlock": "// BEFORE (error):\nint class = 5; // 'class' is a keyword\n\n// AFTER (fix):\nint klass = 5;\n\n// BEFORE (error):\n} // stray brace at top level\nvoid foo() {}\n\n// AFTER (fix):\nvoid foo() {}",
+            "conditions": []
+          },
+          {
+            "code": "CPP_EXPECTED_EXPRESSION",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "expected expression(?:\\s+(?<context>.+))?",
+            "match": "expected expression",
+            "captures": [
+              { "name": "context", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The compiler expected an expression (a value, variable, function call, or operator expression) but found a token that cannot begin an expression, such as a closing bracket, a keyword, or a stray operator.",
+            "prescription": "1. Check for missing operands in binary expressions (e.g., `x + ` without right-hand side).\n2. Look for extra commas in function calls or initializer lists.\n3. Verify that all parentheses and brackets are properly matched.\n4. If inside a macro expansion, verify the macro produces valid expression syntax.",
+            "codeBlock": "// BEFORE (error):\nint x = ;\n\n// AFTER (fix):\nint x = 0;\n\n// BEFORE (error):\nfoo(a, , b);\n\n// AFTER (fix):\nfoo(a, b);",
+            "conditions": []
+          },
+          {
+            "code": "CPP_EXPECTED_BRACE",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "expected '(?<brace>[{}])' (?<context>.+)",
+            "match": "expected '[{}]'",
+            "captures": [
+              { "name": "brace", "role": "literal_value" },
+              { "name": "context", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "A matching brace is missing. The compiler reached a point where it expects a brace to either open or close a block, but found a different token instead.",
+            "prescription": "1. Check that all opening braces '{' have matching closing braces '}'.\n2. Use your editor's bracket matching feature to find mismatched braces.\n3. Look for accidentally deleted or duplicated braces.\n4. If inside nested blocks, verify each nesting level is properly closed.",
+            "codeBlock": "// BEFORE (error):\nvoid foo() {\n    if (x) {\n        bar();\n    // missing closing brace for if\n}\n\n// AFTER (fix):\nvoid foo() {\n    if (x) {\n        bar();\n    }\n}",
+            "conditions": []
+          }
+        ]
+      },
+      {
+        "id": "type",
+        "name": "Type Errors",
+        "description": "Errors related to type conversions, type mismatches, implicit conversions, and template type deduction",
+        "defaultTracingBehavior": "check_imports",
+        "errors": [
+          {
+            "code": "CPP_TYPE_CONVERSION",
+            "category": "type",
+            "severity": "error",
+            "messagePattern": "cannot (?:convert|initialize) (?:a value of type )?'(?<fromType>[^']+)' to (?:type )?'(?<toType>[^']+)'",
+            "match": "cannot (?:convert|initialize).*'(?<fromType>[^']+)'.*'(?<toType>[^']+)'",
+            "captures": [
+              { "name": "fromType", "role": "type_name" },
+              { "name": "toType", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "fromType" }, "adjustedProbability": 0.6, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "fromType" }, "adjustedProbability": 0.1, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": { "primaryStrategy": "fix_types", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "CPP_IMPLICIT_CONVERSION", "relationship": "same_root_cause", "sharedCapture": "fromType", "resolution": "fix_either" },
+              { "code": "CPP_NO_MATCHING_FUNCTION", "relationship": "sometimes_together", "sharedCapture": null, "resolution": "fix_this_first" }
+            ],
+            "rootCause": "The compiler cannot implicitly or explicitly convert a value of type '{fromType}' to type '{toType}'. These types are incompatible in the current conversion context.",
+            "prescription": "1. Use an explicit cast: `static_cast<{toType}>(value)` for safe conversions.\n2. If converting between pointer types, use `reinterpret_cast` (unsafe) or `dynamic_cast` (polymorphic).\n3. Add a conversion constructor or conversion operator to one of the types.\n4. Check if you are passing the wrong variable or need to dereference/take address of the value.\n5. For `const` mismatches, use `const_cast` only if you are certain the data will not be modified.",
+            "codeBlock": "// BEFORE (error):\nstd::string s = 42; // cannot convert int to string\n\n// AFTER (fix):\nstd::string s = std::to_string(42);\n\n// BEFORE (error):\nconst int* cp = &x;\nint* p = cp; // cannot convert const int* to int*\n\n// AFTER (fix):\nconst int* cp = &x;\nconst int* p = cp; // keep const",
+            "conditions": [
+              {
+                "when": "fromType contains const",
+                "rootCause": "A const-qualified value or pointer is being assigned to a non-const target. This would allow modifying data that was declared as constant.",
+                "prescription": "Either make the target const-qualified, or if you are certain the data can safely be modified, use `const_cast<{toType}>(value)` (use with extreme caution).",
+                "codeBlock": "// BEFORE:\nconst char* cs = \"hello\";\nchar* s = cs; // error\n\n// AFTER:\nconst char* cs = \"hello\";\nconst char* s = cs; // keep const"
+              },
+              {
+                "when": "fromType contains void*",
+                "rootCause": "In C++, implicit conversion from void* to a typed pointer is not allowed (unlike C). An explicit cast is required.",
+                "prescription": "Use `static_cast<{toType}>(ptr)` to cast from void* to the target pointer type.",
+                "codeBlock": "// BEFORE (works in C, error in C++):\nint* p = malloc(sizeof(int));\n\n// AFTER:\nint* p = static_cast<int*>(malloc(sizeof(int)));\n// Or better in C++:\nint* p = new int;"
+              }
+            ]
+          },
+          {
+            "code": "CPP_IMPLICIT_CONVERSION",
+            "category": "type",
+            "severity": "warning",
+            "messagePattern": "implicit conversion (?:from '(?<fromType>[^']+)' to '(?<toType>[^']+)'|loses (?<lossType>integer precision|floating-point precision))",
+            "match": "implicit conversion.*(?:'(?<fromType>[^']+)'.*'(?<toType>[^']+)'|loses (?<lossType>[\\w -]+))",
+            "captures": [
+              { "name": "fromType", "role": "type_name" },
+              { "name": "toType", "role": "type_name" },
+              { "name": "lossType", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.1,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "add_explicit_cast", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "An implicit type conversion is occurring from '{fromType}' to '{toType}' that may lose data or precision. While the code compiles, the conversion could produce incorrect results at runtime.",
+            "prescription": "1. Add an explicit cast to acknowledge the conversion: `static_cast<{toType}>(value)`.\n2. If the conversion might lose data, check whether the value actually fits in the target type.\n3. Consider changing the variable type to match the source type.\n4. For integer/float narrowing, validate the range before converting.",
+            "codeBlock": "// BEFORE (warning):\ndouble pi = 3.14159;\nint approx = pi; // implicit narrowing conversion\n\n// AFTER (explicit):\ndouble pi = 3.14159;\nint approx = static_cast<int>(pi); // acknowledges the narrowing",
+            "conditions": [
+              {
+                "when": "lossType contains integer precision",
+                "rootCause": "An integer value is being implicitly narrowed (e.g., long to int, int to short), potentially losing significant bits.",
+                "prescription": "Use `static_cast` and optionally add a bounds check before the conversion to ensure the value fits.",
+                "codeBlock": "// BEFORE:\nlong long big = getCount();\nint small = big; // may truncate\n\n// AFTER:\nlong long big = getCount();\nassert(big <= INT_MAX && big >= INT_MIN);\nint small = static_cast<int>(big);"
+              }
+            ]
+          },
+          {
+            "code": "CPP_NO_MATCHING_FUNCTION",
+            "category": "type",
+            "severity": "error",
+            "messagePattern": "no matching function for call to '(?<functionName>[^']+)'",
+            "match": "no matching function for call to '(?<functionName>[^']+)'",
+            "captures": [
+              { "name": "functionName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "functionName" }, "adjustedProbability": 0.75, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "functionName" }, "adjustedProbability": 0.15, "traceDepth": "none", "traceTarget": "same_file" },
+              { "check": { "type": "comes_from_package", "target": "functionName" }, "adjustedProbability": 0.85, "traceDepth": "direct", "traceTarget": "external_package" }
+            ],
+            "fixHint": { "primaryStrategy": "fix_arguments", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "CPP_TYPE_CONVERSION", "relationship": "sometimes_together", "sharedCapture": null, "resolution": "fix_this_first" },
+              { "code": "CPP_TEMPLATE_ARG_DEDUCTION", "relationship": "sometimes_together", "sharedCapture": null, "resolution": "fix_this_first" }
+            ],
+            "rootCause": "No overload of '{functionName}' matches the provided arguments. The compiler checked all available overloads and none accept the given argument types, count, or const/volatile qualifications.",
+            "prescription": "1. Check the number of arguments — verify you are passing the correct count.\n2. Check argument types — ensure each argument matches (or is implicitly convertible to) the parameter type.\n3. Look at the 'candidates are:' note in the compiler output to see what overloads exist.\n4. If calling a template function, ensure template argument deduction can succeed.\n5. Check for missing `const` or reference qualifiers on arguments.\n6. Verify the correct header is included for the function.",
+            "codeBlock": "// BEFORE (error):\nstd::vector<int> v;\nv.push_back(\"hello\"); // no matching: expects int, got const char*\n\n// AFTER (fix):\nstd::vector<int> v;\nv.push_back(42);\n\n// BEFORE (error):\nvoid foo(int a, int b);\nfoo(1); // too few arguments\n\n// AFTER (fix):\nvoid foo(int a, int b);\nfoo(1, 2);",
+            "conditions": [
+              {
+                "when": "functionName contains ::",
+                "rootCause": "The function '{functionName}' is a member function or namespaced function. The call may be failing because the object type does not match or the function is not accessible from the current scope.",
+                "prescription": "1. Verify the object has the correct type for the member function.\n2. Check that the function is public/accessible from the call site.\n3. For template member functions, you may need to use the `template` keyword: `obj.template func<T>()`.",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "CPP_NO_VIABLE_OVERLOAD",
+            "category": "type",
+            "severity": "error",
+            "messagePattern": "no viable overloaded (?:operator|'(?<operatorName>[^']+)')(?:\\s+for (?<context>.+))?",
+            "match": "no viable overloaded (?:operator|'[^']*')",
+            "captures": [
+              { "name": "operatorName", "role": "symbol_name" },
+              { "name": "context", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "operatorName" }, "adjustedProbability": 0.5, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "add_operator_overload", "requiresCrossFileEdit": false, "typicalScope": "class_definition" },
+            "coOccurrence": [],
+            "rootCause": "No overloaded operator matches the types of the operands. The operation requires an operator overload that has not been defined for the given type combination.",
+            "prescription": "1. Define the required operator overload for the types involved.\n2. If using a standard library type, include the appropriate header (e.g., `<string>` for string comparison).\n3. Verify the operand types are correct — you may be operating on the wrong type.\n4. For output streaming, ensure `operator<<` is defined for your type.",
+            "codeBlock": "// BEFORE (error):\nstruct Point { int x, y; };\nPoint a{1,2}, b{3,4};\nif (a == b) {} // no operator== for Point\n\n// AFTER (fix):\nstruct Point {\n    int x, y;\n    bool operator==(const Point& other) const {\n        return x == other.x && y == other.y;\n    }\n};\nPoint a{1,2}, b{3,4};\nif (a == b) {} // works",
+            "conditions": [
+              {
+                "when": "operatorName contains <<",
+                "rootCause": "The stream insertion operator `<<` is not defined for the given type. This commonly happens when trying to print a custom type with `std::cout`.",
+                "prescription": "Define `operator<<` as a friend function or free function for your type.",
+                "codeBlock": "// Define operator<< for custom type:\nstruct Point { int x, y; };\nstd::ostream& operator<<(std::ostream& os, const Point& p) {\n    return os << \"(\" << p.x << \", \" << p.y << \")\";\n}"
+              }
+            ]
+          },
+          {
+            "code": "CPP_TEMPLATE_ARG_DEDUCTION",
+            "category": "type",
+            "severity": "error",
+            "messagePattern": "(?:template argument deduction|(?:no matching|couldn't infer template argument|deduced conflicting types for parameter))(?:[^']*'(?<templateName>[^']+)')?(?<details>.*)",
+            "match": "(?:template argument deduction|no matching.*template|couldn't infer template argument|deduced conflicting types)",
+            "captures": [
+              { "name": "templateName", "role": "symbol_name" },
+              { "name": "details", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.35,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "templateName" }, "adjustedProbability": 0.6, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "specify_template_args", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "CPP_NO_MATCHING_FUNCTION", "relationship": "sometimes_together", "sharedCapture": null, "resolution": "fix_this_first" }
+            ],
+            "rootCause": "The compiler could not deduce template arguments from the function call arguments, or deduced conflicting types for the same template parameter. This happens when the argument types do not match the template pattern or are ambiguous.",
+            "prescription": "1. Explicitly specify the template arguments: `func<int, double>(a, b)`.\n2. If conflicting types were deduced, ensure all arguments that map to the same template parameter have the same type.\n3. Cast arguments to the expected types before passing them.\n4. Check if SFINAE constraints are excluding the desired overload.",
+            "codeBlock": "// BEFORE (error):\ntemplate<typename T>\nT max_val(T a, T b) { return a > b ? a : b; }\nmax_val(1, 2.0); // deduced int and double for T\n\n// AFTER (fix — explicit):\nmax_val<double>(1, 2.0);\n\n// AFTER (fix — cast):\nmax_val(static_cast<double>(1), 2.0);",
+            "conditions": []
+          },
+          {
+            "code": "CPP_INCOMPLETE_TYPE",
+            "category": "type",
+            "severity": "error",
+            "messagePattern": "(?:incomplete type|variable has incomplete type) '(?<typeName>[^']+)'",
+            "match": "(?:incomplete type|variable has incomplete type) '(?<typeName>[^']+)'",
+            "captures": [
+              { "name": "typeName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.6,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "typeName" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "typeName" }, "adjustedProbability": 0.2, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": { "primaryStrategy": "add_include", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [
+              { "code": "CPP_UNKNOWN_TYPE", "relationship": "same_root_cause", "sharedCapture": "typeName", "resolution": "fix_either" }
+            ],
+            "rootCause": "The type '{typeName}' has been forward-declared but its full definition has not been provided. The compiler needs the complete definition to determine the size and layout of the type (e.g., for creating objects, accessing members, or using sizeof).",
+            "prescription": "1. Include the header that contains the full definition of '{typeName}'.\n2. If the type is forward-declared, move the forward declaration after the full definition or include the header before this point.\n3. If you only need a pointer or reference to the type, a forward declaration is sufficient — but for value semantics, the full definition is required.\n4. Check for circular include dependencies that may prevent the definition from being visible.",
+            "codeBlock": "// BEFORE (error):\nclass Foo; // forward declaration only\nFoo obj;   // error: incomplete type\n\n// AFTER (fix):\n#include \"foo.h\" // provides full definition\nFoo obj; // works\n\n// Alternative — use pointer if full type not needed:\nclass Foo;\nFoo* ptr = nullptr; // OK with forward declaration",
+            "conditions": [
+              {
+                "when": "typeName contains struct",
+                "rootCause": "A struct type is used before its definition is visible. This often happens with circular dependencies between header files.",
+                "prescription": "Include the header providing the struct definition, or restructure to break circular dependencies using forward declarations and pointers.",
+                "codeBlock": null
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "name_resolution",
+        "name": "Name Resolution and Scope Errors",
+        "description": "Undeclared identifiers, unknown type names, missing members, scope issues, and redefinitions",
+        "defaultTracingBehavior": "check_imports",
+        "errors": [
+          {
+            "code": "CPP_UNDECLARED_IDENTIFIER",
+            "category": "name_resolution",
+            "severity": "error",
+            "messagePattern": "(?:use of undeclared identifier|'(?<symbolName>[^']+)' (?:was not declared|undeclared)|undeclared identifier) '?(?<symbolName2>[^'\\s;,)]+)'?",
+            "match": "(?:use of undeclared identifier '(?<symbolName>[^']+)'|'(?<symbolName>[^']+)' was not declared|undeclared identifier '(?<symbolName>[^']+)')",
+            "captures": [
+              { "name": "symbolName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.45,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "symbolName" }, "adjustedProbability": 0.75, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "symbolName" }, "adjustedProbability": 0.1, "traceDepth": "none", "traceTarget": "same_file" },
+              { "check": { "type": "comes_from_package", "target": "symbolName" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "external_package" }
+            ],
+            "fixHint": { "primaryStrategy": "add_include", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [
+              { "code": "CPP_INCLUDE_NOT_FOUND", "relationship": "caused_by_this", "sharedCapture": null, "resolution": "fix_other_first" },
+              { "code": "CPP_UNKNOWN_TYPE", "relationship": "sometimes_together", "sharedCapture": null, "resolution": "fix_this_first" }
+            ],
+            "rootCause": "The identifier '{symbolName}' is used but has not been declared in the current scope. This can mean: (1) a missing `#include` for the header declaring it, (2) a typo in the identifier name, (3) the identifier was declared in a different namespace, or (4) the identifier was deleted or renamed.",
+            "prescription": "1. Check if a `#include` is missing for the header that declares '{symbolName}'.\n2. If the identifier is in a namespace (e.g., `std`), add a `using` declaration or qualify it: `std::{symbolName}`.\n3. Check for typos by searching for similar identifiers in the codebase.\n4. If the identifier was recently renamed, update all references.\n5. Verify the variable is declared before its first use in the function scope.",
+            "codeBlock": "// BEFORE (error):\nint main() {\n    cout << \"hello\"; // undeclared identifier 'cout'\n}\n\n// AFTER (fix):\n#include <iostream>\nint main() {\n    std::cout << \"hello\";\n}\n\n// BEFORE (error):\nvoid foo() {\n    x = 5; // undeclared\n}\n\n// AFTER (fix):\nvoid foo() {\n    int x = 5;\n}",
+            "conditions": [
+              {
+                "when": "symbolName startsWith std",
+                "rootCause": "A symbol from the C++ standard library namespace is used without the proper header include or 'std::' qualifier.",
+                "prescription": "Include the appropriate standard library header and use the std:: prefix (or add `using std::{symbolName}` after the include).",
+                "codeBlock": "#include <vector>\n#include <string>\n#include <iostream>\n\nstd::vector<std::string> names;\nstd::cout << names.size();"
+              },
+              {
+                "when": "symbolName contains NULL",
+                "rootCause": "The macro NULL is used without including a header that defines it. In C++11 and later, prefer `nullptr` instead.",
+                "prescription": "Replace NULL with `nullptr` (C++11+), or include `<cstddef>` or `<cstdlib>` to get the NULL macro.",
+                "codeBlock": "// Preferred in C++11+:\nint* ptr = nullptr;\n\n// If NULL is required:\n#include <cstddef>\nint* ptr = NULL;"
+              }
+            ]
+          },
+          {
+            "code": "CPP_UNKNOWN_TYPE",
+            "category": "name_resolution",
+            "severity": "error",
+            "messagePattern": "unknown type name '(?<typeName>[^']+)'",
+            "match": "unknown type name '(?<typeName>[^']+)'",
+            "captures": [
+              { "name": "typeName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.55,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "typeName" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "typeName" }, "adjustedProbability": 0.15, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": { "primaryStrategy": "add_include", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [
+              { "code": "CPP_UNDECLARED_IDENTIFIER", "relationship": "sometimes_together", "sharedCapture": null, "resolution": "fix_this_first" },
+              { "code": "CPP_INCOMPLETE_TYPE", "relationship": "same_root_cause", "sharedCapture": "typeName", "resolution": "fix_either" }
+            ],
+            "rootCause": "The type '{typeName}' is used but has not been declared or included. The compiler cannot find any declaration of this type name in the current translation unit.",
+            "prescription": "1. Add the `#include` for the header that declares '{typeName}'.\n2. If the type is in a namespace, use the fully qualified name (e.g., `std::string` instead of `string`).\n3. Add a forward declaration if only a pointer or reference to the type is needed.\n4. Check for typos in the type name.\n5. If this is a C type used in C++, ensure the correct C++ wrapper header is included (e.g., `<cstdint>` instead of `<stdint.h>`).",
+            "codeBlock": "// BEFORE (error):\nstring name = \"hello\"; // unknown type 'string'\n\n// AFTER (fix):\n#include <string>\nstd::string name = \"hello\";\n\n// BEFORE (error):\nsize_t len = 0; // unknown type 'size_t'\n\n// AFTER (fix):\n#include <cstddef>\nsize_t len = 0;",
+            "conditions": [
+              {
+                "when": "typeName equals string",
+                "rootCause": "The type 'string' is used without the 'std::' namespace qualifier or without including the <string> header.",
+                "prescription": "Include `<string>` and use `std::string`.",
+                "codeBlock": "#include <string>\nstd::string name = \"hello\";"
+              },
+              {
+                "when": "typeName equals vector",
+                "rootCause": "The type 'vector' is used without the 'std::' namespace qualifier or without including the <vector> header.",
+                "prescription": "Include `<vector>` and use `std::vector<T>`.",
+                "codeBlock": "#include <vector>\nstd::vector<int> numbers;"
+              }
+            ]
+          },
+          {
+            "code": "CPP_NO_MEMBER",
+            "category": "name_resolution",
+            "severity": "error",
+            "messagePattern": "no member named '(?<memberName>[^']+)' in '(?<typeName>[^']+)'",
+            "match": "no member named '(?<memberName>[^']+)' in '(?<typeName>[^']+)'",
+            "captures": [
+              { "name": "memberName", "role": "symbol_name" },
+              { "name": "typeName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "typeName" }, "adjustedProbability": 0.7, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "typeName" }, "adjustedProbability": 0.2, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": { "primaryStrategy": "fix_member_access", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The type '{typeName}' does not have a member named '{memberName}'. This can mean the member name is misspelled, the member was removed or renamed, or you are accessing a member from the wrong type.",
+            "prescription": "1. Check the spelling of '{memberName}' against the class/struct definition of '{typeName}'.\n2. Verify the object type — you may be calling a method on the wrong type.\n3. If the member was recently renamed, update the reference.\n4. Check if the member is private/protected and you are accessing it from outside the class.\n5. For STL containers, consult the reference for available members (e.g., `std::vector` has `push_back`, not `append`).",
+            "codeBlock": "// BEFORE (error):\nstd::vector<int> v;\nv.append(5); // no member 'append' in vector\n\n// AFTER (fix):\nstd::vector<int> v;\nv.push_back(5);\n\n// BEFORE (error):\nstd::string s = \"hello\";\nint n = s.count(); // no member 'count' (it's 'size' or 'length')\n\n// AFTER (fix):\nstd::string s = \"hello\";\nint n = s.size();",
+            "conditions": [
+              {
+                "when": "typeName contains std::",
+                "rootCause": "A nonexistent member '{memberName}' is being accessed on the standard library type '{typeName}'. Standard library types have specific APIs that must be used exactly.",
+                "prescription": "Consult the C++ reference for '{typeName}' to find the correct member function name. Common confusions: vector has push_back (not append), string has size/length (not count), map has insert/emplace (not add).",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "CPP_REDEFINITION",
+            "category": "name_resolution",
+            "severity": "error",
+            "messagePattern": "redefinition of '(?<symbolName>[^']+)'",
+            "match": "redefinition of '(?<symbolName>[^']+)'",
+            "captures": [
+              { "name": "symbolName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.6,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "symbolName" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "symbolName" }, "adjustedProbability": 0.3, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": { "primaryStrategy": "add_include_guard", "requiresCrossFileEdit": true, "typicalScope": "file_header" },
+            "coOccurrence": [
+              { "code": "CPP_MULTIPLE_DEFINITION", "relationship": "same_root_cause", "sharedCapture": "symbolName", "resolution": "fix_either" }
+            ],
+            "rootCause": "The symbol '{symbolName}' is defined more than once in the same translation unit. This usually happens when a header file is included multiple times without proper include guards, or when the same function/variable is defined in multiple places.",
+            "prescription": "1. Add include guards to the header file: `#pragma once` or `#ifndef/#define/#endif`.\n2. If the symbol is a variable defined in a header, declare it as `extern` in the header and define it in exactly one .cpp file.\n3. For functions defined in headers, mark them as `inline`.\n4. For template specializations in headers, use `inline` or move to a .cpp file.\n5. Check for circular includes that may cause the same definition to appear twice.",
+            "codeBlock": "// BEFORE (error — header without guard):\n// foo.h\nint global_count = 0; // defined in header, redefinition if included twice\n\n// AFTER (fix):\n// foo.h\n#pragma once\nextern int global_count; // declared in header\n\n// foo.cpp\n#include \"foo.h\"\nint global_count = 0; // defined once in .cpp",
+            "conditions": [
+              {
+                "when": "symbolName contains class",
+                "rootCause": "A class is defined in a header file that is included multiple times without include guards.",
+                "prescription": "Add `#pragma once` at the top of the header file, or use traditional include guards: `#ifndef HEADER_H / #define HEADER_H / ... / #endif`.",
+                "codeBlock": "// Fix with #pragma once:\n#pragma once\nclass MyClass {\n    // ...\n};\n\n// Fix with traditional guards:\n#ifndef MY_CLASS_H\n#define MY_CLASS_H\nclass MyClass {\n    // ...\n};\n#endif"
+              }
+            ]
+          },
+          {
+            "code": "CPP_NOT_A_MEMBER",
+            "category": "name_resolution",
+            "severity": "error",
+            "messagePattern": "'(?<memberName>[^']+)' is (?:not a member of|a private member of) '(?<typeName>[^']+)'",
+            "match": "'(?<memberName>[^']+)' is (?:not a member of|a private member of) '(?<typeName>[^']+)'",
+            "captures": [
+              { "name": "memberName", "role": "symbol_name" },
+              { "name": "typeName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.45,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "typeName" }, "adjustedProbability": 0.65, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "fix_member_access", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "CPP_NO_MEMBER", "relationship": "same_root_cause", "sharedCapture": "memberName", "resolution": "fix_either" }
+            ],
+            "rootCause": "The symbol '{memberName}' is either not a member of '{typeName}' or is a private/protected member that cannot be accessed from the current context.",
+            "prescription": "1. If the member does not exist, check for typos or use the correct member name.\n2. If the member is private/protected, access it through public getter/setter methods.\n3. If you need direct access, declare the accessing class as a friend.\n4. If the member is in a base class, ensure the base class is included and the inheritance is correct.",
+            "codeBlock": "// BEFORE (error — private access):\nclass Foo {\n    int secret;\npublic:\n    Foo(int s) : secret(s) {}\n};\nFoo f(42);\nint x = f.secret; // private member\n\n// AFTER (fix — add getter):\nclass Foo {\n    int secret;\npublic:\n    Foo(int s) : secret(s) {}\n    int getSecret() const { return secret; }\n};\nFoo f(42);\nint x = f.getSecret();",
+            "conditions": []
+          }
+        ]
+      },
+      {
+        "id": "linker",
+        "name": "Linker Errors",
+        "description": "Undefined references, multiple definitions, and other link-time errors",
+        "defaultTracingBehavior": "check_all_files",
+        "errors": [
+          {
+            "code": "CPP_UNDEFINED_REFERENCE",
+            "category": "linker",
+            "severity": "error",
+            "messagePattern": "undefined reference to `(?<symbolName>[^`]+)`",
+            "match": "undefined reference to `(?<symbolName>[^`]+)`",
+            "captures": [
+              { "name": "symbolName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.9,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "symbolName" }, "adjustedProbability": 0.95, "traceDepth": "deep", "traceTarget": "all_source_files" },
+              { "check": { "type": "is_local", "target": "symbolName" }, "adjustedProbability": 0.4, "traceDepth": "direct", "traceTarget": "same_file" }
+            ],
+            "fixHint": { "primaryStrategy": "add_source_file", "requiresCrossFileEdit": true, "typicalScope": "build_system" },
+            "coOccurrence": [
+              { "code": "CPP_MULTIPLE_DEFINITION", "relationship": "sometimes_together", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+            "rootCause": "The linker cannot find the definition (implementation) of '{symbolName}'. The symbol is declared (usually in a header) and used in this translation unit, but no .cpp/.c file provides the actual implementation, or the file providing it is not being compiled/linked.",
+            "prescription": "1. Ensure the .cpp/.c file containing the definition of '{symbolName}' is compiled and linked.\n2. If using a library, verify it is linked: add `-l<library>` to the linker flags.\n3. For CMake, add the source file to `add_executable` or `add_library`, and link dependencies with `target_link_libraries`.\n4. If the function is declared but never implemented, add the implementation.\n5. Check for name mangling issues: if linking C code from C++, wrap the declaration in `extern \"C\"`.\n6. For template functions/classes, ensure the definition is in the header (not a .cpp file).",
+            "codeBlock": "// BEFORE (error):\n// math.h\nint add(int a, int b);\n\n// main.cpp\n#include \"math.h\"\nint main() { return add(1, 2); }\n// Link error: undefined reference to 'add'\n\n// AFTER (fix — provide implementation):\n// math.cpp\n#include \"math.h\"\nint add(int a, int b) { return a + b; }\n\n// Compile: g++ main.cpp math.cpp -o main\n\n// For C/C++ interop:\n// math.h\n#ifdef __cplusplus\nextern \"C\" {\n#endif\nint add(int a, int b);\n#ifdef __cplusplus\n}\n#endif",
+            "conditions": [
+              {
+                "when": "symbolName contains vtable",
+                "rootCause": "The vtable for a class is missing. This means a virtual function was declared but not defined. The vtable is generated in the translation unit containing the definition of the first non-inline virtual function.",
+                "prescription": "Define all virtual functions declared in the class. If the class has a virtual destructor declaration, provide its definition (even if empty): `ClassName::~ClassName() {}`.",
+                "codeBlock": "// BEFORE (error):\nclass Base {\npublic:\n    virtual void doWork(); // declared but never defined\n    virtual ~Base();\n};\n\n// AFTER (fix):\nclass Base {\npublic:\n    virtual void doWork() { /* implement */ }\n    virtual ~Base() = default;\n};"
+              },
+              {
+                "when": "symbolName contains operator",
+                "rootCause": "An operator overload is declared in a class but not defined. The linker finds a reference to the operator symbol but no implementation.",
+                "prescription": "Provide the implementation for the operator, either inline in the class definition or in the corresponding .cpp file.",
+                "codeBlock": null
+              },
+              {
+                "when": "symbolName contains typeinfo",
+                "rootCause": "The typeinfo (RTTI data) for a class is missing. This typically means a class with virtual functions has not had all its virtual functions defined, or RTTI was disabled (-fno-rtti) in some translation units but not others.",
+                "prescription": "Define all virtual functions for the class. Ensure -fno-rtti is either used everywhere or nowhere in the project.",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "CPP_MULTIPLE_DEFINITION",
+            "category": "linker",
+            "severity": "error",
+            "messagePattern": "multiple definition of `(?<symbolName>[^`]+)`",
+            "match": "multiple definition of `(?<symbolName>[^`]+)`",
+            "captures": [
+              { "name": "symbolName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.95,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "symbolName" }, "adjustedProbability": 0.95, "traceDepth": "deep", "traceTarget": "all_source_files" }
+            ],
+            "fixHint": { "primaryStrategy": "remove_duplicate", "requiresCrossFileEdit": true, "typicalScope": "file_level" },
+            "coOccurrence": [
+              { "code": "CPP_REDEFINITION", "relationship": "same_root_cause", "sharedCapture": "symbolName", "resolution": "fix_either" }
+            ],
+            "rootCause": "The symbol '{symbolName}' is defined in multiple object files. The One Definition Rule (ODR) requires that each non-inline function and non-inline variable has exactly one definition across the entire program.",
+            "prescription": "1. If the symbol is a function defined in a header, mark it `inline`.\n2. If the symbol is a global variable in a header, use `extern` in the header and define it in exactly one .cpp file.\n3. For C++17+, use `inline` variables in headers: `inline int count = 0;`.\n4. Use anonymous namespaces or `static` for file-local definitions.\n5. Check that the same .cpp file is not compiled/linked twice in the build system.\n6. For template specializations, ensure they are declared `inline` or in a single .cpp file.",
+            "codeBlock": "// BEFORE (error — function in header):\n// utils.h\nint helper() { return 42; } // defined in header, multiple def if included in 2+ .cpp\n\n// AFTER (fix — inline):\n// utils.h\ninline int helper() { return 42; }\n\n// AFTER (fix — declaration + definition):\n// utils.h\nint helper();\n// utils.cpp\nint helper() { return 42; }\n\n// BEFORE (error — variable in header):\n// config.h\nint debug_level = 0;\n\n// AFTER (fix for C++17):\n// config.h\ninline int debug_level = 0;\n\n// AFTER (fix for C++11/14):\n// config.h\nextern int debug_level;\n// config.cpp\nint debug_level = 0;",
+            "conditions": []
+          },
+          {
+            "code": "CPP_UNDEFINED_REFERENCE_MAIN",
+            "category": "linker",
+            "severity": "error",
+            "messagePattern": "undefined reference to `main'",
+            "match": "undefined reference to `main'",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "add_main_function", "requiresCrossFileEdit": false, "typicalScope": "file_level" },
+            "coOccurrence": [],
+            "rootCause": "No `main` function was found. Every executable C/C++ program must have a `main` function as its entry point. This error occurs when compiling an executable without any source file defining `main`, or when the main function has the wrong signature.",
+            "prescription": "1. Ensure one of the source files contains `int main()` or `int main(int argc, char* argv[])`.\n2. If building a library (not an executable), do not link as an executable.\n3. For CMake, use `add_library` instead of `add_executable` for libraries.\n4. Check that the file containing `main` is included in the build.",
+            "codeBlock": "// Add a main function:\nint main(int argc, char* argv[]) {\n    // program entry point\n    return 0;\n}",
+            "conditions": []
+          }
+        ]
+      },
+      {
+        "id": "preprocessor",
+        "name": "Preprocessor Errors",
+        "description": "Include file not found, macro errors, and conditional compilation issues",
+        "defaultTracingBehavior": "check_imports",
+        "errors": [
+          {
+            "code": "CPP_INCLUDE_NOT_FOUND",
+            "category": "preprocessor",
+            "severity": "error",
+            "messagePattern": "(?:'(?<headerName>[^']+)' file not found|(?<headerName2>[^:]+): No such file or directory)",
+            "match": "(?:'(?<headerName>[^']+)' file not found|fatal error:.*(?<headerName>[\\w./\\\\]+).*No such file or directory)",
+            "captures": [
+              { "name": "headerName", "role": "file_path" }
+            ],
+            "baseCrossFileProbability": 0.7,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_system_header", "target": "headerName" }, "adjustedProbability": 0.3, "traceDepth": "none", "traceTarget": "system_includes" },
+              { "check": { "type": "is_local_header", "target": "headerName" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "project_headers" }
+            ],
+            "fixHint": { "primaryStrategy": "fix_include_path", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [
+              { "code": "CPP_UNDECLARED_IDENTIFIER", "relationship": "caused_by_this", "sharedCapture": null, "resolution": "fix_this_first" },
+              { "code": "CPP_UNKNOWN_TYPE", "relationship": "caused_by_this", "sharedCapture": null, "resolution": "fix_this_first" }
+            ],
+            "rootCause": "The header file '{headerName}' cannot be found in any of the include search paths. The compiler searched the standard include directories, the project include paths, and (for quoted includes) the directory of the including file.",
+            "prescription": "1. Verify the header file exists at the expected path.\n2. Check the include path spelling — C/C++ includes are case-sensitive on Linux/macOS.\n3. Add the directory containing the header to the include path: `-I/path/to/headers` (gcc/clang) or `include_directories()` / `target_include_directories()` (CMake).\n4. If the header is from a library, install the library's development package (e.g., `apt install libfoo-dev`).\n5. For system headers, ensure the correct SDK or toolchain is installed.\n6. Use `<>` for system headers and `\"\"` for project-local headers.",
+            "codeBlock": "// Check the include path:\n// gcc -I/usr/local/include main.cpp\n\n// CMake:\ntarget_include_directories(myapp PRIVATE ${CMAKE_SOURCE_DIR}/include)\n\n// For missing system library:\n// Ubuntu/Debian: sudo apt install libboost-dev\n// macOS: brew install boost\n\n// Verify path is correct:\n#include \"myheader.h\"  // looks in current directory first\n#include <mylib/header.h>  // looks in system/project include paths",
+            "conditions": [
+              {
+                "when": "headerName contains boost",
+                "rootCause": "A Boost library header is not found. Boost needs to be installed and its include path needs to be configured.",
+                "prescription": "Install Boost (apt install libboost-all-dev / brew install boost) and add its include directory to the build.",
+                "codeBlock": "# CMake:\nfind_package(Boost REQUIRED COMPONENTS system filesystem)\ntarget_link_libraries(myapp Boost::system Boost::filesystem)"
+              },
+              {
+                "when": "headerName contains Qt",
+                "rootCause": "A Qt framework header is not found. Qt needs to be installed and the build system needs to be configured to find it.",
+                "prescription": "Install Qt and configure CMake with the Qt directory: `cmake -DCMAKE_PREFIX_PATH=/path/to/Qt`.",
+                "codeBlock": "# CMake:\nfind_package(Qt6 REQUIRED COMPONENTS Widgets)\ntarget_link_libraries(myapp Qt6::Widgets)"
+              }
+            ]
+          },
+          {
+            "code": "CPP_MACRO_REDEFINED",
+            "category": "preprocessor",
+            "severity": "warning",
+            "messagePattern": "'(?<macroName>[^']+)' macro redefined",
+            "match": "'(?<macroName>[^']+)' macro redefined",
+            "captures": [
+              { "name": "macroName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "remove_duplicate_define", "requiresCrossFileEdit": true, "typicalScope": "file_header" },
+            "coOccurrence": [],
+            "rootCause": "The macro '{macroName}' is defined more than once with different values. The second definition silently replaces the first, which may cause unexpected behavior.",
+            "prescription": "1. Use `#undef {macroName}` before redefining if the redefinition is intentional.\n2. Wrap the definition in `#ifndef` to define it only if not already defined.\n3. If both definitions should coexist, rename one of them.\n4. Check if two included headers define the same macro with conflicting values.",
+            "codeBlock": "// BEFORE (warning):\n#define MAX_SIZE 100\n// ... later or in another header\n#define MAX_SIZE 200\n\n// AFTER (fix — conditional):\n#ifndef MAX_SIZE\n#define MAX_SIZE 100\n#endif\n\n// AFTER (fix — explicit undef):\n#undef MAX_SIZE\n#define MAX_SIZE 200",
+            "conditions": []
+          },
+          {
+            "code": "CPP_INVALID_PREPROCESSING_DIRECTIVE",
+            "category": "preprocessor",
+            "severity": "error",
+            "messagePattern": "invalid preprocessing directive #(?<directive>\\w+)",
+            "match": "invalid preprocessing directive #(?<directive>\\w+)",
+            "captures": [
+              { "name": "directive", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The preprocessor directive '#{directive}' is not a valid C/C++ preprocessing directive. Valid directives are: #include, #define, #undef, #if, #ifdef, #ifndef, #else, #elif, #endif, #error, #warning, #pragma, #line.",
+            "prescription": "1. Check for typos in the directive name (e.g., `#incldue` instead of `#include`).\n2. Ensure the '#' is at the start of the line (only whitespace may precede it).\n3. If this is a compiler-specific extension, ensure the correct compiler is being used.",
+            "codeBlock": "// BEFORE (error):\n#incldue <stdio.h>\n\n// AFTER (fix):\n#include <stdio.h>",
+            "conditions": []
+          },
+          {
+            "code": "CPP_UNTERMINATED_CONDITIONAL",
+            "category": "preprocessor",
+            "severity": "error",
+            "messagePattern": "unterminated (?:#if|conditional directive|#ifndef|#ifdef)",
+            "match": "unterminated (?:#if|conditional directive|#ifndef|#ifdef)",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "file_level" },
+            "coOccurrence": [],
+            "rootCause": "A `#if`, `#ifdef`, or `#ifndef` directive does not have a matching `#endif`. Every conditional preprocessor block must be closed with `#endif`.",
+            "prescription": "1. Add the missing `#endif` at the appropriate location.\n2. Check that include guards have both `#ifndef` and `#endif`.\n3. Use your editor's bracket matching to find unmatched preprocessor conditionals.",
+            "codeBlock": "// BEFORE (error):\n#ifndef MY_HEADER_H\n#define MY_HEADER_H\n\nclass Foo {};\n// missing #endif\n\n// AFTER (fix):\n#ifndef MY_HEADER_H\n#define MY_HEADER_H\n\nclass Foo {};\n\n#endif // MY_HEADER_H",
+            "conditions": []
+          }
+        ]
+      },
+      {
+        "id": "memory",
+        "name": "Memory and Resource Errors",
+        "description": "Memory management errors, dangling pointers, leaks, and undefined behavior related to memory",
+        "defaultTracingBehavior": "local_only",
+        "errors": [
+          {
+            "code": "CPP_DELETE_INCOMPLETE_TYPE",
+            "category": "memory",
+            "severity": "warning",
+            "messagePattern": "(?:delete|deleting) (?:called on|pointer to) incomplete type '(?<typeName>[^']+)'",
+            "match": "(?:delete|deleting).*incomplete type '(?<typeName>[^']+)'",
+            "captures": [
+              { "name": "typeName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.6,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "typeName" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "add_include", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [
+              { "code": "CPP_INCOMPLETE_TYPE", "relationship": "same_root_cause", "sharedCapture": "typeName", "resolution": "fix_either" }
+            ],
+            "rootCause": "A `delete` expression is being used on a pointer to type '{typeName}', but the type's definition is not visible (only a forward declaration is available). This results in undefined behavior because the compiler cannot call the destructor or determine the correct deallocation size.",
+            "prescription": "1. Include the header with the full definition of '{typeName}' before the `delete` statement.\n2. If using the pimpl pattern, ensure the destructor is defined in the .cpp file where the full type is visible.\n3. Use `std::unique_ptr` with a custom deleter for forward-declared types.",
+            "codeBlock": "// BEFORE (error — pimpl without proper destructor):\n// widget.h\nclass WidgetImpl;\nclass Widget {\n    WidgetImpl* impl;\npublic:\n    ~Widget() { delete impl; } // incomplete type!\n};\n\n// AFTER (fix — define destructor in .cpp):\n// widget.h\nclass WidgetImpl;\nclass Widget {\n    WidgetImpl* impl;\npublic:\n    ~Widget(); // declared, not defined\n};\n// widget.cpp\n#include \"widget_impl.h\" // full definition\nWidget::~Widget() { delete impl; } // OK",
+            "conditions": []
+          },
+          {
+            "code": "CPP_RETURN_LOCAL_ADDRESS",
+            "category": "memory",
+            "severity": "warning",
+            "messagePattern": "(?:address of (?:local variable|stack memory)|returning address of local)(?:\\s+'(?<varName>[^']+)')?",
+            "match": "(?:address of (?:local variable|stack memory)|returning address of local)",
+            "captures": [
+              { "name": "varName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "A pointer or reference to a local variable is being returned from a function. When the function returns, the local variable is destroyed and the pointer/reference becomes dangling, leading to undefined behavior.",
+            "prescription": "1. Return the value by copy instead of by pointer/reference.\n2. Allocate the object on the heap with `new` (and use smart pointers to manage ownership).\n3. Use `std::unique_ptr` or `std::shared_ptr` for automatic memory management.\n4. Make the variable `static` if the lifetime should extend beyond the function call (thread-safety consideration).",
+            "codeBlock": "// BEFORE (error):\nint* getNumber() {\n    int x = 42;\n    return &x; // dangling pointer after return\n}\n\n// AFTER (fix — return by value):\nint getNumber() {\n    int x = 42;\n    return x;\n}\n\n// AFTER (fix — heap allocation with smart pointer):\nstd::unique_ptr<int> getNumber() {\n    return std::make_unique<int>(42);\n}",
+            "conditions": []
+          },
+          {
+            "code": "CPP_UNINITIALIZED_VARIABLE",
+            "category": "memory",
+            "severity": "warning",
+            "messagePattern": "(?:variable '(?<varName>[^']+)' is uninitialized|uninitialized (?:local )?variable '(?<varName2>[^']+)' used)",
+            "match": "(?:variable '(?<varName>[^']+)' is uninitialized|uninitialized.*variable '(?<varName>[^']+)' used)",
+            "captures": [
+              { "name": "varName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "initialize_variable", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The variable '{varName}' is used before being assigned a value. In C/C++, local variables of fundamental types (int, float, pointer, etc.) are not automatically initialized and contain indeterminate (garbage) values.",
+            "prescription": "1. Initialize the variable at the point of declaration: `int {varName} = 0;`.\n2. Use brace initialization for zero-initialization: `int {varName}{};`.\n3. Ensure all code paths assign a value before the variable is read.\n4. For class members, use in-class initializers or the constructor initializer list.",
+            "codeBlock": "// BEFORE (warning):\nint count;\nif (condition) count = 5;\nprintf(\"%d\", count); // may be uninitialized\n\n// AFTER (fix):\nint count = 0;\nif (condition) count = 5;\nprintf(\"%d\", count); // always initialized",
+            "conditions": []
+          },
+          {
+            "code": "CPP_SIZEOF_POINTER",
+            "category": "memory",
+            "severity": "warning",
+            "messagePattern": "(?:sizeof on (?:array function parameter|pointer)|'sizeof' on array function parameter will return size of)",
+            "match": "sizeof.*(?:array function parameter|pointer.*decay)",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_sizeof_usage", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Using `sizeof` on a function parameter that was declared as an array actually returns the size of a pointer, not the array. Array parameters decay to pointers in C/C++, so `sizeof(arr)` inside the function gives `sizeof(T*)`, not the full array size.",
+            "prescription": "1. Pass the array size as a separate parameter.\n2. Use `std::array` or `std::vector` instead of raw arrays.\n3. Use templates to deduce the array size: `template<size_t N> void foo(int (&arr)[N])`.\n4. Use `std::span` (C++20) for array views with size information.",
+            "codeBlock": "// BEFORE (wrong):\nvoid process(int arr[]) {\n    size_t len = sizeof(arr) / sizeof(arr[0]); // BUG: sizeof(int*) / sizeof(int)\n}\n\n// AFTER (fix — pass size):\nvoid process(int arr[], size_t len) {\n    for (size_t i = 0; i < len; i++) { /*...*/ }\n}\n\n// AFTER (fix — use vector):\nvoid process(const std::vector<int>& arr) {\n    size_t len = arr.size();\n}",
+            "conditions": []
+          }
+        ]
+      },
+      {
+        "id": "cmake",
+        "name": "CMake Build System Errors",
+        "description": "Errors from the CMake configuration and generation process",
+        "defaultTracingBehavior": "check_all_files",
+        "errors": [
+          {
+            "code": "CPP_CMAKE_TARGET_NOT_FOUND",
+            "category": "cmake",
+            "severity": "error",
+            "messagePattern": "(?:Target \"(?<targetName>[^\"]+)\" (?:not found|was not found)|Could not find a package configuration file provided by \"(?<packageName>[^\"]+)\")",
+            "match": "(?:Target \"(?<targetName>[^\"]+)\".*not found|Could not find.*package.*\"(?<packageName>[^\"]+)\")",
+            "captures": [
+              { "name": "targetName", "role": "symbol_name" },
+              { "name": "packageName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.8,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_cmake_config", "requiresCrossFileEdit": true, "typicalScope": "build_system" },
+            "coOccurrence": [],
+            "rootCause": "CMake cannot find the specified target or package. This means the dependency is not installed, the find_package() call is misconfigured, or the target name is incorrect.",
+            "prescription": "1. Install the missing library/package.\n2. Verify the package name in `find_package()` matches the official CMake package name.\n3. Set `CMAKE_PREFIX_PATH` to the installation directory of the dependency.\n4. Check that the library provides a CMake config file (*Config.cmake or *-config.cmake).\n5. Write a custom `Find<Package>.cmake` module if the library does not provide one.",
+            "codeBlock": "# CMakeLists.txt:\nfind_package(Boost 1.70 REQUIRED COMPONENTS filesystem system)\ntarget_link_libraries(myapp Boost::filesystem Boost::system)\n\n# If package is in a custom location:\ncmake -DCMAKE_PREFIX_PATH=/opt/mylibs ..",
+            "conditions": []
+          },
+          {
+            "code": "CPP_CMAKE_SYNTAX_ERROR",
+            "category": "cmake",
+            "severity": "error",
+            "messagePattern": "CMake Error at (?<file>[^:]+):(?<line>\\d+).*(?<message>.+)",
+            "match": "CMake Error at",
+            "captures": [
+              { "name": "file", "role": "file_path" },
+              { "name": "line", "role": "literal_value" },
+              { "name": "message", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.1,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_cmake_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "A syntax or logic error exists in the CMakeLists.txt or a .cmake file. CMake's scripting language has its own syntax rules that differ from C/C++.",
+            "prescription": "1. Check the indicated line in the CMake file for syntax errors.\n2. Verify that all parentheses are matched in CMake commands.\n3. Ensure string arguments with spaces are quoted.\n4. Check that variable references use the correct syntax: `${VAR_NAME}`.\n5. Verify that required arguments are provided for CMake commands.",
+            "codeBlock": "# BEFORE (error):\nadd_executable(myapp)\n\n# AFTER (fix — provide source files):\nadd_executable(myapp main.cpp utils.cpp)\n\n# BEFORE (error):\nset(SOURCES main.cpp utils.cpp\ntarget_link_libraries(myapp lib)  # missing closing paren on set\n\n# AFTER (fix):\nset(SOURCES main.cpp utils.cpp)\ntarget_link_libraries(myapp lib)",
+            "conditions": []
+          },
+          {
+            "code": "CPP_CMAKE_MINIMUM_VERSION",
+            "category": "cmake",
+            "severity": "error",
+            "messagePattern": "CMake (?<requiredVersion>[\\d.]+) or higher is required",
+            "match": "CMake.*or higher is required",
+            "captures": [
+              { "name": "requiredVersion", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "upgrade_tool", "requiresCrossFileEdit": false, "typicalScope": "build_system" },
+            "coOccurrence": [],
+            "rootCause": "The CMakeLists.txt requires CMake version {requiredVersion} or higher, but a lower version is installed on the system.",
+            "prescription": "1. Upgrade CMake to version {requiredVersion} or later.\n2. On Ubuntu/Debian: use the official CMake APT repository or build from source.\n3. On macOS: `brew upgrade cmake`.\n4. On Windows: download from cmake.org.\n5. Alternatively, lower the `cmake_minimum_required(VERSION ...)` if the project does not actually need the newer version's features.",
+            "codeBlock": "# CMakeLists.txt:\ncmake_minimum_required(VERSION 3.16) # lower if possible\n\n# Upgrade CMake:\n# Ubuntu: sudo snap install cmake --classic\n# macOS: brew install cmake\n# Windows: choco install cmake",
+            "conditions": []
+          }
+        ]
+      }
+    ]
+  },
+
+  "importSystem": {
+    "importPatterns": [
+      {
+        "type": "local_include",
+        "regex": "#include\\s+\"(?<path>[^\"]+)\"",
+        "captures": [
+          { "name": "path", "index": 1, "isList": false }
+        ],
+        "example": "#include \"myheader.h\"",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "system_include",
+        "regex": "#include\\s+<(?<path>[^>]+)>",
+        "captures": [
+          { "name": "path", "index": 1, "isList": false }
+        ],
+        "example": "#include <iostream>",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "forward_declaration_class",
+        "regex": "(?:class|struct)\\s+(?<name>[A-Za-z_]\\w*)\\s*;",
+        "captures": [
+          { "name": "name", "index": 1, "isList": false }
+        ],
+        "example": "class Widget;",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "forward_declaration_enum",
+        "regex": "enum\\s+(?:class\\s+)?(?<name>[A-Za-z_]\\w*)\\s*(?::\\s*[^{;]+)?;",
+        "captures": [
+          { "name": "name", "index": 1, "isList": false }
+        ],
+        "example": "enum class Color : int;",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "using_declaration",
+        "regex": "using\\s+(?<qualifier>[\\w:]+::)?(?<name>[A-Za-z_]\\w*)\\s*;",
+        "captures": [
+          { "name": "qualifier", "index": 1, "isList": false },
+          { "name": "name", "index": 2, "isList": false }
+        ],
+        "example": "using std::string;",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "using_namespace",
+        "regex": "using\\s+namespace\\s+(?<namespace>[\\w:]+)\\s*;",
+        "captures": [
+          { "name": "namespace", "index": 1, "isList": false }
+        ],
+        "example": "using namespace std;",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "import_module_cpp20",
+        "regex": "import\\s+(?<moduleName>[\\w.:]+)\\s*;",
+        "captures": [
+          { "name": "moduleName", "index": 1, "isList": false }
+        ],
+        "example": "import std.core;",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "import_header_unit_cpp20",
+        "regex": "import\\s+[<\"](?<path>[^>\"]+)[>\"]\\s*;",
+        "captures": [
+          { "name": "path", "index": 1, "isList": false }
+        ],
+        "example": "import <iostream>;",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      }
+    ],
+    "exportPatterns": [
+      {
+        "type": "function_declaration",
+        "regex": "(?:(?:inline|static|virtual|explicit|constexpr|extern)\\s+)*(?<returnType>[\\w:*&<>]+(?:\\s*[*&])?)?\\s+(?<name>[A-Za-z_]\\w*)\\s*\\(",
+        "captures": [
+          { "name": "returnType", "index": 1, "isList": false },
+          { "name": "name", "index": 2, "isList": false }
+        ],
+        "isReExport": false,
+        "example": "void processData(const std::string& input);"
+      },
+      {
+        "type": "class_declaration",
+        "regex": "(?:class|struct)\\s+(?:__declspec\\([^)]+\\)\\s+)?(?:alignas\\([^)]+\\)\\s+)?(?<name>[A-Za-z_]\\w*)(?:\\s*(?:final)?\\s*(?::\\s*(?:public|protected|private)\\s+[\\w:]+)?)?\\s*\\{",
+        "captures": [
+          { "name": "name", "index": 1, "isList": false }
+        ],
+        "isReExport": false,
+        "example": "class Widget : public Base {"
+      },
+      {
+        "type": "extern_declaration",
+        "regex": "extern\\s+(?:\"C\"\\s+)?(?<type>[\\w:*&<>]+)\\s+(?<name>[A-Za-z_]\\w*)\\s*;",
+        "captures": [
+          { "name": "type", "index": 1, "isList": false },
+          { "name": "name", "index": 2, "isList": false }
+        ],
+        "isReExport": false,
+        "example": "extern int globalCount;"
+      },
+      {
+        "type": "extern_c_block",
+        "regex": "extern\\s+\"C\"\\s*\\{",
+        "captures": [],
+        "isReExport": false,
+        "example": "extern \"C\" {"
+      },
+      {
+        "type": "template_declaration",
+        "regex": "template\\s*<[^>]*>\\s*(?:class|struct|typename)\\s+(?<name>[A-Za-z_]\\w*)",
+        "captures": [
+          { "name": "name", "index": 1, "isList": false }
+        ],
+        "isReExport": false,
+        "example": "template<typename T> class Container {"
+      },
+      {
+        "type": "typedef_declaration",
+        "regex": "typedef\\s+[^;]+\\s+(?<name>[A-Za-z_]\\w*)\\s*;",
+        "captures": [
+          { "name": "name", "index": 1, "isList": false }
+        ],
+        "isReExport": false,
+        "example": "typedef unsigned long ulong;"
+      },
+      {
+        "type": "using_alias",
+        "regex": "using\\s+(?<name>[A-Za-z_]\\w*)\\s*=\\s*(?<target>[^;]+)\\s*;",
+        "captures": [
+          { "name": "name", "index": 1, "isList": false },
+          { "name": "target", "index": 2, "isList": false }
+        ],
+        "isReExport": false,
+        "example": "using StringVec = std::vector<std::string>;"
+      },
+      {
+        "type": "enum_declaration",
+        "regex": "enum\\s+(?:class\\s+)?(?<name>[A-Za-z_]\\w*)(?:\\s*:\\s*[\\w:]+)?\\s*\\{",
+        "captures": [
+          { "name": "name", "index": 1, "isList": false }
+        ],
+        "isReExport": false,
+        "example": "enum class Color : uint8_t {"
+      },
+      {
+        "type": "namespace_declaration",
+        "regex": "namespace\\s+(?<name>[A-Za-z_]\\w*)\\s*\\{",
+        "captures": [
+          { "name": "name", "index": 1, "isList": false }
+        ],
+        "isReExport": false,
+        "example": "namespace mylib {"
+      },
+      {
+        "type": "export_module_cpp20",
+        "regex": "export\\s+module\\s+(?<moduleName>[\\w.:]+)\\s*;",
+        "captures": [
+          { "name": "moduleName", "index": 1, "isList": false }
+        ],
+        "isReExport": false,
+        "example": "export module mylib.core;"
+      }
+    ],
+    "moduleResolution": {
+      "strategy": "include-path",
+      "extensions": [".h", ".hpp", ".hxx", ".hh", ".H", ".tpp", ".ipp", ".inl"],
+      "indexFiles": [],
+      "aliasConfig": {
+        "file": "CMakeLists.txt",
+        "path": "target_include_directories",
+        "format": "Include paths are specified via -I flags (gcc/clang), /I flags (MSVC), or CMake's target_include_directories() and include_directories(). Quoted includes search the current file's directory first."
+      },
+      "packageEntryPoints": [],
+      "relativeImportRules": "Quoted includes (`#include \"file.h\"`) search relative to the including file's directory first, then fall back to the include path. This is the convention for project-local headers.",
+      "absoluteImportRules": "Angle-bracket includes (`#include <file.h>`) search only the system and user-specified include paths (-I directories). This is the convention for system and third-party library headers. The compiler searches paths in the order they are specified on the command line."
+    }
+  },
+
+  "typeTracing": {
+    "definitionPatterns": [
+      {
+        "kind": "class",
+        "regex": "(?:class|struct)\\s+(?:__declspec\\([^)]+\\)\\s+)?(?<name>[A-Za-z_]\\w*)(?:\\s*final)?(?:\\s*:\\s*(?:(?:public|protected|private)\\s+)?[\\w:<>,\\s]+)?\\s*\\{",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "class Widget : public Base {"
+      },
+      {
+        "kind": "struct",
+        "regex": "struct\\s+(?<name>[A-Za-z_]\\w*)(?:\\s*:\\s*(?:(?:public|protected|private)\\s+)?[\\w:<>,\\s]+)?\\s*\\{",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "struct Point {"
+      },
+      {
+        "kind": "function",
+        "regex": "(?:(?:inline|static|virtual|constexpr|extern|explicit)\\s+)*(?<returnType>[\\w:*&<>]+(?:\\s*[*&])?)\\s+(?<name>[A-Za-z_]\\w*)\\s*\\([^)]*\\)\\s*(?:const)?\\s*(?:noexcept)?\\s*(?:override)?\\s*(?:final)?\\s*(?:->\\s*[\\w:*&<>]+)?\\s*[{;]",
+        "captures": [{ "name": "name", "index": 2 }],
+        "canBeExported": true,
+        "example": "int processData(const std::string& input) {"
+      },
+      {
+        "kind": "method",
+        "regex": "(?<returnType>[\\w:*&<>]+(?:\\s*[*&])?)\\s+(?<className>[A-Za-z_]\\w*)::(?<name>[A-Za-z_]\\w*)\\s*\\(",
+        "captures": [{ "name": "name", "index": 3 }],
+        "canBeExported": true,
+        "example": "void Widget::paintEvent(QPaintEvent* event) {"
+      },
+      {
+        "kind": "variable",
+        "regex": "(?:(?:static|extern|const|constexpr|volatile|thread_local|inline)\\s+)*(?<typeName>[\\w:*&<>]+)\\s+(?<name>[A-Za-z_]\\w*)\\s*(?:=|;|\\{)",
+        "captures": [{ "name": "name", "index": 2 }],
+        "canBeExported": true,
+        "example": "static int instanceCount = 0;"
+      },
+      {
+        "kind": "typedef",
+        "regex": "typedef\\s+(?<definition>[^;]+?)\\s+(?<name>[A-Za-z_]\\w*)\\s*;",
+        "captures": [{ "name": "name", "index": 2 }],
+        "canBeExported": true,
+        "example": "typedef unsigned long ulong;"
+      },
+      {
+        "kind": "using_alias",
+        "regex": "using\\s+(?<name>[A-Za-z_]\\w*)\\s*=\\s*(?<target>[^;]+)\\s*;",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "using StringVec = std::vector<std::string>;"
+      },
+      {
+        "kind": "enum",
+        "regex": "enum\\s+(?:class\\s+)?(?<name>[A-Za-z_]\\w*)(?:\\s*:\\s*(?<underlyingType>[\\w:]+))?\\s*\\{",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "enum class Color : uint8_t {"
+      },
+      {
+        "kind": "template_class",
+        "regex": "template\\s*<(?<typeParams>[^>]+)>\\s*(?:class|struct)\\s+(?<name>[A-Za-z_]\\w*)(?:\\s*(?:final)?\\s*(?::[^{]+)?)?\\s*\\{",
+        "captures": [{ "name": "name", "index": 2 }],
+        "canBeExported": true,
+        "example": "template<typename T, typename Allocator = std::allocator<T>> class Container {"
+      },
+      {
+        "kind": "template_function",
+        "regex": "template\\s*<(?<typeParams>[^>]+)>\\s*(?:(?:inline|static|constexpr)\\s+)*(?<returnType>[\\w:*&<>]+(?:\\s*[*&])?)\\s+(?<name>[A-Za-z_]\\w*)\\s*\\(",
+        "captures": [{ "name": "name", "index": 3 }],
+        "canBeExported": true,
+        "example": "template<typename T> T max_val(T a, T b) {"
+      },
+      {
+        "kind": "namespace",
+        "regex": "namespace\\s+(?<name>[A-Za-z_]\\w*)\\s*\\{",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "namespace mylib {"
+      },
+      {
+        "kind": "macro",
+        "regex": "#define\\s+(?<name>[A-Za-z_]\\w*)(?:\\((?<params>[^)]*)?\\))?\\s+(?<body>.+)",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "#define MAX(a, b) ((a) > (b) ? (a) : (b))"
+      },
+      {
+        "kind": "constexpr_variable",
+        "regex": "(?:(?:static|inline)\\s+)?constexpr\\s+(?<typeName>[\\w:*&<>]+)\\s+(?<name>[A-Za-z_]\\w*)\\s*(?:=|\\{)",
+        "captures": [{ "name": "name", "index": 2 }],
+        "canBeExported": true,
+        "example": "constexpr int MAX_SIZE = 1024;"
+      },
+      {
+        "kind": "concept",
+        "regex": "template\\s*<[^>]+>\\s*concept\\s+(?<name>[A-Za-z_]\\w*)\\s*=",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "template<typename T> concept Printable = requires(T t) { std::cout << t; };"
+      },
+      {
+        "kind": "union",
+        "regex": "union\\s+(?<name>[A-Za-z_]\\w*)\\s*\\{",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "union Variant {"
+      }
+    ],
+    "inheritancePatterns": [
+      {
+        "kind": "single_inheritance",
+        "regex": "(?:class|struct)\\s+(?<child>[A-Za-z_]\\w*)\\s*(?:final\\s*)?:\\s*(?:public|protected|private)\\s+(?<parent>[A-Za-z_]\\w*(?:::[A-Za-z_]\\w*)*)",
+        "captures": [
+          { "name": "child", "index": 1, "isList": false },
+          { "name": "parent", "index": 2, "isList": false }
+        ],
+        "traceConfidence": 0.9,
+        "example": "class Derived : public Base {"
+      },
+      {
+        "kind": "multiple_inheritance",
+        "regex": "(?:class|struct)\\s+(?<child>[A-Za-z_]\\w*)\\s*(?:final\\s*)?:\\s*(?:(?:public|protected|private)\\s+(?<parents>[A-Za-z_]\\w*(?:::[A-Za-z_]\\w*)*)(?:\\s*,\\s*(?:public|protected|private)\\s+[A-Za-z_]\\w*(?:::[A-Za-z_]\\w*)*)+)",
+        "captures": [
+          { "name": "child", "index": 1, "isList": false },
+          { "name": "parents", "index": 2, "isList": true, "listSeparator": "," }
+        ],
+        "traceConfidence": 0.85,
+        "example": "class MyStream : public Input, public Output {"
+      },
+      {
+        "kind": "virtual_inheritance",
+        "regex": "(?:class|struct)\\s+(?<child>[A-Za-z_]\\w*)\\s*:\\s*(?:public|protected|private)\\s+virtual\\s+(?<parent>[A-Za-z_]\\w*)",
+        "captures": [
+          { "name": "child", "index": 1, "isList": false },
+          { "name": "parent", "index": 2, "isList": false }
+        ],
+        "traceConfidence": 0.8,
+        "example": "class Derived : public virtual Base {"
+      }
+    ],
+    "compositionPatterns": [
+      {
+        "kind": "template_instantiation",
+        "regex": "(?<name>[A-Za-z_]\\w*)\\s*<(?<typeArgs>[^>]+)>",
+        "captures": [
+          { "name": "name", "index": 1, "isList": false },
+          { "name": "typeArgs", "index": 2, "isList": true, "listSeparator": "," }
+        ],
+        "decomposable": true,
+        "traceConfidence": 0.8,
+        "example": "std::map<std::string, std::vector<int>>"
+      },
+      {
+        "kind": "pointer_member",
+        "regex": "(?<type>[A-Za-z_]\\w*(?:::[A-Za-z_]\\w*)*)\\s*\\*\\s+(?<member>[A-Za-z_]\\w*)\\s*;",
+        "captures": [
+          { "name": "type", "index": 1, "isList": false },
+          { "name": "member", "index": 2, "isList": false }
+        ],
+        "decomposable": false,
+        "traceConfidence": 0.7,
+        "example": "Widget* child;"
+      },
+      {
+        "kind": "smart_pointer_member",
+        "regex": "(?:std::)?(?:unique_ptr|shared_ptr|weak_ptr)\\s*<\\s*(?<type>[A-Za-z_]\\w*(?:::[A-Za-z_]\\w*)*)\\s*>\\s+(?<member>[A-Za-z_]\\w*)\\s*;",
+        "captures": [
+          { "name": "type", "index": 1, "isList": false },
+          { "name": "member", "index": 2, "isList": false }
+        ],
+        "decomposable": false,
+        "traceConfidence": 0.75,
+        "example": "std::unique_ptr<Engine> engine;"
+      },
+      {
+        "kind": "value_member",
+        "regex": "(?<type>[A-Za-z_]\\w*(?:::[A-Za-z_]\\w*)*)\\s+(?<member>[A-Za-z_]\\w*)\\s*(?:;|\\{|=)",
+        "captures": [
+          { "name": "type", "index": 1, "isList": false },
+          { "name": "member", "index": 2, "isList": false }
+        ],
+        "decomposable": false,
+        "traceConfidence": 0.65,
+        "example": "Config config;"
+      }
+    ],
+    "confidenceTiers": {
+      "direct_import": 0.95,
+      "re_export_one_hop": 0.80,
+      "re_export_multi_hop": 0.55,
+      "inheritance_direct": 0.90,
+      "inheritance_chain": 0.70,
+      "generic_resolution": 0.60,
+      "inferred_type": 0.35,
+      "dynamic_type": 0.15
+    }
+  },
+
+  "externalDependencies": {
+    "pathIndicators": ["vendor/", "third_party/", "extern/", "external/", "deps/"],
+    "packageManifest": "CMakeLists.txt",
+    "lockFile": null,
+    "typesPackagePattern": null,
+    "typeDeclarationLocations": [
+      {
+        "description": "System headers in standard include directories",
+        "path": "/usr/include/{header}",
+        "fallback": "/usr/local/include/{header}",
+        "entryPointField": null
+      },
+      {
+        "description": "Package-config based include directories",
+        "path": "{pkg-config --cflags <package>}/{header}",
+        "fallback": null,
+        "entryPointField": null
+      },
+      {
+        "description": "vcpkg installed headers",
+        "path": "{VCPKG_ROOT}/installed/{triplet}/include/{header}",
+        "fallback": null,
+        "entryPointField": null
+      },
+      {
+        "description": "Conan installed headers",
+        "path": "~/.conan/data/{package}/{version}/_/_/package/{hash}/include/{header}",
+        "fallback": null,
+        "entryPointField": null
+      }
+    ],
+    "detectionRules": [
+      {
+        "signal": "missing_header",
+        "condition": "A #include directive references a header file that cannot be found in any include path",
+        "errorCodes": ["CPP_INCLUDE_NOT_FOUND"],
+        "suggestedActions": ["Install the library's development package", "Add the include directory with -I flag", "For CMake: target_include_directories(target PRIVATE path)"],
+        "autoFixable": false,
+        "autoFixCommand": null
+      },
+      {
+        "signal": "missing_library",
+        "condition": "Linker reports undefined references to symbols from an external library",
+        "errorCodes": ["CPP_UNDEFINED_REFERENCE"],
+        "suggestedActions": ["Link the library with -l flag", "For CMake: target_link_libraries(target library)", "Install the library if not present"],
+        "autoFixable": false,
+        "autoFixCommand": null
+      },
+      {
+        "signal": "missing_cmake_package",
+        "condition": "CMake's find_package() cannot locate a required dependency",
+        "errorCodes": ["CPP_CMAKE_TARGET_NOT_FOUND"],
+        "suggestedActions": ["Install the package", "Set CMAKE_PREFIX_PATH", "Use vcpkg or conan to manage dependencies"],
+        "autoFixable": false,
+        "autoFixCommand": null
+      },
+      {
+        "signal": "abi_mismatch",
+        "condition": "Linker errors due to C++ name mangling differences (mixing C and C++ code without extern \"C\")",
+        "errorCodes": ["CPP_UNDEFINED_REFERENCE"],
+        "suggestedActions": ["Wrap C function declarations in extern \"C\" {} when used from C++", "Ensure consistent compiler and standard library versions"],
+        "autoFixable": false,
+        "autoFixCommand": null
+      },
+      {
+        "signal": "vcpkg_not_integrated",
+        "condition": "Using vcpkg but CMAKE_TOOLCHAIN_FILE is not set",
+        "errorCodes": ["CPP_INCLUDE_NOT_FOUND", "CPP_CMAKE_TARGET_NOT_FOUND"],
+        "suggestedActions": ["Pass -DCMAKE_TOOLCHAIN_FILE=[vcpkg root]/scripts/buildsystems/vcpkg.cmake to cmake"],
+        "autoFixable": false,
+        "autoFixCommand": null
+      },
+      {
+        "signal": "conan_not_installed",
+        "condition": "Project has a conanfile.txt or conanfile.py but conan install has not been run",
+        "errorCodes": ["CPP_INCLUDE_NOT_FOUND", "CPP_CMAKE_TARGET_NOT_FOUND"],
+        "suggestedActions": ["Run 'conan install .' to install dependencies", "Ensure conan generators produce the correct CMake integration files"],
+        "autoFixable": true,
+        "autoFixCommand": "conan install . --build=missing"
+      }
+    ],
+    "commonBreakingPatterns": [
+      {
+        "description": "ABI break from mixing C++ standard library versions (e.g., linking objects compiled with different -std= flags or different compilers)",
+        "errorCodes": ["CPP_UNDEFINED_REFERENCE", "CPP_MULTIPLE_DEFINITION"],
+        "resolution": "Recompile all translation units and dependencies with the same compiler version and C++ standard flag."
+      },
+      {
+        "description": "Header-only library changes that break template instantiation or inline function ODR",
+        "errorCodes": ["CPP_MULTIPLE_DEFINITION", "CPP_REDEFINITION"],
+        "resolution": "Clean rebuild (delete build directory and rebuild). Ensure all translation units include the same version of the header."
+      },
+      {
+        "description": "Missing extern \"C\" when linking C libraries from C++ code",
+        "errorCodes": ["CPP_UNDEFINED_REFERENCE"],
+        "resolution": "Wrap C header includes in extern \"C\" { } blocks when compiling as C++. Most well-written C headers already have __cplusplus guards."
+      },
+      {
+        "description": "Platform-specific headers included on the wrong platform (e.g., <windows.h> on Linux, <unistd.h> on Windows)",
+        "errorCodes": ["CPP_INCLUDE_NOT_FOUND"],
+        "resolution": "Use preprocessor conditionals (#ifdef _WIN32, #ifdef __linux__) to include platform-specific headers only on the correct platform."
+      }
+    ]
+  },
+
+  "quirks": [
+    {
+      "id": "header_include_order",
+      "name": "Header Include Order Matters",
+      "description": "In C/C++, the order of #include directives can affect compilation. A header may depend on types or macros defined in another header that was included before it. Unlike module systems in modern languages, #include is textual substitution, so order and transitive includes matter.",
+      "affectsTracing": true,
+      "affectsResolution": true,
+      "workaround": "When tracing include-related errors, check the order of includes. Each header should be self-contained (include its own dependencies), but many headers in practice rely on include order. The recommended order is: 1) corresponding .h file, 2) C system headers, 3) C++ standard headers, 4) library headers, 5) project headers.",
+      "example": "#include \"myclass.h\"    // corresponding header first\n#include <cstdlib>       // C system headers\n#include <vector>        // C++ standard headers\n#include <boost/asio.hpp> // library headers\n#include \"utils.h\"       // project headers",
+      "relatedErrorCodes": ["CPP_UNKNOWN_TYPE", "CPP_UNDECLARED_IDENTIFIER", "CPP_INCLUDE_NOT_FOUND"]
+    },
+    {
+      "id": "one_definition_rule",
+      "name": "One Definition Rule (ODR)",
+      "description": "C++ requires that every non-inline function and non-inline variable is defined exactly once across the entire program (all translation units). Inline functions, template definitions, and constexpr variables may appear in multiple translation units but must be identical. Violating ODR is undefined behavior and may not always produce a linker error.",
+      "affectsTracing": true,
+      "affectsResolution": true,
+      "workaround": "When seeing 'multiple definition' linker errors, check for functions or variables defined (not just declared) in header files. Move definitions to .cpp files, or mark them inline/constexpr. For header-only libraries, ensure all functions are inline or in anonymous namespaces.",
+      "example": "// WRONG — in header.h:\nint count = 0;  // definition in header, ODR violation if included in 2+ .cpp\n\n// CORRECT — in header.h:\nextern int count;  // declaration only\ninline int helper() { return 42; }  // inline is OK\nconstexpr int MAX = 100;  // constexpr is implicitly inline in C++17",
+      "relatedErrorCodes": ["CPP_MULTIPLE_DEFINITION", "CPP_REDEFINITION"]
+    },
+    {
+      "id": "name_mangling",
+      "name": "C++ Name Mangling",
+      "description": "C++ compilers encode function signatures into symbol names (name mangling) to support function overloading. This means C++ compiled code has different symbol names than C compiled code, even for functions with the same name. Linking C and C++ code requires extern \"C\" to disable mangling for C functions.",
+      "affectsTracing": true,
+      "affectsResolution": true,
+      "workaround": "When seeing undefined reference errors for functions that should exist, check if the function is defined in C but called from C++ (or vice versa). Use `extern \"C\"` blocks around C function declarations. Use `nm` or `objdump` to inspect actual symbol names in object files.",
+      "example": "#ifdef __cplusplus\nextern \"C\" {\n#endif\n\nvoid c_function(int x);  // no name mangling\n\n#ifdef __cplusplus\n}\n#endif",
+      "relatedErrorCodes": ["CPP_UNDEFINED_REFERENCE"]
+    },
+    {
+      "id": "template_definition_visibility",
+      "name": "Template Definitions Must Be in Headers",
+      "description": "Template function and class definitions must be visible at the point of instantiation. In practice, this means template definitions must be in header files (or files included by headers, like .tpp or .ipp files). Placing template definitions in .cpp files causes linker errors because the compiler cannot generate the specialized code.",
+      "affectsTracing": true,
+      "affectsResolution": true,
+      "workaround": "When seeing undefined reference errors for template functions or classes, check if the template definition is in a .cpp file instead of a header. Move the definition to the header file, or use explicit template instantiation in the .cpp file for the specific types needed.",
+      "example": "// WRONG — template in .cpp:\n// math.h\ntemplate<typename T> T add(T a, T b);\n// math.cpp\ntemplate<typename T> T add(T a, T b) { return a + b; }\n// LINKER ERROR: undefined reference to add<int>\n\n// CORRECT — template in header:\n// math.h\ntemplate<typename T> T add(T a, T b) { return a + b; }\n\n// ALTERNATIVE — explicit instantiation:\n// math.cpp\ntemplate<typename T> T add(T a, T b) { return a + b; }\ntemplate int add<int>(int, int);  // explicit instantiation",
+      "relatedErrorCodes": ["CPP_UNDEFINED_REFERENCE", "CPP_TEMPLATE_ARG_DEDUCTION"]
+    },
+    {
+      "id": "most_vexing_parse",
+      "name": "Most Vexing Parse",
+      "description": "In C++, a statement that looks like a variable declaration with constructor arguments can be parsed as a function declaration. For example, `Foo f(Bar());` declares a function f that takes a function pointer, not a Foo object constructed with a Bar. This is known as the 'most vexing parse'.",
+      "affectsTracing": false,
+      "affectsResolution": false,
+      "workaround": "Use brace initialization (C++11) to avoid ambiguity: `Foo f{Bar{}};` or `Foo f(Bar{});`. If you see unexpected 'function declared' errors or missing member access on what should be an object, check for the most vexing parse.",
+      "example": "// Most vexing parse — this declares a FUNCTION, not an object:\nFoo f(Bar());  // f is a function taking a function pointer\n\n// Fix with braces (C++11):\nFoo f{Bar{}};  // f is a Foo object\n\n// Fix with extra parentheses:\nFoo f((Bar()));  // f is a Foo object",
+      "relatedErrorCodes": ["CPP_NO_MEMBER", "CPP_EXPECTED_EXPRESSION"]
+    },
+    {
+      "id": "argument_dependent_lookup",
+      "name": "Argument-Dependent Lookup (ADL / Koenig Lookup)",
+      "description": "When calling an unqualified function, C++ searches not only the current scope but also the namespaces of the argument types. This is why `std::cout << x` works even though operator<< is defined in namespace std — the compiler finds it via ADL because cout is in std.",
+      "affectsTracing": true,
+      "affectsResolution": false,
+      "workaround": "When a function call works despite the function not being in the current namespace, ADL may be finding it via the argument types' namespaces. When a function call fails unexpectedly, check if ADL should find it but cannot because the argument types are not in the expected namespace.",
+      "example": "// ADL finds operator<< in namespace std:\nstd::cout << \"hello\";  // works without 'using namespace std'\n\n// Custom namespace ADL:\nnamespace mylib {\n    struct Widget {};\n    void process(Widget w) {}\n}\nmylib::Widget w;\nprocess(w);  // found via ADL in mylib namespace",
+      "relatedErrorCodes": ["CPP_UNDECLARED_IDENTIFIER", "CPP_NO_MATCHING_FUNCTION"]
+    },
+    {
+      "id": "two_phase_lookup",
+      "name": "Two-Phase Name Lookup in Templates",
+      "description": "In templates, name lookup happens in two phases: (1) non-dependent names are looked up at template definition time, and (2) dependent names (names that depend on template parameters) are looked up at instantiation time. This can cause confusing errors where a name is found in one context but not another.",
+      "affectsTracing": true,
+      "affectsResolution": false,
+      "workaround": "When a name in a template is not found, check if it depends on a template parameter. If accessing a member of a dependent base class, use `this->member` or `Base<T>::member` to trigger phase-two lookup. Use the `typename` keyword for dependent type names and `template` for dependent template names.",
+      "example": "template<typename T>\nclass Derived : public Base<T> {\n    void foo() {\n        // WRONG: 'bar' not found (phase-1 lookup)\n        bar();\n        // CORRECT: deferred to phase-2 lookup\n        this->bar();\n        Base<T>::bar();\n    }\n};",
+      "relatedErrorCodes": ["CPP_UNDECLARED_IDENTIFIER", "CPP_NO_MEMBER", "CPP_UNKNOWN_TYPE"]
+    },
+    {
+      "id": "static_initialization_fiasco",
+      "name": "Static Initialization Order Fiasco",
+      "description": "The order of initialization of static/global variables across different translation units is undefined in C++. If one static variable's initialization depends on another static variable in a different file, the program may crash or behave unexpectedly because the dependency may not be initialized yet.",
+      "affectsTracing": false,
+      "affectsResolution": true,
+      "workaround": "When encountering crashes during startup or mysterious null/zero values in global variables, suspect the static initialization order fiasco. Use the 'construct on first use' idiom: wrap static variables in functions that return references to local statics.",
+      "example": "// DANGEROUS — fiasco prone:\n// a.cpp\nextern int y;\nint x = y + 1;  // y may not be initialized yet\n\n// SAFE — construct on first use:\nint& getX() {\n    static int x = getY() + 1;\n    return x;\n}",
+      "relatedErrorCodes": []
+    },
+    {
+      "id": "include_guards",
+      "name": "Include Guards and #pragma once",
+      "description": "Every C/C++ header file should have include guards to prevent multiple inclusion in the same translation unit. The traditional approach uses #ifndef/#define/#endif with a unique macro name. The non-standard but widely supported `#pragma once` is a simpler alternative. Without guards, including a header twice causes redefinition errors.",
+      "affectsTracing": false,
+      "affectsResolution": false,
+      "workaround": "When seeing redefinition errors, check if the header file has include guards. Add `#pragma once` at the top of the file, or use traditional guards. Ensure the guard macro name is unique across the project (common convention: FILENAME_H or PROJECT_FILENAME_H).",
+      "example": "// Traditional include guard:\n#ifndef MY_HEADER_H\n#define MY_HEADER_H\n\n// ... header contents ...\n\n#endif // MY_HEADER_H\n\n// Modern alternative:\n#pragma once\n\n// ... header contents ...",
+      "relatedErrorCodes": ["CPP_REDEFINITION", "CPP_MULTIPLE_DEFINITION"]
+    },
+    {
+      "id": "implicit_conversions",
+      "name": "Implicit Constructors and Conversions",
+      "description": "Single-argument constructors in C++ act as implicit conversion operators unless marked `explicit`. This can cause surprising automatic conversions. For example, a constructor `Foo(int)` allows `Foo f = 42;`. The `explicit` keyword prevents this implicit conversion.",
+      "affectsTracing": false,
+      "affectsResolution": false,
+      "workaround": "When seeing unexpected type conversions or ambiguous overload errors, check if a single-argument constructor is acting as an implicit conversion. Mark constructors `explicit` to prevent unintended conversions. This is especially important for constructors taking `bool`, `int`, or `std::string`.",
+      "example": "// SURPRISING implicit conversion:\nclass Foo {\npublic:\n    Foo(int x) {}  // implicit conversion from int\n};\nvoid bar(Foo f);\nbar(42);  // compiles! implicit Foo(42)\n\n// SAFE with explicit:\nclass Foo {\npublic:\n    explicit Foo(int x) {}\n};\nbar(42);         // ERROR: no implicit conversion\nbar(Foo(42));    // OK: explicit construction",
+      "relatedErrorCodes": ["CPP_IMPLICIT_CONVERSION", "CPP_NO_MATCHING_FUNCTION", "CPP_NO_VIABLE_OVERLOAD"]
+    },
+    {
+      "id": "undefined_behavior",
+      "name": "Undefined Behavior (UB)",
+      "description": "C/C++ has many constructs that are 'undefined behavior' — the standard says anything can happen. Common UB includes: signed integer overflow, null pointer dereference, use-after-free, buffer overflows, data races, and modifying a const object. UB may appear to work on one compiler/platform but fail on another. Compilers are allowed to optimize based on the assumption that UB never occurs.",
+      "affectsTracing": false,
+      "affectsResolution": false,
+      "workaround": "Use sanitizers (-fsanitize=address,undefined) during development to detect UB. Enable all warnings (-Wall -Wextra -Wpedantic). Use static analysis tools (clang-tidy, cppcheck). Prefer safe alternatives: use std::vector instead of raw arrays, smart pointers instead of raw pointers, and std::optional instead of null.",
+      "example": "// Common UB examples:\nint x = INT_MAX + 1;           // signed integer overflow\nint* p = nullptr; *p = 5;     // null pointer dereference\nint arr[5]; arr[10] = 0;      // buffer overflow\nfree(ptr); *ptr = 1;          // use-after-free\n\n// Compile with sanitizers:\n// g++ -fsanitize=address,undefined -g main.cpp",
+      "relatedErrorCodes": ["CPP_UNINITIALIZED_VARIABLE", "CPP_RETURN_LOCAL_ADDRESS"]
+    }
+  ],
+
+  "buildTools": [
+    {
+      "name": "gcc",
+      "detectFiles": ["Makefile", "makefile", "GNUmakefile"],
+      "buildCommand": "gcc -Wall -Wextra -o output *.c 2>&1",
+      "watchCommand": null,
+      "errorStream": "stderr",
+      "supportsJsonOutput": false,
+      "jsonOutputFlag": null,
+      "commonConfigs": ["Makefile", ".clang-format", ".clang-tidy"]
+    },
+    {
+      "name": "g++",
+      "detectFiles": ["Makefile", "makefile", "GNUmakefile"],
+      "buildCommand": "g++ -Wall -Wextra -std=c++17 -o output *.cpp 2>&1",
+      "watchCommand": null,
+      "errorStream": "stderr",
+      "supportsJsonOutput": false,
+      "jsonOutputFlag": null,
+      "commonConfigs": ["Makefile", ".clang-format", ".clang-tidy"]
+    },
+    {
+      "name": "clang",
+      "detectFiles": ["Makefile", "makefile", "compile_commands.json"],
+      "buildCommand": "clang -Wall -Wextra -o output *.c 2>&1",
+      "watchCommand": null,
+      "errorStream": "stderr",
+      "supportsJsonOutput": true,
+      "jsonOutputFlag": "-fdiagnostics-format=json",
+      "commonConfigs": ["compile_commands.json", ".clang-format", ".clang-tidy"]
+    },
+    {
+      "name": "clang++",
+      "detectFiles": ["Makefile", "makefile", "compile_commands.json"],
+      "buildCommand": "clang++ -Wall -Wextra -std=c++17 -o output *.cpp 2>&1",
+      "watchCommand": null,
+      "errorStream": "stderr",
+      "supportsJsonOutput": true,
+      "jsonOutputFlag": "-fdiagnostics-format=json",
+      "commonConfigs": ["compile_commands.json", ".clang-format", ".clang-tidy"]
+    },
+    {
+      "name": "cmake",
+      "detectFiles": ["CMakeLists.txt"],
+      "buildCommand": "cmake -B build && cmake --build build 2>&1",
+      "watchCommand": null,
+      "errorStream": "stderr",
+      "supportsJsonOutput": false,
+      "jsonOutputFlag": null,
+      "commonConfigs": ["CMakeLists.txt", "CMakePresets.json", "cmake/"]
+    },
+    {
+      "name": "make",
+      "detectFiles": ["Makefile", "makefile", "GNUmakefile"],
+      "buildCommand": "make 2>&1",
+      "watchCommand": null,
+      "errorStream": "stderr",
+      "supportsJsonOutput": false,
+      "jsonOutputFlag": null,
+      "commonConfigs": ["Makefile"]
+    },
+    {
+      "name": "meson",
+      "detectFiles": ["meson.build"],
+      "buildCommand": "meson setup build && meson compile -C build 2>&1",
+      "watchCommand": null,
+      "errorStream": "stderr",
+      "supportsJsonOutput": false,
+      "jsonOutputFlag": null,
+      "commonConfigs": ["meson.build", "meson_options.txt"]
+    },
+    {
+      "name": "bazel",
+      "detectFiles": ["BUILD", "BUILD.bazel", "WORKSPACE"],
+      "buildCommand": "bazel build //... 2>&1",
+      "watchCommand": null,
+      "errorStream": "stderr",
+      "supportsJsonOutput": false,
+      "jsonOutputFlag": null,
+      "commonConfigs": ["BUILD", "BUILD.bazel", "WORKSPACE", ".bazelrc"]
+    },
+    {
+      "name": "msvc",
+      "detectFiles": ["*.sln", "*.vcxproj"],
+      "buildCommand": "msbuild /nologo /verbosity:minimal 2>&1",
+      "watchCommand": null,
+      "errorStream": "stderr",
+      "supportsJsonOutput": false,
+      "jsonOutputFlag": null,
+      "commonConfigs": ["*.sln", "*.vcxproj", "Directory.Build.props"]
+    },
+    {
+      "name": "clang-tidy",
+      "detectFiles": [".clang-tidy", "compile_commands.json"],
+      "buildCommand": "clang-tidy *.cpp -- 2>&1",
+      "watchCommand": null,
+      "errorStream": "stdout",
+      "supportsJsonOutput": false,
+      "jsonOutputFlag": null,
+      "commonConfigs": [".clang-tidy", "compile_commands.json"]
+    },
+    {
+      "name": "cppcheck",
+      "detectFiles": [],
+      "buildCommand": "cppcheck --enable=all --std=c++17 . 2>&1",
+      "watchCommand": null,
+      "errorStream": "stderr",
+      "supportsJsonOutput": true,
+      "jsonOutputFlag": "--xml",
+      "commonConfigs": [".cppcheck"]
+    }
+  ]
+}

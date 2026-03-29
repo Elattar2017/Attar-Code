@@ -1,0 +1,193 @@
+{
+  "technology": "reactnative",
+  "version": 1,
+  "patterns": [
+    {
+      "id": "RN_UNABLE_TO_RESOLVE_MODULE",
+      "category": "metro",
+      "severity": "error",
+      "match": "Unable to resolve module ['\"]?([\\w@/.\\-]+)['\"]? from ['\"]?([\\w@/.\\-]+)['\"]?",
+      "captures": ["moduleName", "fromFile"],
+      "rootCause": "Metro bundler cannot find the module '{moduleName}' imported from '{fromFile}'. The package may not be installed, the path may be wrong, or Metro's cache is stale.",
+      "prescription": "Install the package: npm install {moduleName}. If already installed, clear Metro cache: npx react-native start --reset-cache. For path imports, verify the file exists and the extension is correct. For native modules, run pod install (iOS).",
+      "codeBlock": "# Install the missing package:\nnpm install {moduleName}\n\n# Clear Metro cache:\nnpx react-native start --reset-cache\n\n# For iOS native modules:\ncd ios && pod install && cd ..",
+      "conditions": []
+    },
+    {
+      "id": "RN_NOT_REGISTERED",
+      "category": "native",
+      "severity": "error",
+      "match": "Invariant Violation:.*['\"]([\\w]+)['\"].*(?:has not been registered|is not a registered)",
+      "captures": ["appName"],
+      "rootCause": "The application name '{appName}' has not been registered with AppRegistry. The name used in AppRegistry.registerComponent() must match the name in the native project configuration.",
+      "prescription": "Ensure AppRegistry.registerComponent('{appName}', ...) in index.js matches the app name in app.json, android/app/src/main/java/.../MainActivity.java, and iOS Info.plist.",
+      "codeBlock": "// index.js\nimport { AppRegistry } from 'react-native';\nimport App from './App';\nimport { name as appName } from './app.json';\n\nAppRegistry.registerComponent(appName, () => App);",
+      "conditions": []
+    },
+    {
+      "id": "RN_NATIVE_MODULE_NULL",
+      "category": "native",
+      "severity": "error",
+      "match": "(?:Native module ['\"]?(\\w+)['\"]? (?:cannot be null|tried to override)|TurboModuleRegistry.*['\"]?(\\w+)['\"]?.*null)",
+      "captures": ["moduleName"],
+      "rootCause": "The native module '{moduleName}' is null. The native code is not properly linked, pod install was not run (iOS), or the app needs to be rebuilt after adding the native dependency.",
+      "prescription": "For iOS: run 'cd ios && pod install' then rebuild. For Android: run 'npx react-native run-android'. For Expo: run 'npx expo prebuild' then rebuild. Ensure the library's native code is properly linked.",
+      "codeBlock": "# iOS: install pods and rebuild\ncd ios && pod install && cd ..\nnpx react-native run-ios\n\n# Android: rebuild\nnpx react-native run-android\n\n# Expo: prebuild and run\nnpx expo prebuild --clean\nnpx expo run:ios",
+      "conditions": []
+    },
+    {
+      "id": "RN_DEV_SERVER_CONNECTION",
+      "category": "metro",
+      "severity": "error",
+      "match": "(?:Could not connect to development server|Unable to load script.*Make sure.*running)",
+      "captures": [],
+      "rootCause": "The app cannot connect to the Metro development server. The server may not be running, or the device/emulator cannot reach the server's network address.",
+      "prescription": "Start Metro with 'npx react-native start'. For physical devices, ensure the device is on the same network and the server URL is correct. For Android emulators, run 'adb reverse tcp:8081 tcp:8081'. Check firewall settings.",
+      "codeBlock": "# Start Metro bundler:\nnpx react-native start\n\n# For Android emulator (port forwarding):\nadb reverse tcp:8081 tcp:8081\n\n# For physical device, shake to open dev menu and set server IP:\n# Dev Settings > Debug server host & port > YOUR_IP:8081",
+      "conditions": []
+    },
+    {
+      "id": "RN_ANDROID_MERGE_RESOURCES",
+      "category": "build",
+      "severity": "error",
+      "match": "Execution failed for task ':app:merge(\\w+)Resources'",
+      "captures": ["buildType"],
+      "rootCause": "The Android Gradle build failed while merging resources for the '{buildType}' build. This is often caused by duplicate resources, invalid resource files, or conflicting library resources.",
+      "prescription": "Clean the build: cd android && ./gradlew clean. Check for duplicate resource files in android/app/src/main/res/. Remove any invalid XML files. If caused by a library conflict, check for duplicate dependencies with './gradlew app:dependencies'.",
+      "codeBlock": "# Clean and rebuild:\ncd android && ./gradlew clean && cd ..\nnpx react-native run-android\n\n# Check for duplicate dependencies:\ncd android && ./gradlew app:dependencies",
+      "conditions": []
+    },
+    {
+      "id": "RN_IOS_SIGNING",
+      "category": "build",
+      "severity": "error",
+      "match": "(?:Signing requires a development team|Signing for ['\"]?(\\w+)['\"]? requires a development team|No profiles for.*were found)",
+      "captures": ["target"],
+      "rootCause": "Xcode cannot build because code signing is not configured. A valid Apple Developer team must be selected for the build target.",
+      "prescription": "Open the project in Xcode (ios/*.xcworkspace), select the target, go to Signing & Capabilities, and select your development team. For free accounts, use a Personal Team. Ensure a valid provisioning profile is available.",
+      "codeBlock": "# Open in Xcode:\nopen ios/YourApp.xcworkspace\n\n# Then:\n# 1. Select your project in the navigator\n# 2. Select the app target\n# 3. Go to 'Signing & Capabilities'\n# 4. Check 'Automatically manage signing'\n# 5. Select your Team from the dropdown",
+      "conditions": []
+    },
+    {
+      "id": "RN_NO_BUNDLE_URL",
+      "category": "metro",
+      "severity": "error",
+      "match": "No bundle URL present",
+      "captures": [],
+      "rootCause": "The iOS app could not get a bundle URL from Metro. The bundler may not be running, or the build configuration is pointing to the wrong URL.",
+      "prescription": "Start Metro: npx react-native start. Clean the iOS build: cd ios && xcodebuild clean && pod install && cd .. Rebuild: npx react-native run-ios. Check that the bundle URL in AppDelegate is correct.",
+      "codeBlock": "# Clean and rebuild iOS:\ncd ios && pod install && cd ..\nnpx react-native run-ios\n\n# Or reset everything:\nwatchman watch-del-all\nrm -rf node_modules\nnpm install\ncd ios && pod install && cd ..\nnpx react-native start --reset-cache",
+      "conditions": []
+    },
+    {
+      "id": "RN_REQUIRE_CYCLE",
+      "category": "metro",
+      "severity": "warning",
+      "match": "Require cycle:.*(?:->|→)(.+)",
+      "captures": ["cyclePath"],
+      "rootCause": "A circular dependency was detected in the module graph. This can cause modules to be loaded before they are fully initialized, resulting in undefined imports.",
+      "prescription": "Break the circular dependency by extracting shared code into a separate module. Use lazy imports (require() inside functions) as a temporary workaround. Restructure the import graph so modules do not depend on each other.",
+      "codeBlock": "// BEFORE (circular)\n// a.js: import { b } from './b';\n// b.js: import { a } from './a';\n\n// AFTER (extract shared code)\n// shared.js: export const shared = ...;\n// a.js: import { shared } from './shared';\n// b.js: import { shared } from './shared';",
+      "conditions": []
+    },
+    {
+      "id": "RN_NETWORK_REQUEST_FAILED",
+      "category": "native",
+      "severity": "error",
+      "match": "TypeError: Network request failed",
+      "captures": [],
+      "rootCause": "A fetch/HTTP request failed. On iOS, this often means the URL uses http:// (not https://) and App Transport Security (ATS) is blocking it. On Android, cleartext traffic may be disabled.",
+      "prescription": "Use https:// URLs. For development with http://, add ATS exceptions in iOS Info.plist or enable cleartext in Android's network_security_config.xml. Check that the server is accessible from the device/emulator.",
+      "codeBlock": "<!-- iOS: Info.plist - allow localhost HTTP -->\n<key>NSAppTransportSecurity</key>\n<dict>\n  <key>NSExceptionDomains</key>\n  <dict>\n    <key>localhost</key>\n    <dict>\n      <key>NSExceptionAllowsInsecureHTTPLoads</key>\n      <true/>\n    </dict>\n  </dict>\n</dict>\n\n<!-- Android: android/app/src/main/res/xml/network_security_config.xml -->\n<network-security-config>\n  <domain-config cleartextTrafficPermitted=\"true\">\n    <domain includeSubdomains=\"true\">10.0.2.2</domain>\n  </domain-config>\n</network-security-config>",
+      "conditions": []
+    },
+    {
+      "id": "RN_NAVIGATION_SCREEN_NOT_FOUND",
+      "category": "navigation",
+      "severity": "error",
+      "match": "(?:couldn't find a (?:screen|route) named? ['\"]?(\\w+)['\"]?|The action.*was not handled by any navigator)",
+      "captures": ["screenName"],
+      "rootCause": "React Navigation could not find a screen named '{screenName}'. The screen is not registered in any navigator, or the navigator hierarchy does not contain this screen at the point of navigation.",
+      "prescription": "Verify the screen name '{screenName}' is registered in a navigator (Stack.Screen, Tab.Screen, etc.). Check that the navigator containing the screen is mounted when the navigation occurs. Ensure the name matches exactly (case-sensitive).",
+      "codeBlock": "// Register the screen in your navigator:\n<Stack.Navigator>\n  <Stack.Screen name=\"Home\" component={HomeScreen} />\n  <Stack.Screen name=\"{screenName}\" component={TargetScreen} />\n</Stack.Navigator>\n\n// Navigate to it:\nnavigation.navigate('{screenName}');",
+      "conditions": []
+    },
+    {
+      "id": "RN_EXPO_SDK_VERSION",
+      "category": "expo",
+      "severity": "error",
+      "match": "(?:The experience you requested uses.*SDK version|This project.*uses.*SDK.*which is not supported|sdkVersion.*is not supported)",
+      "captures": [],
+      "rootCause": "The Expo SDK version used by the project is not supported by the current Expo Go app or EAS build environment. The SDK version in app.json may be outdated or incompatible.",
+      "prescription": "Update to the latest Expo SDK: npx expo install expo@latest. Update Expo Go on the device/simulator. For specific SDK versions, install the matching Expo Go version or use a development build.",
+      "codeBlock": "# Upgrade Expo SDK:\nnpx expo install expo@latest\n\n# Fix peer dependencies:\nnpx expo install --fix\n\n# Or use a development build instead of Expo Go:\nnpx expo install expo-dev-client\nnpx expo prebuild\nnpx expo run:ios",
+      "conditions": []
+    },
+    {
+      "id": "RN_EXPO_PERMISSIONS",
+      "category": "expo",
+      "severity": "error",
+      "match": "(?:Missing [Pp]ermissions?|(?:CAMERA|LOCATION|MEDIA_LIBRARY|NOTIFICATIONS).*permission.*not granted|Permissions?.(?:CAMERA|LOCATION|MEDIA).*denied)",
+      "captures": [],
+      "rootCause": "The app attempted to use a device feature without the required permissions. On modern iOS and Android, permissions must be explicitly requested at runtime.",
+      "prescription": "Request permissions before accessing the feature using the appropriate Expo or React Native permission API. Add the permission to app.json plugins (Expo) or AndroidManifest.xml / Info.plist (bare workflow).",
+      "codeBlock": "// Request camera permission with expo-camera:\nimport { Camera } from 'expo-camera';\n\nconst [permission, requestPermission] = Camera.useCameraPermissions();\n\nif (!permission?.granted) {\n  await requestPermission();\n}\n\n// app.json (Expo):\n{\n  \"expo\": {\n    \"plugins\": [\n      [\"expo-camera\", { \"cameraPermission\": \"Allow camera access\" }]\n    ]\n  }\n}",
+      "conditions": []
+    },
+    {
+      "id": "RN_VIRTUALIZED_LIST_SLOW",
+      "category": "native",
+      "severity": "warning",
+      "match": "VirtualizedList:.*(?:large list that is slow to update|has a large content|You have a large list)",
+      "captures": [],
+      "rootCause": "A VirtualizedList (FlatList/SectionList) detected slow rendering performance. This is usually caused by complex item components, missing keys, or not implementing getItemLayout.",
+      "prescription": "Add keyExtractor and getItemLayout to the list. Memoize list items with React.memo(). Avoid anonymous functions in renderItem. Use windowSize and maxToRenderPerBatch props to tune performance.",
+      "codeBlock": "import { FlatList } from 'react-native';\nimport React from 'react';\n\nconst ITEM_HEIGHT = 60;\n\nconst MemoizedItem = React.memo(({ item }) => (\n  <View style={{ height: ITEM_HEIGHT }}>\n    <Text>{item.title}</Text>\n  </View>\n));\n\n<FlatList\n  data={items}\n  renderItem={({ item }) => <MemoizedItem item={item} />}\n  keyExtractor={item => item.id}\n  getItemLayout={(_, index) => ({\n    length: ITEM_HEIGHT,\n    offset: ITEM_HEIGHT * index,\n    index,\n  })}\n  windowSize={10}\n  maxToRenderPerBatch={10}\n  removeClippedSubviews={true}\n/>",
+      "conditions": []
+    },
+    {
+      "id": "RN_ANIMATED_NATIVE_DRIVER",
+      "category": "native",
+      "severity": "warning",
+      "match": "(?:useNativeDriver.*not supported|Animated.*useNativeDriver.*is not supported for.*(?:width|height|top|left|right|bottom|margin|padding|flex))",
+      "captures": [],
+      "rootCause": "The Animated API's native driver was used with a style property that does not support native animation. Only transform and opacity can use useNativeDriver: true.",
+      "prescription": "Set useNativeDriver: false for layout properties (width, height, top, left, margin, padding). Use transform (translateX, translateY, scale) with useNativeDriver: true instead. Consider using react-native-reanimated for performant layout animations.",
+      "codeBlock": "// BEFORE (wrong - layout property with native driver)\nAnimated.timing(animValue, {\n  toValue: 100,\n  useNativeDriver: true,  // can't animate 'width' natively\n}).start();\n// style={{ width: animValue }}\n\n// AFTER (correct - use transform instead)\nAnimated.timing(animValue, {\n  toValue: 100,\n  useNativeDriver: true,  // OK for transform\n}).start();\n// style={{ transform: [{ translateX: animValue }] }}\n\n// Or use reanimated for layout animations:\nimport Animated, { useSharedValue, withTiming } from 'react-native-reanimated';",
+      "conditions": []
+    },
+    {
+      "id": "RN_HERMES_SYNTAX_ERROR",
+      "category": "native",
+      "severity": "error",
+      "match": "(?:Hermes|hermes):.*SyntaxError.*(?:in|at)\\s+([\\w/.\\-]+)",
+      "captures": ["fileName"],
+      "rootCause": "The Hermes JavaScript engine encountered a syntax error in '{fileName}'. Hermes does not support all JavaScript features that V8/JSC support. Some ESNext features may need Babel transformation.",
+      "prescription": "Ensure your Babel configuration includes the necessary plugins for the syntax used. Update @react-native/babel-preset. If the error is in a node_modules package, it may need to be transpiled. Check Hermes compatibility docs.",
+      "codeBlock": "// babel.config.js - ensure preset is configured:\nmodule.exports = {\n  presets: ['module:@react-native/babel-preset'],\n  plugins: [\n    // Add any needed syntax plugins\n    '@babel/plugin-proposal-optional-chaining',\n  ],\n};",
+      "conditions": []
+    },
+    {
+      "id": "RN_GRADLE_BUILD_FAILED",
+      "category": "build",
+      "severity": "error",
+      "match": "(?:BUILD FAILED|FAILURE:.*Build failed with an exception).*",
+      "captures": [],
+      "rootCause": "The Android Gradle build failed. This can be caused by dependency conflicts, SDK version mismatches, outdated Gradle wrapper, or compilation errors in native code.",
+      "prescription": "Run 'cd android && ./gradlew clean' then rebuild. Check that compileSdkVersion and targetSdkVersion in build.gradle match your installed Android SDK. Update Gradle wrapper if needed. Check the full error log above for the specific cause.",
+      "codeBlock": "# Clean and rebuild:\ncd android && ./gradlew clean && cd ..\nnpx react-native run-android\n\n# Update Gradle wrapper if needed:\ncd android && ./gradlew wrapper --gradle-version=8.3 && cd ..\n\n# Check installed SDK versions:\nsdkmanager --list | grep \"platforms;\"",
+      "conditions": []
+    },
+    {
+      "id": "RN_FLIPPER_ERROR",
+      "category": "build",
+      "severity": "error",
+      "match": "(?:Flipper-.*error|Could not find.*Flipper|undefined method.*flipper)",
+      "captures": [],
+      "rootCause": "A Flipper-related build error occurred. Flipper debugging tool integration can cause build issues, especially after React Native or Xcode upgrades.",
+      "prescription": "If you do not need Flipper, remove it from Podfile (iOS) and MainApplication.java (Android). For iOS: remove Flipper pods from Podfile and run 'pod install'. Flipper is optional and removing it often fixes build issues.",
+      "codeBlock": "# In ios/Podfile, remove or comment out Flipper:\n# use_flipper!()\n# post_install do |installer|\n#   flipper_post_install(installer)\n# end\n\n# Then reinstall pods:\ncd ios && pod install && cd ..",
+      "conditions": []
+    }
+  ]
+}
