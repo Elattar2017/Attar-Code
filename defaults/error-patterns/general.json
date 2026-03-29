@@ -1,0 +1,249 @@
+{
+  "technology": "general",
+  "version": 1,
+  "patterns": [
+    {
+      "id": "PERMISSION_DENIED",
+      "match": "(?:permission denied|EACCES|access denied|Operation not permitted).*?['\"]?([\\w/.\\-]+)['\"]?",
+      "captures": ["path"],
+      "rootCause": "Permission denied when accessing {path}. The current user or process lacks the required read/write/execute permissions.",
+      "prescription": "Check file ownership and permissions with `ls -la {path}`. Fix with `chmod` or `chown`, or run with elevated privileges if appropriate. Avoid running as root unless necessary.",
+      "codeBlock": "# Check permissions\nls -la {path}\n# Fix ownership (replace $USER with your user)\nsudo chown -R $USER:$USER {path}\n# Fix permissions\nchmod 755 {path}",
+      "conditions": [
+        {
+          "when": "path contains node_modules",
+          "rootCause": "Permission denied in node_modules at {path}. This often happens when node_modules was installed with a different user or with sudo.",
+          "prescription": "Delete node_modules and reinstall without sudo: `rm -rf node_modules && npm install`.",
+          "codeBlock": "rm -rf node_modules\nnpm install"
+        },
+        {
+          "when": "path contains .npm",
+          "rootCause": "Permission denied in the npm cache directory {path}. The cache was likely created by root or another user.",
+          "prescription": "Fix npm cache ownership: `sudo chown -R $(whoami) ~/.npm`.",
+          "codeBlock": "sudo chown -R $(whoami) ~/.npm"
+        }
+      ]
+    },
+    {
+      "id": "PORT_IN_USE",
+      "match": "(?:EADDRINUSE|address already in use).*?(?:port\\s*|:)(\\d+)",
+      "captures": ["port"],
+      "rootCause": "Port {port} is already in use by another process. A server or service is already listening on this port.",
+      "prescription": "Find the process using port {port} with `lsof -i :{port}` (macOS/Linux) or `netstat -ano | findstr :{port}` (Windows), then stop it or use a different port.",
+      "codeBlock": "# macOS/Linux: find and kill process on port\nlsof -i :{port}\nkill -9 $(lsof -t -i :{port})\n\n# Windows:\nnetstat -ano | findstr :{port}\ntaskkill /PID <PID> /F",
+      "conditions": [
+        {
+          "when": "port contains 3000",
+          "rootCause": "Port 3000 is already in use. This is the default port for many dev servers (React, Next.js, Express).",
+          "prescription": "Kill the existing process on port 3000 or set a different port via the PORT environment variable: `PORT=3001 npm start`.",
+          "codeBlock": "PORT=3001 npm start"
+        }
+      ]
+    },
+    {
+      "id": "OUT_OF_MEMORY",
+      "match": "(?:FATAL ERROR.*?|JavaScript )?(?:heap out of memory|ENOMEM|Cannot allocate memory|allocation failed|out of memory)",
+      "captures": [],
+      "rootCause": "The process ran out of available memory (heap). This can happen with large datasets, memory leaks, or insufficient system memory.",
+      "prescription": "Increase the Node.js heap size with `--max-old-space-size`, or investigate memory leaks using `--inspect` and Chrome DevTools Memory profiler.",
+      "codeBlock": "# Increase Node.js memory limit to 4GB\nnode --max-old-space-size=4096 your-script.js\n\n# For npm scripts\nNODE_OPTIONS=--max-old-space-size=4096 npm run build",
+      "conditions": [
+        {
+          "when": "heap out of memory contains build",
+          "rootCause": "Build process ran out of memory. Large projects with many dependencies or complex bundling can exceed default memory limits.",
+          "prescription": "Increase memory for the build: `NODE_OPTIONS=--max-old-space-size=8192 npm run build`. Consider code-splitting or lazy imports to reduce bundle size.",
+          "codeBlock": "NODE_OPTIONS=--max-old-space-size=8192 npm run build"
+        }
+      ]
+    },
+    {
+      "id": "ECONNREFUSED",
+      "match": "(?:ECONNREFUSED|connect ECONNREFUSED|connection refused).*?([\\d.]+|localhost|[\\w.-]+)(?::(\\d+))?",
+      "captures": ["host", "port"],
+      "rootCause": "Connection refused to {host}:{port}. The target service is not running, not listening on the expected port, or is blocked by a firewall.",
+      "prescription": "Verify the service at {host}:{port} is running and accepting connections. Check if the host/port configuration is correct and that no firewall is blocking the connection.",
+      "codeBlock": "# Check if service is running\ncurl -v http://{host}:{port}\n\n# Check if port is open\nnc -zv {host} {port}",
+      "conditions": [
+        {
+          "when": "port contains 5432",
+          "rootCause": "Connection refused to PostgreSQL at {host}:5432. The database server is not running or not accepting connections.",
+          "prescription": "Start the PostgreSQL service: `sudo systemctl start postgresql` or `brew services start postgresql`. Verify pg_hba.conf allows connections from your host.",
+          "codeBlock": "# Linux\nsudo systemctl start postgresql\nsudo systemctl status postgresql\n\n# macOS\nbrew services start postgresql"
+        },
+        {
+          "when": "port contains 6379",
+          "rootCause": "Connection refused to Redis at {host}:6379. The Redis server is not running.",
+          "prescription": "Start the Redis service: `sudo systemctl start redis` or `brew services start redis`.",
+          "codeBlock": "sudo systemctl start redis\nredis-cli ping"
+        },
+        {
+          "when": "port contains 27017",
+          "rootCause": "Connection refused to MongoDB at {host}:27017. The MongoDB server is not running.",
+          "prescription": "Start MongoDB: `sudo systemctl start mongod` or `brew services start mongodb-community`.",
+          "codeBlock": "sudo systemctl start mongod\nmongosh --eval 'db.runCommand({ ping: 1 })'"
+        }
+      ]
+    },
+    {
+      "id": "TIMEOUT",
+      "match": "(?:ETIMEDOUT|ESOCKETTIMEDOUT|timeout of \\d+ms exceeded|request timed? ?out|connect(?:ion)? timed? ?out).*?(?:([\\w./-]+))?",
+      "captures": ["target"],
+      "rootCause": "Operation timed out{target}. The remote server or resource did not respond within the allowed time.",
+      "prescription": "Check network connectivity and DNS resolution. Increase timeout values if the operation legitimately takes longer. Verify the target service is healthy.",
+      "codeBlock": "# Test connectivity\nping {target}\ncurl -v --connect-timeout 10 {target}\n\n# Check DNS\nnslookup {target}",
+      "conditions": [
+        {
+          "when": "target contains npm",
+          "rootCause": "npm registry request timed out. The npm registry may be slow or your network may have connectivity issues.",
+          "prescription": "Try setting a longer timeout: `npm config set fetch-timeout 120000`. Or use a different registry: `npm config set registry https://registry.npmmirror.com`.",
+          "codeBlock": "npm config set fetch-timeout 120000\nnpm cache clean --force\nnpm install"
+        }
+      ]
+    },
+    {
+      "id": "DISK_FULL",
+      "match": "(?:ENOSPC|No space left on device|disk full|not enough (?:disk )?space)",
+      "captures": [],
+      "rootCause": "No disk space remaining. The filesystem is full and cannot write new data.",
+      "prescription": "Free disk space by removing unnecessary files. Check disk usage with `df -h` and find large files/directories with `du -sh * | sort -rh | head -20`.",
+      "codeBlock": "# Check disk usage\ndf -h\n\n# Find large directories\ndu -sh /* 2>/dev/null | sort -rh | head -20\n\n# Common cleanup\nnpm cache clean --force\ndocker system prune -a\nrm -rf /tmp/*",
+      "conditions": [
+        {
+          "when": "ENOSPC contains inotify",
+          "rootCause": "System ran out of inotify watchers, not actual disk space. Too many files are being watched for changes.",
+          "prescription": "Increase the inotify watch limit: `echo fs.inotify.max_user_watches=524288 | sudo tee -a /etc/sysctl.conf && sudo sysctl -p`.",
+          "codeBlock": "echo fs.inotify.max_user_watches=524288 | sudo tee -a /etc/sysctl.conf\nsudo sysctl -p"
+        }
+      ]
+    },
+    {
+      "id": "CORS_ERROR",
+      "match": "(?:CORS|Cross-Origin|Access-Control-Allow-Origin).*?(?:from origin ['\"]?(https?://[\\w.:/-]+)['\"]?)?.*?(?:to ['\"]?(https?://[\\w.:/-]+)['\"]?)?",
+      "captures": ["origin", "target"],
+      "rootCause": "Cross-Origin Resource Sharing (CORS) error. The browser blocked a request from {origin} because the server did not include the appropriate Access-Control-Allow-Origin header.",
+      "prescription": "Configure the server to include CORS headers for {origin}. Add `Access-Control-Allow-Origin` and related headers to the server response.",
+      "codeBlock": "// Express.js CORS middleware\nconst cors = require('cors');\napp.use(cors({\n  origin: '{origin}',\n  methods: ['GET', 'POST', 'PUT', 'DELETE'],\n  credentials: true\n}));",
+      "conditions": [
+        {
+          "when": "origin contains localhost",
+          "rootCause": "CORS error from localhost during development. The API server does not allow requests from the local dev server.",
+          "prescription": "Add localhost to the server's CORS allowed origins, or use a proxy in your dev server configuration (e.g., `proxy` in package.json for CRA, `rewrites` in next.config.js for Next.js).",
+          "codeBlock": "// next.config.js proxy\nmodule.exports = {\n  async rewrites() {\n    return [\n      {\n        source: '/api/:path*',\n        destination: 'http://api-server:3001/api/:path*',\n      },\n    ];\n  },\n};"
+        }
+      ]
+    },
+    {
+      "id": "SSL_ERROR",
+      "match": "(?:SSL|TLS).*?(?:error|ERR_|alert|handshake|certificate).*?(?:([\\w.-]+))?|(?:CERT_|UNABLE_TO_VERIFY|self.signed|ERR_CERT_)([\\w_]+)",
+      "captures": ["host", "certError"],
+      "rootCause": "SSL/TLS error when connecting to {host}. The certificate may be expired, self-signed, or the TLS handshake failed.",
+      "prescription": "Check the SSL certificate validity for {host}. If using a self-signed certificate in development, configure your client to trust it. Do NOT disable SSL verification in production.",
+      "codeBlock": "# Check certificate\nopenssl s_client -connect {host}:443 -servername {host}\n\n# For Node.js with self-signed certs (development only!)\nNODE_TLS_REJECT_UNAUTHORIZED=0 node app.js",
+      "conditions": [
+        {
+          "when": "certError contains EXPIRED",
+          "rootCause": "The SSL certificate for {host} has expired.",
+          "prescription": "Renew the SSL certificate. If using Let's Encrypt: `sudo certbot renew`. If using a commercial CA, request a new certificate.",
+          "codeBlock": "sudo certbot renew\nsudo systemctl reload nginx"
+        },
+        {
+          "when": "certError contains SELF_SIGNED",
+          "rootCause": "The server at {host} is using a self-signed certificate that is not trusted by the client.",
+          "prescription": "In development, add the self-signed CA to your trust store. In production, use a certificate from a trusted CA like Let's Encrypt.",
+          "codeBlock": "# Add self-signed cert to Node.js\nNODE_EXTRA_CA_CERTS=./my-ca.crt node app.js"
+        }
+      ]
+    },
+    {
+      "id": "JSON_PARSE",
+      "match": "(?:SyntaxError: )?(?:Unexpected token|JSON\\.parse|JSON Parse error|Unexpected end of JSON).*?(?:position (\\d+))?.*?(?:in (.+))?",
+      "captures": ["position", "file"],
+      "rootCause": "JSON parsing failed at position {position} in {file}. The input is not valid JSON — possibly truncated, contains comments, or has a trailing comma.",
+      "prescription": "Validate the JSON input. Check for trailing commas, comments (not allowed in JSON), single quotes (must use double quotes), or truncated data. Use a JSON linter to find the exact issue.",
+      "codeBlock": "// Safe JSON parsing\ntry {\n  const data = JSON.parse(input);\n} catch (e) {\n  console.error('Invalid JSON:', e.message);\n  console.error('Input was:', input.substring(0, 200));\n}",
+      "conditions": [
+        {
+          "when": "file contains package.json",
+          "rootCause": "package.json contains invalid JSON. This is often caused by trailing commas, merge conflicts, or manual editing errors.",
+          "prescription": "Open package.json and fix the syntax error. Look for trailing commas, missing commas between entries, or unresolved merge conflict markers (<<<<<<).",
+          "codeBlock": null
+        }
+      ]
+    },
+    {
+      "id": "ENCODING_ERROR",
+      "match": "(?:encoding|charset|UTF-8|utf8|UnicodeDecodeError|invalid byte sequence|ERR_INVALID_CHAR).*?(?:in (.+))?",
+      "captures": ["file"],
+      "rootCause": "Character encoding error in {file}. The file or data stream contains bytes that are not valid in the expected encoding (usually UTF-8).",
+      "prescription": "Check the file encoding with `file -bi {file}`. Convert to UTF-8 if needed using `iconv`. Ensure your application reads files with the correct encoding specified.",
+      "codeBlock": "# Check encoding\nfile -bi {file}\n\n# Convert to UTF-8\niconv -f ISO-8859-1 -t UTF-8 {file} > {file}.utf8\nmv {file}.utf8 {file}",
+      "conditions": []
+    },
+    {
+      "id": "FILE_TOO_LARGE",
+      "match": "(?:EFBIG|file too large|payload too large|entity too large|request entity too large|ERR_FS_FILE_TOO_LARGE).*?(?:(\\d+)\\s*(?:bytes|MB|GB|KB))?",
+      "captures": ["size"],
+      "rootCause": "File or request payload is too large ({size}). The file exceeds the maximum allowed size for the operation.",
+      "prescription": "Reduce the file size, increase the server's upload limit, or implement chunked uploads for large files. For Express: set `limit` in body-parser. For Nginx: set `client_max_body_size`.",
+      "codeBlock": "// Express.js - increase body size limit\napp.use(express.json({ limit: '50mb' }));\napp.use(express.urlencoded({ limit: '50mb', extended: true }));\n\n# Nginx - increase upload limit\n# In nginx.conf:\nclient_max_body_size 50M;",
+      "conditions": []
+    },
+    {
+      "id": "PROCESS_KILLED",
+      "match": "(?:SIGKILL|SIGTERM|killed|signal\\s+(\\d+)|OOMKilled|process exited with code 137)",
+      "captures": ["signal"],
+      "rootCause": "Process was killed by signal {signal}. This typically means the OS or container orchestrator terminated the process due to excessive memory usage (OOM) or an explicit kill command.",
+      "prescription": "If killed by OOM (signal 9 / exit code 137), increase memory limits or fix memory leaks. If killed by SIGTERM (signal 15), check if a process manager or orchestrator is shutting it down.",
+      "codeBlock": "# Check if OOM killer was involved (Linux)\ndmesg | grep -i 'oom\\|killed process'\n\n# Increase Docker memory limit\ndocker run --memory=4g your-image\n\n# Increase Node.js heap\nnode --max-old-space-size=4096 app.js",
+      "conditions": []
+    },
+    {
+      "id": "VERSION_MISMATCH",
+      "match": "(?:version mismatch|incompatible version|requires.*?version|expected version|engine).*?(?:['\"]?([\\w@/.\\-]+)['\"]?).*?(?:expected ['\"]?([\\w.^~>=<]+)['\"]?)?.*?(?:got ['\"]?([\\w.^~>=<]+)['\"]?)?",
+      "captures": ["package", "expected", "actual"],
+      "rootCause": "Version mismatch for {package}: expected {expected} but got {actual}. The installed version is incompatible with what is required.",
+      "prescription": "Install the correct version: `npm install {package}@{expected}`. Check your package.json engines field and ensure your runtime matches.",
+      "codeBlock": "# Install specific version\nnpm install {package}@{expected}\n\n# Check current versions\nnode -v\nnpm -v\nnpx {package} --version",
+      "conditions": [
+        {
+          "when": "package contains node",
+          "rootCause": "Node.js version mismatch. The project requires Node.js {expected} but the current version is {actual}.",
+          "prescription": "Use nvm to switch Node.js versions: `nvm install {expected} && nvm use {expected}`. Update the engines field in package.json if the constraint is wrong.",
+          "codeBlock": "nvm install {expected}\nnvm use {expected}\nnode -v"
+        }
+      ]
+    },
+    {
+      "id": "DEPENDENCY_CONFLICT",
+      "match": "(?:peer dep(?:endency)?|conflicting|ERESOLVE|Could not resolve|unable to resolve dependency tree).*?(?:['\"]?([\\w@/.\\-]+)['\"]?)",
+      "captures": ["package"],
+      "rootCause": "Dependency conflict involving {package}. Multiple packages require different incompatible versions of the same dependency.",
+      "prescription": "Try `npm install --legacy-peer-deps` to bypass peer dependency checks, or resolve the conflict by aligning versions. Use `npm ls {package}` to see the dependency tree.",
+      "codeBlock": "# See the conflict\nnpm ls {package}\n\n# Install with legacy peer deps\nnpm install --legacy-peer-deps\n\n# Or force resolution\nnpm install --force",
+      "conditions": [
+        {
+          "when": "package contains react",
+          "rootCause": "React peer dependency conflict. A library requires a different version of React than what is installed.",
+          "prescription": "Check which version of React the conflicting package supports and either upgrade/downgrade React or find a compatible library version.",
+          "codeBlock": "npm ls react\nnpm ls react-dom"
+        }
+      ]
+    },
+    {
+      "id": "NETWORK_ERROR",
+      "match": "(?:ENETUNREACH|network (?:is )?unreachable|EHOSTUNREACH|no route to host|ERR_NETWORK|ERR_INTERNET_DISCONNECTED|getaddrinfo ENOTFOUND).*?(?:([\\w./-]+))?",
+      "captures": ["host"],
+      "rootCause": "Network unreachable when trying to connect to {host}. There is no network route to the destination, or the network interface is down.",
+      "prescription": "Check your network connectivity. Verify DNS resolution with `nslookup {host}`. Check if a VPN or proxy is required. Test with `ping {host}` and `traceroute {host}`.",
+      "codeBlock": "# Check connectivity\nping -c 4 {host}\ntraceroute {host}\nnslookup {host}\n\n# Check network interfaces\nip addr show\n# or on macOS\nifconfig",
+      "conditions": [
+        {
+          "when": "host contains registry.npmjs.org",
+          "rootCause": "Cannot reach the npm registry. Your network may be down, a proxy/firewall may be blocking the connection, or npm's registry may be experiencing issues.",
+          "prescription": "Check npm registry status at https://status.npmjs.org/. If behind a proxy, configure npm: `npm config set proxy http://proxy:port`.",
+          "codeBlock": "npm config set proxy http://your-proxy:port\nnpm config set https-proxy http://your-proxy:port"
+        }
+      ]
+    }
+  ]
+}

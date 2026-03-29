@@ -1,0 +1,2794 @@
+{
+  "metadata": {
+    "language": "Swift",
+    "version": "1.0.0",
+    "description": "Error classification, dependency tracing, and fix ordering for Swift 5.9+ projects using SPM, Xcode, and SwiftLint",
+    "toolchains": [
+      {
+        "name": "swiftc",
+        "errorPrefix": null,
+        "errorFormat": "(?<file>[^:\\s][^:]*):(?<line>\\d+):(?<column>\\d+):\\s*(?<severity>error|warning):\\s*(?<message>.+)",
+        "errorFormatCaptures": ["file", "line", "column", "severity", "message"],
+        "outputStream": "stderr",
+        "supportsJsonOutput": false,
+        "jsonOutputFlag": null
+      },
+      {
+        "name": "swift-build",
+        "errorPrefix": null,
+        "errorFormat": "(?<file>[^:\\s][^:]*):(?<line>\\d+):(?<column>\\d+):\\s*(?<severity>error|warning):\\s*(?<message>.+)",
+        "errorFormatCaptures": ["file", "line", "column", "severity", "message"],
+        "outputStream": "stderr",
+        "supportsJsonOutput": false,
+        "jsonOutputFlag": null
+      },
+      {
+        "name": "xcodebuild",
+        "errorPrefix": null,
+        "errorFormat": "(?<file>[^:\\s][^:]*):(?<line>\\d+):(?<column>\\d+):\\s*(?<severity>error|warning):\\s*(?<message>.+)",
+        "errorFormatCaptures": ["file", "line", "column", "severity", "message"],
+        "outputStream": "stderr",
+        "supportsJsonOutput": false,
+        "jsonOutputFlag": null
+      },
+      {
+        "name": "swiftlint",
+        "errorPrefix": null,
+        "errorFormat": "(?<file>[^:\\s][^:]*):(?<line>\\d+):(?<column>\\d+):\\s*(?<severity>error|warning):\\s*(?<code>[^:]+):\\s*(?<message>.+)",
+        "errorFormatCaptures": ["file", "line", "column", "severity", "code", "message"],
+        "outputStream": "stdout",
+        "supportsJsonOutput": true,
+        "jsonOutputFlag": "--reporter json"
+      }
+    ],
+    "fileExtensions": [".swift"],
+    "generatedBy": "plugin-generator-v1",
+    "generatedFor": "attar-code-smart-fix"
+  },
+
+  "errorCatalog": {
+    "categories": [
+      {
+        "id": "syntax",
+        "name": "Syntax and Parse Errors",
+        "description": "Errors in code structure, missing tokens, unexpected tokens, invalid declarations",
+        "defaultTracingBehavior": "local_only",
+        "errors": [
+          {
+            "code": "SWIFT_EXPECTED_TOKEN",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "expected '(?<expected>.+?)' (?:in|after|before|to complete)\\s*(?<context>.*)",
+            "match": "error:\\s*expected '(?<expected>.+?)' (?:in|after|before|to complete)\\s*(?<context>.*)",
+            "captures": [
+              { "name": "expected", "role": "literal_value" },
+              { "name": "context", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "SWIFT_USE_UNRESOLVED", "relationship": "causes_this", "sharedCapture": null, "resolution": "fix_this_first" },
+              { "code": "SWIFT_UNEXPECTED_TOKEN", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+            "rootCause": "The compiler expected a '{expected}' token {context} but did not find one. This is typically caused by a missing closing bracket, parenthesis, semicolon, or other delimiter.",
+            "prescription": "1. Look at the line indicated and the surrounding context.\n2. Insert the missing '{expected}' token at the correct position.\n3. Check for unbalanced brackets or parentheses in the surrounding code.\n4. If the error is in a multi-line expression, ensure all delimiters are properly matched.",
+            "codeBlock": "// BEFORE (wrong):\nfunc greet(name: String {\n    print(\"Hello, \\(name)\")\n}\n\n// AFTER (correct):\nfunc greet(name: String) {\n    print(\"Hello, \\(name)\")\n}",
+            "conditions": [
+              {
+                "when": "expected equals }'",
+                "rootCause": "A closing brace is missing. This usually indicates an unclosed function body, type definition, or closure.",
+                "prescription": "Count opening and closing braces to find where the missing '}' should be inserted. Check for nested scopes that were not properly closed.",
+                "codeBlock": null
+              },
+              {
+                "when": "expected equals )'",
+                "rootCause": "A closing parenthesis is missing. This usually indicates an unclosed function call, parameter list, or grouped expression.",
+                "prescription": "Find the matching opening parenthesis and add the closing ')' at the correct position.",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "SWIFT_UNEXPECTED_TOKEN",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "unexpected '(?<token>.+?)' in (?<context>.+)",
+            "match": "error:\\s*unexpected '(?<token>.+?)' in (?<context>.+)",
+            "captures": [
+              { "name": "token", "role": "literal_value" },
+              { "name": "context", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "SWIFT_EXPECTED_TOKEN", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+            "rootCause": "The compiler found an unexpected '{token}' token in {context}. This is often caused by extra characters, misplaced operators, or incorrect syntax.",
+            "prescription": "1. Remove or relocate the unexpected '{token}'.\n2. Check the surrounding code for misplaced operators or extraneous characters.\n3. Verify the overall structure of the {context}.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_UNTERMINATED_STRING",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "unterminated string literal",
+            "match": "error:\\s*unterminated string literal",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "A string literal was opened with a quote but never closed. The compiler reached the end of the line or file without finding a matching closing quote.",
+            "prescription": "1. Find the unterminated string and add the closing quote.\n2. For multi-line strings, use triple quotes (\"\"\").\n3. Ensure any escaped characters within the string are properly formatted.",
+            "codeBlock": "// BEFORE (wrong):\nlet message = \"Hello, World\n\n// AFTER (correct):\nlet message = \"Hello, World\"",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_CONSECUTIVE_STATEMENTS",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "consecutive statements on a line must be separated by ';'",
+            "match": "error:\\s*consecutive statements on a line must be separated by ';'",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Two statements appear on the same line without a semicolon separator. Swift normally uses newlines as statement separators, but when multiple statements share a line, a semicolon is required.",
+            "prescription": "1. Split the statements onto separate lines (preferred Swift style).\n2. Or insert a semicolon between the statements.",
+            "codeBlock": "// BEFORE (wrong):\nlet x = 1 let y = 2\n\n// AFTER (correct):\nlet x = 1\nlet y = 2",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_INVALID_REDECLARATION",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "invalid redeclaration of '(?<symbolName>.+?)'",
+            "match": "error:\\s*invalid redeclaration of '(?<symbolName>.+?)'",
+            "captures": [
+              { "name": "symbolName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.2,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "symbolName" }, "adjustedProbability": 0.7, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "symbolName" }, "adjustedProbability": 0.05, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": { "primaryStrategy": "rename_symbol", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "The symbol '{symbolName}' is declared more than once in the same scope. Swift does not allow two declarations with the same name and signature in the same scope.",
+            "prescription": "1. Rename one of the conflicting declarations of '{symbolName}'.\n2. If both declarations are intentional, move one to a different scope or use different parameter labels to create distinct overloads.\n3. Check if one declaration should be removed entirely.",
+            "codeBlock": "// BEFORE (wrong):\nvar count = 0\nvar count = 1  // error: invalid redeclaration\n\n// AFTER (correct):\nvar count = 0\nvar total = 1",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_EXPECTED_DECLARATION",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "expected declaration",
+            "match": "error:\\s*expected declaration",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "SWIFT_EXPECTED_TOKEN", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+            "rootCause": "The compiler expected a declaration (func, var, let, class, struct, etc.) but found something else. This often happens due to misplaced code at the top level or extra closing braces.",
+            "prescription": "1. Check that the code at the indicated location is a valid declaration.\n2. Look for extra closing braces that may have ended a scope prematurely.\n3. Ensure top-level code is inside a function or wrapped appropriately.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_EXPECTED_EXPRESSION",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "expected expression",
+            "match": "error:\\s*expected expression",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The compiler expected an expression (a value, function call, or operation) but found a keyword or token that cannot be used as an expression.",
+            "prescription": "1. Provide the missing expression at the indicated location.\n2. Check for incomplete assignments, return statements, or function arguments.\n3. Ensure operators have operands on both sides.",
+            "codeBlock": "// BEFORE (wrong):\nlet result = \n\n// AFTER (correct):\nlet result = computeValue()",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_EXPECTED_PATTERN",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "expected pattern",
+            "match": "error:\\s*expected pattern",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The compiler expected a pattern (variable binding, tuple pattern, case pattern, etc.) but found something else. This often occurs in switch cases, if-let bindings, or for-in loops.",
+            "prescription": "1. Provide a valid pattern at the indicated location.\n2. In switch cases, ensure the case pattern matches the type being switched on.\n3. In if-let or guard-let, ensure the binding syntax is correct.",
+            "codeBlock": null,
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "name_resolution",
+        "name": "Name and Symbol Resolution Errors",
+        "description": "Errors about resolving identifiers, members, and modules",
+        "defaultTracingBehavior": "trace_import_source",
+        "errors": [
+          {
+            "code": "SWIFT_USE_UNRESOLVED",
+            "category": "name_resolution",
+            "severity": "error",
+            "messagePattern": "use of unresolved identifier '(?<symbolName>.+?)'",
+            "match": "error:\\s*use of unresolved identifier '(?<symbolName>.+?)'",
+            "captures": [
+              { "name": "symbolName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.6,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "symbolName" }, "adjustedProbability": 0.9, "traceDepth": "transitive", "traceTarget": "re_export_origin" },
+              { "check": { "type": "is_local", "target": "symbolName" }, "adjustedProbability": 0.05, "traceDepth": "none", "traceTarget": "same_file" },
+              { "check": { "type": "is_external", "target": "symbolName" }, "adjustedProbability": 0.95, "traceDepth": "none", "traceTarget": "external_package" },
+              { "check": { "type": "symbol_was_deleted", "target": "symbolName" }, "adjustedProbability": 1.0, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "add_import", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [
+              { "code": "SWIFT_NO_MODULE", "relationship": "caused_by_this", "sharedCapture": null, "resolution": "fix_other_first" },
+              { "code": "SWIFT_MISSING_MEMBER", "relationship": "sometimes_together", "sharedCapture": "symbolName", "resolution": "fix_either" }
+            ],
+            "rootCause": "The identifier '{symbolName}' is used but not declared in the current scope. It may be missing an import, misspelled, or not accessible due to access control.",
+            "prescription": "1. Add an import statement for the module that provides '{symbolName}'.\n2. Check for typos in the identifier name.\n3. Verify that '{symbolName}' is declared with sufficient access control (internal or public) to be visible from this file.\n4. If '{symbolName}' is a local variable, ensure it is declared before use.",
+            "codeBlock": "// BEFORE (wrong):\nfunc process() {\n    let result = helper()  // error: use of unresolved identifier 'helper'\n}\n\n// AFTER (correct):\nimport HelperModule\n\nfunc process() {\n    let result = helper()\n}",
+            "conditions": [
+              {
+                "when": "symbolName startsWith UI",
+                "rootCause": "'{symbolName}' is likely a UIKit type. The UIKit framework import may be missing.",
+                "prescription": "Add 'import UIKit' at the top of the file.",
+                "codeBlock": "import UIKit"
+              },
+              {
+                "when": "symbolName startsWith NS",
+                "rootCause": "'{symbolName}' is likely a Foundation type. The Foundation framework import may be missing.",
+                "prescription": "Add 'import Foundation' at the top of the file.",
+                "codeBlock": "import Foundation"
+              },
+              {
+                "when": "symbolName startsWith CG",
+                "rootCause": "'{symbolName}' is likely a CoreGraphics type. The CoreGraphics framework import may be missing.",
+                "prescription": "Add 'import CoreGraphics' at the top of the file.",
+                "codeBlock": "import CoreGraphics"
+              },
+              {
+                "when": "symbolName equals self",
+                "rootCause": "'self' is used outside of an instance context, such as in a static method or at module scope.",
+                "prescription": "Ensure 'self' is used within an instance method or closure. In static contexts, use the type name directly instead of 'self'.",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "SWIFT_MISSING_MEMBER",
+            "category": "name_resolution",
+            "severity": "error",
+            "messagePattern": "value of type '(?<typeName>.+?)' has no member '(?<memberName>.+?)'",
+            "match": "error:\\s*value of type '(?<typeName>.+?)' has no member '(?<memberName>.+?)'",
+            "captures": [
+              { "name": "typeName", "role": "type_name" },
+              { "name": "memberName", "role": "property_name" }
+            ],
+            "baseCrossFileProbability": 0.65,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "typeName" }, "adjustedProbability": 0.85, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "typeName" }, "adjustedProbability": 0.1, "traceDepth": "none", "traceTarget": "same_file" },
+              { "check": { "type": "is_external", "target": "typeName" }, "adjustedProbability": 0.95, "traceDepth": "none", "traceTarget": "external_package" },
+              { "check": { "type": "is_interface_member", "target": "memberName" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "inherited_parent" }
+            ],
+            "fixHint": { "primaryStrategy": "add_property", "requiresCrossFileEdit": true, "typicalScope": "type_definition" },
+            "coOccurrence": [
+              { "code": "SWIFT_TYPE_MISMATCH", "relationship": "sometimes_together", "sharedCapture": "typeName", "resolution": "fix_either" },
+              { "code": "SWIFT_USE_UNRESOLVED", "relationship": "sometimes_together", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+            "rootCause": "The type '{typeName}' does not have a member named '{memberName}'. The member may be misspelled, not yet declared, or the value may be a different type than expected.",
+            "prescription": "1. Check for typos in '{memberName}'.\n2. Verify that '{typeName}' is the correct type (use type annotation or check inference).\n3. Add the member '{memberName}' to the definition of '{typeName}'.\n4. If the member was added via protocol extension or conditional conformance, ensure the conditions are met.\n5. Check if '{memberName}' requires a specific import.",
+            "codeBlock": "// BEFORE (wrong):\nstruct User {\n    let name: String\n}\nlet user = User(name: \"Alice\")\nprint(user.email)  // error: has no member 'email'\n\n// AFTER (correct):\nstruct User {\n    let name: String\n    let email: String\n}\nlet user = User(name: \"Alice\", email: \"alice@example.com\")\nprint(user.email)",
+            "conditions": [
+              {
+                "when": "typeName contains Optional",
+                "rootCause": "You are trying to access '{memberName}' on an Optional value. Optionals do not have the members of their wrapped type directly.",
+                "prescription": "Unwrap the optional first using if-let, guard-let, optional chaining (?.), or force unwrap (!) if you are certain the value exists.",
+                "codeBlock": "// BEFORE:\nvar name: String?\nprint(name.count)  // error\n\n// AFTER:\nvar name: String?\nprint(name?.count ?? 0)"
+              },
+              {
+                "when": "typeName contains Array",
+                "rootCause": "The Array type does not have a member '{memberName}'. You may be confusing Array methods with Element methods.",
+                "prescription": "If you want to access '{memberName}' on each element, use map, compactMap, or iterate. If '{memberName}' is supposed to be an Array method, check the documentation.",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "SWIFT_NO_MODULE",
+            "category": "name_resolution",
+            "severity": "error",
+            "messagePattern": "no such module '(?<moduleName>.+?)'",
+            "match": "error:\\s*no such module '(?<moduleName>.+?)'",
+            "captures": [
+              { "name": "moduleName", "role": "target_module" }
+            ],
+            "baseCrossFileProbability": 1.0,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_external", "target": "moduleName" }, "adjustedProbability": 1.0, "traceDepth": "none", "traceTarget": "external_package" },
+              { "check": { "type": "comes_from_package", "target": "moduleName" }, "adjustedProbability": 1.0, "traceDepth": "none", "traceTarget": "external_package" }
+            ],
+            "fixHint": { "primaryStrategy": "install_package", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [
+              { "code": "SWIFT_USE_UNRESOLVED", "relationship": "causes_this", "sharedCapture": null, "resolution": "fix_this_first" },
+              { "code": "SWIFT_MISSING_MEMBER", "relationship": "causes_this", "sharedCapture": null, "resolution": "fix_this_first" }
+            ],
+            "rootCause": "The module '{moduleName}' cannot be found. It is either not installed, not listed in Package.swift dependencies, or the target does not depend on it.",
+            "prescription": "1. If '{moduleName}' is a third-party package, add it to Package.swift dependencies and the target's dependencies array.\n2. If using Xcode, ensure the framework is linked in the target's Build Phases.\n3. Run 'swift package resolve' to fetch dependencies.\n4. Check that the module name is spelled correctly (case-sensitive).\n5. If '{moduleName}' is a system framework, verify it is available on your platform.",
+            "codeBlock": "// In Package.swift:\n// BEFORE (missing dependency):\n.target(name: \"MyApp\", dependencies: []),\n\n// AFTER (dependency added):\n.target(name: \"MyApp\", dependencies: [\"Alamofire\"]),",
+            "conditions": [
+              {
+                "when": "moduleName equals XCTest",
+                "rootCause": "XCTest is a testing framework and is only available in test targets.",
+                "prescription": "Ensure this file is part of a test target, not the main target. In Package.swift, use .testTarget() instead of .target().",
+                "codeBlock": null
+              },
+              {
+                "when": "moduleName equals SwiftUI",
+                "rootCause": "SwiftUI framework is not available. This may be a platform or deployment target issue.",
+                "prescription": "Ensure the deployment target supports SwiftUI (iOS 13+, macOS 10.15+). In Package.swift, set platforms: [.iOS(.v13)] or later.",
+                "codeBlock": null
+              },
+              {
+                "when": "moduleName equals UIKit",
+                "rootCause": "UIKit is only available on iOS, tvOS, and visionOS platforms.",
+                "prescription": "If building for macOS, use AppKit instead. If this is a cross-platform project, wrap UIKit code in #if canImport(UIKit).",
+                "codeBlock": "#if canImport(UIKit)\nimport UIKit\n#elseif canImport(AppKit)\nimport AppKit\n#endif"
+              },
+              {
+                "when": "moduleName equals Combine",
+                "rootCause": "Combine framework may not be available on this platform or deployment target.",
+                "prescription": "Ensure the deployment target is iOS 13+, macOS 10.15+, or later. Add platform requirements to Package.swift.",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "SWIFT_AMBIGUOUS_USE",
+            "category": "name_resolution",
+            "severity": "error",
+            "messagePattern": "ambiguous use of '(?<symbolName>.+?)'",
+            "match": "error:\\s*ambiguous use of '(?<symbolName>.+?)'",
+            "captures": [
+              { "name": "symbolName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "symbolName" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "symbolName" }, "adjustedProbability": 0.15, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": { "primaryStrategy": "add_type_assertion", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The compiler cannot determine which '{symbolName}' to use because multiple declarations with that name are visible. This can happen when two modules export the same name, or when overloads cannot be distinguished.",
+            "prescription": "1. Qualify '{symbolName}' with its module name: ModuleName.{symbolName}.\n2. Add explicit type annotations to help the compiler disambiguate.\n3. If the ambiguity is between overloads, provide more specific argument types or labels.\n4. Use 'as' to cast to the specific type expected.",
+            "codeBlock": "// BEFORE (wrong):\nimport ModuleA  // exports func parse(_ s: String) -> Int\nimport ModuleB  // exports func parse(_ s: String) -> Int\nlet result = parse(input)  // error: ambiguous use of 'parse'\n\n// AFTER (correct):\nlet result = ModuleA.parse(input)",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_CANNOT_FIND_TYPE",
+            "category": "name_resolution",
+            "severity": "error",
+            "messagePattern": "cannot find type '(?<typeName>.+?)' in scope",
+            "match": "error:\\s*cannot find type '(?<typeName>.+?)' in scope",
+            "captures": [
+              { "name": "typeName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.7,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "typeName" }, "adjustedProbability": 0.9, "traceDepth": "transitive", "traceTarget": "re_export_origin" },
+              { "check": { "type": "is_local", "target": "typeName" }, "adjustedProbability": 0.05, "traceDepth": "none", "traceTarget": "same_file" },
+              { "check": { "type": "is_external", "target": "typeName" }, "adjustedProbability": 0.95, "traceDepth": "none", "traceTarget": "external_package" }
+            ],
+            "fixHint": { "primaryStrategy": "add_import", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [
+              { "code": "SWIFT_NO_MODULE", "relationship": "caused_by_this", "sharedCapture": null, "resolution": "fix_other_first" },
+              { "code": "SWIFT_USE_UNRESOLVED", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+            "rootCause": "The type '{typeName}' cannot be found in the current scope. It may need an import, may be misspelled, or may not be accessible from this module.",
+            "prescription": "1. Import the module that defines '{typeName}'.\n2. Check for typos in the type name.\n3. Verify the type is declared with public or internal access.\n4. If '{typeName}' is a nested type, use the full path: OuterType.{typeName}.",
+            "codeBlock": "// BEFORE (wrong):\nfunc configure() -> URLSessionConfiguration {\n    return .default  // error: cannot find type 'URLSessionConfiguration'\n}\n\n// AFTER (correct):\nimport Foundation\n\nfunc configure() -> URLSessionConfiguration {\n    return .default\n}",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_CANNOT_FIND_IN_SCOPE",
+            "category": "name_resolution",
+            "severity": "error",
+            "messagePattern": "cannot find '(?<symbolName>.+?)' in scope",
+            "match": "error:\\s*cannot find '(?<symbolName>.+?)' in scope",
+            "captures": [
+              { "name": "symbolName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.6,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "symbolName" }, "adjustedProbability": 0.9, "traceDepth": "transitive", "traceTarget": "re_export_origin" },
+              { "check": { "type": "is_local", "target": "symbolName" }, "adjustedProbability": 0.05, "traceDepth": "none", "traceTarget": "same_file" },
+              { "check": { "type": "is_external", "target": "symbolName" }, "adjustedProbability": 0.95, "traceDepth": "none", "traceTarget": "external_package" }
+            ],
+            "fixHint": { "primaryStrategy": "add_import", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [
+              { "code": "SWIFT_NO_MODULE", "relationship": "caused_by_this", "sharedCapture": null, "resolution": "fix_other_first" }
+            ],
+            "rootCause": "The symbol '{symbolName}' cannot be found in the current scope. This includes functions, variables, and other values (not types).",
+            "prescription": "1. Import the module that provides '{symbolName}'.\n2. Check for typos.\n3. If '{symbolName}' is defined in another file within the same module, verify the file is included in the target.\n4. Check access control (private/fileprivate symbols are not visible outside their scope).",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_STATIC_MEMBER_ON_INSTANCE",
+            "category": "name_resolution",
+            "severity": "error",
+            "messagePattern": "static member '(?<memberName>.+?)' cannot be used on instance of type '(?<typeName>.+?)'",
+            "match": "error:\\s*static member '(?<memberName>.+?)' cannot be used on instance of type '(?<typeName>.+?)'",
+            "captures": [
+              { "name": "memberName", "role": "property_name" },
+              { "name": "typeName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "typeName" }, "adjustedProbability": 0.6, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "'{memberName}' is a static member of '{typeName}' but is being accessed on an instance. Static members belong to the type itself, not to instances.",
+            "prescription": "1. Access the member through the type name instead: {typeName}.{memberName}.\n2. Or use type(of: instance).{memberName}.\n3. If instance access is intended, remove the 'static' keyword from the member declaration.",
+            "codeBlock": "// BEFORE (wrong):\nlet formatter = DateFormatter()\nlet date = formatter.dateFormat  // if dateFormat were static\n\n// AFTER (correct):\nlet formatted = DateFormatter.localizedString(from: date, dateStyle: .short, timeStyle: .none)",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_INSTANCE_MEMBER_ON_TYPE",
+            "category": "name_resolution",
+            "severity": "error",
+            "messagePattern": "instance member '(?<memberName>.+?)' cannot be used on type '(?<typeName>.+?)'",
+            "match": "error:\\s*instance member '(?<memberName>.+?)' cannot be used on type '(?<typeName>.+?)'",
+            "captures": [
+              { "name": "memberName", "role": "property_name" },
+              { "name": "typeName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "typeName" }, "adjustedProbability": 0.6, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "'{memberName}' is an instance member of '{typeName}' but is being accessed on the type. Instance members require an instance of the type.",
+            "prescription": "1. Create an instance of '{typeName}' and access '{memberName}' on it.\n2. If the member should be accessible on the type, make it static.\n3. If inside a static method, you cannot access instance members without an instance.",
+            "codeBlock": "// BEFORE (wrong):\nstruct Config {\n    var timeout: Int = 30\n}\nlet t = Config.timeout  // error: instance member on type\n\n// AFTER (correct):\nlet config = Config()\nlet t = config.timeout",
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "type_errors",
+        "name": "Type System Errors",
+        "description": "Errors related to type mismatches, conversions, and type constraints",
+        "defaultTracingBehavior": "trace_type_definition",
+        "errors": [
+          {
+            "code": "SWIFT_TYPE_MISMATCH",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "cannot convert value of type '(?<actualType>.+?)' to expected argument type '(?<expectedType>.+?)'",
+            "match": "error:\\s*cannot convert value of type '(?<actualType>.+?)' to expected argument type '(?<expectedType>.+?)'",
+            "captures": [
+              { "name": "actualType", "role": "actual_type" },
+              { "name": "expectedType", "role": "expected_type" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "expectedType" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "expectedType" }, "adjustedProbability": 0.15, "traceDepth": "none", "traceTarget": "same_file" },
+              { "check": { "type": "is_generic_param", "target": "expectedType" }, "adjustedProbability": 0.4, "traceDepth": "direct", "traceTarget": "composed_type" }
+            ],
+            "fixHint": { "primaryStrategy": "cast_type", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "SWIFT_MISSING_CONFORMANCE", "relationship": "sometimes_together", "sharedCapture": "actualType", "resolution": "fix_either" }
+            ],
+            "rootCause": "The value has type '{actualType}' but the function expects '{expectedType}'. These types are not implicitly convertible.",
+            "prescription": "1. If the types are related, use an explicit conversion: {expectedType}(value).\n2. If the value should be a different type, fix the source of the value.\n3. If the function signature is wrong, update it to accept '{actualType}'.\n4. For optional mismatches, wrap with Optional or unwrap as needed.",
+            "codeBlock": "// BEFORE (wrong):\nfunc process(count: Int) { }\nlet value: Double = 3.14\nprocess(count: value)  // error: cannot convert Double to Int\n\n// AFTER (correct):\nprocess(count: Int(value))",
+            "conditions": [
+              {
+                "when": "actualType contains Optional",
+                "rootCause": "The value is Optional but the function expects a non-optional '{expectedType}'. The optional must be unwrapped.",
+                "prescription": "Unwrap the optional using if-let, guard-let, nil-coalescing (??), or force unwrap (!) if safe.",
+                "codeBlock": "// Use nil-coalescing:\nprocess(count: optionalValue ?? defaultValue)\n\n// Or guard-let:\nguard let value = optionalValue else { return }\nprocess(count: value)"
+              },
+              {
+                "when": "expectedType contains Optional",
+                "rootCause": "The function expects an Optional type but the conversion from '{actualType}' to the wrapped type of '{expectedType}' is not possible.",
+                "prescription": "Check if the base types are compatible. The Optional wrapper is not the issue; the underlying type conversion is.",
+                "codeBlock": null
+              },
+              {
+                "when": "actualType equals String",
+                "rootCause": "A String value is being passed where '{expectedType}' is expected. String does not implicitly convert to other types in Swift.",
+                "prescription": "Use the appropriate initializer: {expectedType}(stringValue) or parse the string value explicitly.",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "SWIFT_CANNOT_CONVERT_RETURN",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "cannot convert return expression of type '(?<actualType>.+?)' to return type '(?<expectedType>.+?)'",
+            "match": "error:\\s*cannot convert return expression of type '(?<actualType>.+?)' to return type '(?<expectedType>.+?)'",
+            "captures": [
+              { "name": "actualType", "role": "actual_type" },
+              { "name": "expectedType", "role": "expected_type" }
+            ],
+            "baseCrossFileProbability": 0.4,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "expectedType" }, "adjustedProbability": 0.7, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "expectedType" }, "adjustedProbability": 0.1, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": { "primaryStrategy": "update_type_annotation", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [
+              { "code": "SWIFT_TYPE_MISMATCH", "relationship": "same_root_cause", "sharedCapture": "expectedType", "resolution": "fix_either" }
+            ],
+            "rootCause": "The function returns a value of type '{actualType}' but the declared return type is '{expectedType}'. These types are incompatible.",
+            "prescription": "1. Convert the return value to '{expectedType}' if appropriate.\n2. Change the function's return type to '{actualType}' if the return value is correct.\n3. Check if the function body logic produces the wrong type and fix it.",
+            "codeBlock": "// BEFORE (wrong):\nfunc getName() -> String {\n    return 42  // error: cannot convert Int to String\n}\n\n// AFTER (correct):\nfunc getName() -> String {\n    return \"Alice\"\n}",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_CANNOT_ASSIGN_TYPE",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "cannot assign value of type '(?<actualType>.+?)' to type '(?<expectedType>.+?)'",
+            "match": "error:\\s*cannot assign value of type '(?<actualType>.+?)' to type '(?<expectedType>.+?)'",
+            "captures": [
+              { "name": "actualType", "role": "actual_type" },
+              { "name": "expectedType", "role": "expected_type" }
+            ],
+            "baseCrossFileProbability": 0.4,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "expectedType" }, "adjustedProbability": 0.7, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "expectedType" }, "adjustedProbability": 0.1, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": { "primaryStrategy": "cast_type", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Attempting to assign a value of type '{actualType}' to a variable of type '{expectedType}'. These types are not compatible.",
+            "prescription": "1. Convert the value to '{expectedType}' explicitly.\n2. Change the variable's type annotation to '{actualType}'.\n3. If using type inference (no annotation), check what is producing the '{actualType}' value.",
+            "codeBlock": "// BEFORE (wrong):\nvar count: Int = \"five\"  // error: cannot assign String to Int\n\n// AFTER (correct):\nvar count: Int = 5",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_MISSING_CONFORMANCE",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "type '(?<typeName>.+?)' does not conform to protocol '(?<protocolName>.+?)'",
+            "match": "error:\\s*type '(?<typeName>.+?)' does not conform to protocol '(?<protocolName>.+?)'",
+            "captures": [
+              { "name": "typeName", "role": "type_name" },
+              { "name": "protocolName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.55,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "protocolName" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "protocolName" }, "adjustedProbability": 0.15, "traceDepth": "none", "traceTarget": "same_file" },
+              { "check": { "type": "is_inherited", "target": "protocolName" }, "adjustedProbability": 0.7, "traceDepth": "transitive", "traceTarget": "inherited_parent" }
+            ],
+            "fixHint": { "primaryStrategy": "implement_interface", "requiresCrossFileEdit": false, "typicalScope": "type_definition" },
+            "coOccurrence": [
+              { "code": "SWIFT_MISSING_MEMBER", "relationship": "sometimes_together", "sharedCapture": "typeName", "resolution": "fix_this_first" }
+            ],
+            "rootCause": "The type '{typeName}' declares conformance to protocol '{protocolName}' but does not implement all required members.",
+            "prescription": "1. Add all required methods and properties from '{protocolName}' to '{typeName}'.\n2. Use Xcode's 'Fix' button or check the protocol definition for required members.\n3. If the conformance is in an extension, ensure the extension has access to any stored properties needed.\n4. For protocols with associated types, ensure the associated type requirements are satisfied.",
+            "codeBlock": "// BEFORE (wrong):\nprotocol Drawable {\n    func draw()\n}\nstruct Circle: Drawable {\n    // error: missing 'draw()' implementation\n}\n\n// AFTER (correct):\nstruct Circle: Drawable {\n    func draw() {\n        print(\"Drawing circle\")\n    }\n}",
+            "conditions": [
+              {
+                "when": "protocolName equals Codable",
+                "rootCause": "'{typeName}' does not conform to Codable. All stored properties must also conform to Codable, or you must provide custom encode/decode implementations.",
+                "prescription": "1. Ensure all stored properties of '{typeName}' conform to Codable.\n2. If a property cannot be Codable, implement init(from:) and encode(to:) manually.\n3. Add a CodingKeys enum if the JSON keys differ from property names.",
+                "codeBlock": "struct User: Codable {\n    let name: String\n    let age: Int\n    // All properties must be Codable\n}"
+              },
+              {
+                "when": "protocolName equals Hashable",
+                "rootCause": "'{typeName}' does not conform to Hashable. All stored properties must be Hashable, or you must implement hash(into:).",
+                "prescription": "1. Ensure all stored properties conform to Hashable.\n2. Or implement func hash(into hasher: inout Hasher) manually.\n3. Also implement == if the type is not Equatable.",
+                "codeBlock": null
+              },
+              {
+                "when": "protocolName equals Equatable",
+                "rootCause": "'{typeName}' does not conform to Equatable. All stored properties must be Equatable, or you must implement ==.",
+                "prescription": "1. Ensure all stored properties conform to Equatable.\n2. Or implement static func == (lhs:rhs:) -> Bool manually.",
+                "codeBlock": null
+              },
+              {
+                "when": "protocolName equals Sendable",
+                "rootCause": "'{typeName}' does not conform to Sendable. To be Sendable, a class must be final with only Sendable stored properties, or a struct must have only Sendable properties.",
+                "prescription": "1. Make the type a struct with Sendable properties.\n2. Or mark the class as final and ensure all properties are Sendable.\n3. Or use @unchecked Sendable if you can guarantee thread safety manually.",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "SWIFT_MISSING_RETURN",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "missing return in (?:a )?(?:closure|function|getter) expected to return '(?<expectedType>.+?)'",
+            "match": "error:\\s*missing return in (?:a )?(?:closure|function|getter) expected to return '(?<expectedType>.+?)'",
+            "captures": [
+              { "name": "expectedType", "role": "expected_type" }
+            ],
+            "baseCrossFileProbability": 0.1,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "expectedType" }, "adjustedProbability": 0.4, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "add_missing_return", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "The function or closure is declared to return '{expectedType}' but not all code paths return a value. The compiler requires every possible execution path to have a return statement.",
+            "prescription": "1. Add a return statement that returns a value of type '{expectedType}' on every code path.\n2. Check if-else branches and switch cases for missing return statements.\n3. If the function should not return a value, change the return type to Void.",
+            "codeBlock": "// BEFORE (wrong):\nfunc status(code: Int) -> String {\n    if code == 200 {\n        return \"OK\"\n    }\n    // error: missing return\n}\n\n// AFTER (correct):\nfunc status(code: Int) -> String {\n    if code == 200 {\n        return \"OK\"\n    }\n    return \"Unknown\"\n}",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_MISSING_RETURN_VOID",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "non-void function should return a value",
+            "match": "error:\\s*non-void function should return a value",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "add_missing_return", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [
+              { "code": "SWIFT_MISSING_RETURN", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+            "rootCause": "The function has a non-Void return type but at least one code path does not return a value.",
+            "prescription": "1. Add a return statement with an appropriate value.\n2. If the function should not return anything, change its return type to Void or remove the return type annotation.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_OPTIONAL_UNWRAP",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "value of optional type '(?<optionalType>.+?)' must be unwrapped to (?:a value of type '(?<innerType>.+?)'|refer to member '(?<memberName>.+?)' of wrapped base type)",
+            "match": "error:\\s*value of optional type '(?<optionalType>.+?)' must be unwrapped",
+            "captures": [
+              { "name": "optionalType", "role": "actual_type" },
+              { "name": "innerType", "role": "expected_type" },
+              { "name": "memberName", "role": "property_name" }
+            ],
+            "baseCrossFileProbability": 0.15,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "optionalType" }, "adjustedProbability": 0.5, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "add_null_check", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "SWIFT_TYPE_MISMATCH", "relationship": "sometimes_together", "sharedCapture": "optionalType", "resolution": "fix_this_first" }
+            ],
+            "rootCause": "The value has optional type '{optionalType}' and must be unwrapped before it can be used as a non-optional value or before accessing its members.",
+            "prescription": "1. Use optional binding: if let value = optionalValue { ... }\n2. Use guard-let: guard let value = optionalValue else { return }\n3. Use optional chaining: optionalValue?.member\n4. Use nil-coalescing: optionalValue ?? defaultValue\n5. Use force unwrap only when you are certain the value is not nil: optionalValue!",
+            "codeBlock": "// BEFORE (wrong):\nvar name: String?\nprint(name.count)  // error: must be unwrapped\n\n// AFTER (correct) - several options:\n// Option 1: optional binding\nif let name = name {\n    print(name.count)\n}\n// Option 2: optional chaining\nprint(name?.count ?? 0)\n// Option 3: guard\nguard let name = name else { return }\nprint(name.count)",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_CANNOT_CONVERT_CLOSURE",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "cannot convert value of type '(?<actualType>.+?)' to closure result type '(?<expectedType>.+?)'",
+            "match": "error:\\s*cannot convert value of type '(?<actualType>.+?)' to closure result type '(?<expectedType>.+?)'",
+            "captures": [
+              { "name": "actualType", "role": "actual_type" },
+              { "name": "expectedType", "role": "expected_type" }
+            ],
+            "baseCrossFileProbability": 0.35,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "expectedType" }, "adjustedProbability": 0.7, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "cast_type", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The closure returns a value of type '{actualType}' but the expected closure result type is '{expectedType}'.",
+            "prescription": "1. Convert the return value inside the closure to '{expectedType}'.\n2. Change the closure's expected return type if the actual return value is correct.\n3. Check the function signature that accepts this closure.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_GENERIC_CONSTRAINT_FAIL",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "type '(?<typeName>.+?)' does not conform to protocol '(?<constraintName>.+?)'",
+            "match": "error:\\s*referencing (?:instance method|initializer|static method) .+ requires that '(?<typeName>.+?)' conform to '(?<constraintName>.+?)'",
+            "captures": [
+              { "name": "typeName", "role": "type_name" },
+              { "name": "constraintName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.55,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "constraintName" }, "adjustedProbability": 0.75, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "typeName" }, "adjustedProbability": 0.2, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": { "primaryStrategy": "fix_generic_constraint", "requiresCrossFileEdit": true, "typicalScope": "type_definition" },
+            "coOccurrence": [
+              { "code": "SWIFT_MISSING_CONFORMANCE", "relationship": "same_root_cause", "sharedCapture": "typeName", "resolution": "fix_either" }
+            ],
+            "rootCause": "A generic function or type requires '{typeName}' to conform to '{constraintName}', but it does not. The generic constraint is not satisfied.",
+            "prescription": "1. Add conformance to '{constraintName}' for '{typeName}'.\n2. If '{typeName}' cannot conform to '{constraintName}', use a different type that already conforms.\n3. If the constraint is too strict, consider loosening the generic constraint.",
+            "codeBlock": "// BEFORE (wrong):\nstruct MyType { }\nlet set: Set<MyType> = []  // error: MyType does not conform to Hashable\n\n// AFTER (correct):\nstruct MyType: Hashable {\n    let id: Int\n}\nlet set: Set<MyType> = []",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_CANNOT_INFER_TYPE",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "(?:unable to infer|cannot infer) (?:complex )?(?:closure )?(?:return )?type(?:;)? (?<context>.*)",
+            "match": "error:\\s*(?:unable to infer|cannot infer) (?:complex )?(?:closure )?(?:return )?type",
+            "captures": [
+              { "name": "context", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.2,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "update_type_annotation", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The compiler cannot determine the type of an expression. The expression is too complex for type inference or there is insufficient context.",
+            "prescription": "1. Add an explicit type annotation to the variable or closure.\n2. Break the complex expression into smaller steps with explicit types.\n3. For closures, add explicit parameter and return types.",
+            "codeBlock": "// BEFORE (wrong):\nlet result = items.map { $0.value }.filter { $0 > 0 }.reduce(0, +)  // may fail inference\n\n// AFTER (correct):\nlet result: Int = items.map { (item: Item) -> Int in item.value }.filter { $0 > 0 }.reduce(0, +)",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_OPAQUE_TYPE_MISMATCH",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "return type of (?:property|function) '(?<funcName>.+?)' requires that '(?<actualType>.+?)' conform to '(?<protocolName>.+?)'",
+            "match": "error:\\s*return type of (?:property|function) '(?<funcName>.+?)' requires that '(?<actualType>.+?)' conform to '(?<protocolName>.+?)'",
+            "captures": [
+              { "name": "funcName", "role": "symbol_name" },
+              { "name": "actualType", "role": "actual_type" },
+              { "name": "protocolName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "protocolName" }, "adjustedProbability": 0.75, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "implement_interface", "requiresCrossFileEdit": true, "typicalScope": "type_definition" },
+            "coOccurrence": [],
+            "rootCause": "The function '{funcName}' uses an opaque return type (some {protocolName}) but the actual returned value of type '{actualType}' does not conform to '{protocolName}'.",
+            "prescription": "1. Add conformance to '{protocolName}' for '{actualType}'.\n2. Return a different type that already conforms to '{protocolName}'.\n3. Change the opaque return type to a concrete type.",
+            "codeBlock": "// BEFORE (wrong):\nvar body: some View {\n    return 42  // Int does not conform to View\n}\n\n// AFTER (correct):\nvar body: some View {\n    Text(\"Hello\")\n}",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_EXISTENTIAL_ANY",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "use of protocol '(?<protocolName>.+?)' as a type must be written 'any (?<protocolName2>.+?)'",
+            "match": "error:\\s*use of protocol '(?<protocolName>.+?)' as a type must be written 'any",
+            "captures": [
+              { "name": "protocolName", "role": "type_name" },
+              { "name": "protocolName2", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "protocolName" }, "adjustedProbability": 0.6, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "update_type_annotation", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Swift 5.6+ requires explicit 'any' keyword when using a protocol as an existential type. Using '{protocolName}' as a type directly is no longer allowed.",
+            "prescription": "1. Prefix the protocol type with 'any': any {protocolName}.\n2. If you want a concrete type conforming to the protocol, use 'some {protocolName}' (opaque type) instead.\n3. If this is a generic constraint, use a generic parameter: func f<T: {protocolName}>(value: T).",
+            "codeBlock": "// BEFORE (wrong):\nfunc process(handler: EventHandler) { }  // error\n\n// AFTER (correct):\nfunc process(handler: any EventHandler) { }\n// Or use generics:\nfunc process<H: EventHandler>(handler: H) { }",
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "mutability",
+        "name": "Mutability and Assignment Errors",
+        "description": "Errors about immutable values, let vs var, struct mutation",
+        "defaultTracingBehavior": "local_only",
+        "errors": [
+          {
+            "code": "SWIFT_IMMUTABLE",
+            "category": "mutability",
+            "severity": "error",
+            "messagePattern": "cannot assign to property: '(?<propertyName>.+?)' is a '(?<kind>let|get-only)' (?:constant|property)",
+            "match": "error:\\s*cannot assign to property: '(?<propertyName>.+?)' is a '(?:let|get-only)'",
+            "captures": [
+              { "name": "propertyName", "role": "property_name" },
+              { "name": "kind", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "propertyName" }, "adjustedProbability": 0.7, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "propertyName" }, "adjustedProbability": 0.05, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Cannot assign to '{propertyName}' because it is declared as a '{kind}' constant or read-only property. Swift enforces immutability for 'let' declarations and computed properties without setters.",
+            "prescription": "1. If the property should be mutable, change 'let' to 'var' in its declaration.\n2. If it is a computed property, add a setter.\n3. If working with a struct, make sure the method is marked 'mutating'.\n4. If the value was intentionally immutable, create a new value instead of mutating.",
+            "codeBlock": "// BEFORE (wrong):\nlet name = \"Alice\"\nname = \"Bob\"  // error: cannot assign to 'let' constant\n\n// AFTER (correct):\nvar name = \"Alice\"\nname = \"Bob\"",
+            "conditions": [
+              {
+                "when": "kind equals get-only",
+                "rootCause": "'{propertyName}' is a computed property with only a getter (no setter). It is read-only.",
+                "prescription": "Add a setter to the computed property, or change to a stored property if appropriate.",
+                "codeBlock": "// Add a setter:\nvar computed: Int {\n    get { return _backing }\n    set { _backing = newValue }\n}"
+              }
+            ]
+          },
+          {
+            "code": "SWIFT_IMMUTABLE_SELF",
+            "category": "mutability",
+            "severity": "error",
+            "messagePattern": "cannot assign to property: '(?<context>self|.+?)' is immutable",
+            "match": "error:\\s*cannot assign to property: '(?<context>.+?)' is immutable",
+            "captures": [
+              { "name": "context", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.1,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "Trying to mutate '{context}' which is immutable. In structs, methods cannot mutate properties unless marked 'mutating'. Parameters are immutable by default.",
+            "prescription": "1. For struct methods, add the 'mutating' keyword: mutating func methodName().\n2. For function parameters, they are immutable by default; copy the value to a local var.\n3. For 'self' in closures, check if the closure is capturing an immutable copy.",
+            "codeBlock": "// BEFORE (wrong):\nstruct Counter {\n    var count = 0\n    func increment() {\n        count += 1  // error: self is immutable\n    }\n}\n\n// AFTER (correct):\nstruct Counter {\n    var count = 0\n    mutating func increment() {\n        count += 1\n    }\n}",
+            "conditions": [
+              {
+                "when": "context equals self",
+                "rootCause": "'self' is immutable in a non-mutating method of a value type (struct/enum).",
+                "prescription": "Mark the method as 'mutating' to allow modification of self's properties.",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "SWIFT_LET_MUTATE",
+            "category": "mutability",
+            "severity": "error",
+            "messagePattern": "cannot (?:assign to|mutate|use mutating member on) (?:value|immutable value): '(?<symbolName>.+?)' is a 'let' constant",
+            "match": "error:\\s*cannot (?:assign to|mutate|use mutating member on) .+: '(?<symbolName>.+?)' is a 'let' constant",
+            "captures": [
+              { "name": "symbolName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.1,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Attempting to mutate '{symbolName}' which is declared with 'let'. Constants cannot be modified after initialization.",
+            "prescription": "1. Change 'let' to 'var' if the value should be mutable.\n2. If immutability is intentional, create a new value with the desired changes.",
+            "codeBlock": "// BEFORE (wrong):\nlet items = [1, 2, 3]\nitems.append(4)  // error: cannot use mutating member on 'let' constant\n\n// AFTER (correct):\nvar items = [1, 2, 3]\nitems.append(4)",
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "function_errors",
+        "name": "Function Call and Argument Errors",
+        "description": "Errors with function arguments, labels, and overloads",
+        "defaultTracingBehavior": "trace_type_definition",
+        "errors": [
+          {
+            "code": "SWIFT_MISSING_ARGUMENT",
+            "category": "function_errors",
+            "severity": "error",
+            "messagePattern": "missing argument for parameter '(?<paramName>.+?)' in call",
+            "match": "error:\\s*missing argument for parameter '(?<paramName>.+?)' in call",
+            "captures": [
+              { "name": "paramName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.4,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "paramName" }, "adjustedProbability": 0.7, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "paramName" }, "adjustedProbability": 0.1, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": { "primaryStrategy": "change_signature", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "SWIFT_EXTRA_ARGUMENT", "relationship": "sometimes_together", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+            "rootCause": "The function call is missing a required argument for parameter '{paramName}'. The parameter does not have a default value.",
+            "prescription": "1. Add the missing argument '{paramName}: value' to the function call.\n2. If the parameter should be optional, add a default value to the function signature.\n3. Check if you are calling the correct overload of the function.",
+            "codeBlock": "// BEFORE (wrong):\nfunc greet(name: String, greeting: String) { }\ngreet(name: \"Alice\")  // error: missing argument for 'greeting'\n\n// AFTER (correct):\ngreet(name: \"Alice\", greeting: \"Hello\")",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_MISSING_ARGUMENT_LABEL",
+            "category": "function_errors",
+            "severity": "error",
+            "messagePattern": "missing argument label '(?<labelName>.+?)' in call",
+            "match": "error:\\s*missing argument label '(?<labelName>.+?)' in call",
+            "captures": [
+              { "name": "labelName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "labelName" }, "adjustedProbability": 0.6, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "change_signature", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The function call is missing the argument label '{labelName}'. Swift requires external argument labels to be specified at call sites.",
+            "prescription": "1. Add the label: functionName({labelName}: value).\n2. If labels should not be required, change the function declaration to use '_' as the external label.",
+            "codeBlock": "// BEFORE (wrong):\nfunc move(to point: CGPoint) { }\nmove(CGPoint.zero)  // error: missing label 'to'\n\n// AFTER (correct):\nmove(to: CGPoint.zero)",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_EXTRA_ARGUMENT",
+            "category": "function_errors",
+            "severity": "error",
+            "messagePattern": "extra argument(?:s? (?:at positions? .+?|'(?<argName>.+?)')?)? in call",
+            "match": "error:\\s*extra argument(?:s?)? (?:at positions? .+?|'(?<argName>.+?)')? in call",
+            "captures": [
+              { "name": "argName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.4,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "argName" }, "adjustedProbability": 0.7, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "change_signature", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "SWIFT_MISSING_ARGUMENT", "relationship": "sometimes_together", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+            "rootCause": "The function call contains more arguments than the function accepts. The extra argument '{argName}' has no matching parameter.",
+            "prescription": "1. Remove the extra argument from the call.\n2. If the argument is needed, add a corresponding parameter to the function signature.\n3. Check if you are calling the correct overload or function.",
+            "codeBlock": "// BEFORE (wrong):\nfunc greet(name: String) { }\ngreet(name: \"Alice\", age: 30)  // error: extra argument 'age'\n\n// AFTER (correct):\ngreet(name: \"Alice\")",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_INCORRECT_ARGUMENT_LABEL",
+            "category": "function_errors",
+            "severity": "error",
+            "messagePattern": "incorrect argument label in call \\(have '(?<actualLabel>.+?)', expected '(?<expectedLabel>.+?)'\\)",
+            "match": "error:\\s*incorrect argument label in call \\(have '(?<actualLabel>.+?)', expected '(?<expectedLabel>.+?)'\\)",
+            "captures": [
+              { "name": "actualLabel", "role": "symbol_name" },
+              { "name": "expectedLabel", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "expectedLabel" }, "adjustedProbability": 0.6, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "rename_symbol", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The argument label '{actualLabel}' does not match the expected label '{expectedLabel}' in the function signature.",
+            "prescription": "1. Change the argument label from '{actualLabel}' to '{expectedLabel}'.\n2. If the function signature has been updated, update all call sites.\n3. Check for typos in the argument label.",
+            "codeBlock": "// BEFORE (wrong):\nfunc move(to point: CGPoint) { }\nmove(at: CGPoint.zero)  // error: have 'at', expected 'to'\n\n// AFTER (correct):\nmove(to: CGPoint.zero)",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_NO_EXACT_MATCHES",
+            "category": "function_errors",
+            "severity": "error",
+            "messagePattern": "no exact matches in call to (?:initializer|(?:instance |subscript |static )?(?:method|property)) '(?<funcName>.+?)'",
+            "match": "error:\\s*no exact matches in call to (?:initializer|(?:instance |subscript |static )?(?:method|property)) '(?<funcName>.+?)'",
+            "captures": [
+              { "name": "funcName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "funcName" }, "adjustedProbability": 0.75, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "change_signature", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "SWIFT_TYPE_MISMATCH", "relationship": "sometimes_together", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+            "rootCause": "No overload of '{funcName}' matches the argument types provided. The compiler found candidates but none accept the given arguments.",
+            "prescription": "1. Check the types of all arguments being passed to '{funcName}'.\n2. Verify argument labels match the expected signature.\n3. Add explicit type annotations or conversions to match an overload.\n4. Check the available overloads of '{funcName}' for the correct one.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_CANNOT_CALL_NON_FUNCTION",
+            "category": "function_errors",
+            "severity": "error",
+            "messagePattern": "cannot call value of non-function type '(?<typeName>.+?)'",
+            "match": "error:\\s*cannot call value of non-function type '(?<typeName>.+?)'",
+            "captures": [
+              { "name": "typeName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.2,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Attempting to call a value of type '{typeName}' as if it were a function, but '{typeName}' is not a function type and does not have a callAsFunction() method.",
+            "prescription": "1. Check if you accidentally used () instead of [] for subscript access.\n2. If the value should be callable, define a callAsFunction() method on '{typeName}'.\n3. Verify you are calling the correct symbol.",
+            "codeBlock": "// BEFORE (wrong):\nlet value = 42\nvalue()  // error: cannot call Int\n\n// AFTER (correct):\nlet compute: () -> Int = { 42 }\ncompute()",
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "access_control",
+        "name": "Access Control Errors",
+        "description": "Errors about visibility, access levels, and scope restrictions",
+        "defaultTracingBehavior": "trace_import_source",
+        "errors": [
+          {
+            "code": "SWIFT_ACCESS_CONTROL",
+            "category": "access_control",
+            "severity": "error",
+            "messagePattern": "'(?<symbolName>.+?)' is inaccessible due to '(?<accessLevel>private|fileprivate|internal)' protection level",
+            "match": "error:\\s*'(?<symbolName>.+?)' is inaccessible due to '(?<accessLevel>.+?)' protection level",
+            "captures": [
+              { "name": "symbolName", "role": "symbol_name" },
+              { "name": "accessLevel", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.75,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "symbolName" }, "adjustedProbability": 0.95, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "symbolName" }, "adjustedProbability": 0.1, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": { "primaryStrategy": "fix_access_modifier", "requiresCrossFileEdit": true, "typicalScope": "type_definition" },
+            "coOccurrence": [],
+            "rootCause": "The symbol '{symbolName}' is declared with '{accessLevel}' access level and cannot be accessed from this location. Swift's access control levels are: open > public > internal > fileprivate > private.",
+            "prescription": "1. Increase the access level of '{symbolName}' to 'internal' (same module), 'public' (other modules), or 'open' (subclassable from other modules).\n2. If the access restriction is intentional, access the symbol through a public API or method.\n3. For testing, use @testable import to access internal members.",
+            "codeBlock": "// BEFORE (wrong - in another file):\nprivate struct Config {\n    let apiKey: String\n}\n\n// AFTER (correct):\ninternal struct Config {  // or 'public' for cross-module\n    let apiKey: String\n}",
+            "conditions": [
+              {
+                "when": "accessLevel equals private",
+                "rootCause": "'{symbolName}' is private and only visible within its enclosing declaration and extensions in the same file.",
+                "prescription": "Change 'private' to 'fileprivate' (same file), 'internal' (same module), or 'public' (cross-module) depending on needed scope.",
+                "codeBlock": null
+              },
+              {
+                "when": "accessLevel equals fileprivate",
+                "rootCause": "'{symbolName}' is fileprivate and only visible within the same source file.",
+                "prescription": "Change 'fileprivate' to 'internal' or 'public' to make it accessible from other files.",
+                "codeBlock": null
+              },
+              {
+                "when": "accessLevel equals internal",
+                "rootCause": "'{symbolName}' is internal and only visible within the same module. It cannot be accessed from a different module.",
+                "prescription": "Change 'internal' to 'public' or 'open' to make it accessible from other modules. Or use @testable import for test targets.",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "SWIFT_INIT_INACCESSIBLE",
+            "category": "access_control",
+            "severity": "error",
+            "messagePattern": "'(?<typeName>.+?)' initializer is inaccessible due to '(?<accessLevel>.+?)' protection level",
+            "match": "error:\\s*'(?<typeName>.+?)' initializer is inaccessible due to '(?<accessLevel>.+?)' protection level",
+            "captures": [
+              { "name": "typeName", "role": "type_name" },
+              { "name": "accessLevel", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.8,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "typeName" }, "adjustedProbability": 0.95, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "fix_access_modifier", "requiresCrossFileEdit": true, "typicalScope": "type_definition" },
+            "coOccurrence": [],
+            "rootCause": "The initializer of '{typeName}' has '{accessLevel}' access and cannot be called from this location.",
+            "prescription": "1. Add a public initializer to '{typeName}'.\n2. Change the access level of the existing initializer.\n3. Use a factory method or static constructor instead.",
+            "codeBlock": "// BEFORE (wrong):\npublic struct Config {\n    private init() { }  // inaccessible from outside\n}\n\n// AFTER (correct):\npublic struct Config {\n    public init() { }\n}",
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "override_inheritance",
+        "name": "Override and Inheritance Errors",
+        "description": "Errors about overriding methods, required initializers, and class inheritance",
+        "defaultTracingBehavior": "trace_type_definition",
+        "errors": [
+          {
+            "code": "SWIFT_OVERRIDE_MISMATCH",
+            "category": "override_inheritance",
+            "severity": "error",
+            "messagePattern": "(?:method|property) does not override any (?:method|property) from its (?:superclass|parent class)",
+            "match": "error:\\s*(?:method|property) does not override any (?:method|property) from its (?:superclass|parent class)",
+            "captures": [],
+            "baseCrossFileProbability": 0.7,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_inherited", "target": "symbolName" }, "adjustedProbability": 0.9, "traceDepth": "transitive", "traceTarget": "inherited_parent" }
+            ],
+            "fixHint": { "primaryStrategy": "change_signature", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "The method or property is marked with 'override' but no matching member exists in the superclass. The signature may not match, or the superclass method may have been removed or renamed.",
+            "prescription": "1. Check that the method signature exactly matches the superclass method (name, parameters, labels, return type).\n2. If the superclass method was renamed or removed, update the override accordingly.\n3. Remove the 'override' keyword if this is not intended as an override.",
+            "codeBlock": "// BEFORE (wrong):\nclass Child: Parent {\n    override func setup(with value: String) { }  // Parent has setup(value:), not setup(with:)\n}\n\n// AFTER (correct):\nclass Child: Parent {\n    override func setup(value: String) { }\n}",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_MISSING_OVERRIDE",
+            "category": "override_inheritance",
+            "severity": "error",
+            "messagePattern": "overriding declaration requires an 'override' keyword",
+            "match": "error:\\s*overriding declaration requires an 'override' keyword",
+            "captures": [],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_inherited", "target": "symbolName" }, "adjustedProbability": 0.85, "traceDepth": "direct", "traceTarget": "inherited_parent" }
+            ],
+            "fixHint": { "primaryStrategy": "add_override", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "A method or property has the same signature as a superclass member but is missing the 'override' keyword. Swift requires explicit override declarations.",
+            "prescription": "1. Add the 'override' keyword before the declaration.\n2. If this is not intended as an override, rename the method or change its signature.",
+            "codeBlock": "// BEFORE (wrong):\nclass Child: Parent {\n    func viewDidLoad() { }  // error: missing 'override'\n}\n\n// AFTER (correct):\nclass Child: Parent {\n    override func viewDidLoad() { }\n}",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_REQUIRED_INIT",
+            "category": "override_inheritance",
+            "severity": "error",
+            "messagePattern": "'required' initializer '(?<initSignature>.+?)' must be provided by subclass of '(?<parentClass>.+?)'",
+            "match": "error:\\s*'required' initializer '(?<initSignature>.+?)' must be provided by subclass of '(?<parentClass>.+?)'",
+            "captures": [
+              { "name": "initSignature", "role": "symbol_name" },
+              { "name": "parentClass", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.7,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_inherited", "target": "parentClass" }, "adjustedProbability": 0.9, "traceDepth": "direct", "traceTarget": "inherited_parent" }
+            ],
+            "fixHint": { "primaryStrategy": "implement_interface", "requiresCrossFileEdit": false, "typicalScope": "type_definition" },
+            "coOccurrence": [],
+            "rootCause": "The parent class '{parentClass}' has a required initializer '{initSignature}' that must be implemented by all subclasses.",
+            "prescription": "1. Implement the required initializer in the subclass: required {initSignature} { ... }\n2. If you don't need custom initialization, call the super implementation.",
+            "codeBlock": "// BEFORE (wrong):\nclass CustomView: UIView {\n    // error: missing required init?(coder:)\n}\n\n// AFTER (correct):\nclass CustomView: UIView {\n    required init?(coder: NSCoder) {\n        super.init(coder: coder)\n    }\n}",
+            "conditions": [
+              {
+                "when": "initSignature contains coder",
+                "rootCause": "NSCoding requires init?(coder:) for all UIView/UIViewController subclasses. This is the most common required initializer in UIKit.",
+                "prescription": "Add 'required init?(coder: NSCoder) { super.init(coder: coder) }' or 'fatalError(\"init(coder:) has not been implemented\")' if Interface Builder is not used.",
+                "codeBlock": "required init?(coder: NSCoder) {\n    fatalError(\"init(coder:) has not been implemented\")\n}"
+              }
+            ]
+          },
+          {
+            "code": "SWIFT_CANNOT_OVERRIDE_FINAL",
+            "category": "override_inheritance",
+            "severity": "error",
+            "messagePattern": "(?:instance method|property|subscript) overrides a 'final' (?:instance method|property|subscript)",
+            "match": "error:\\s*(?:instance method|property|subscript) overrides a 'final' (?:instance method|property|subscript)",
+            "captures": [],
+            "baseCrossFileProbability": 0.7,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_inherited", "target": "symbolName" }, "adjustedProbability": 0.9, "traceDepth": "direct", "traceTarget": "inherited_parent" }
+            ],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": true, "typicalScope": "type_definition" },
+            "coOccurrence": [],
+            "rootCause": "The method or property in the superclass is marked 'final' and cannot be overridden. The 'final' keyword prevents subclasses from changing the behavior.",
+            "prescription": "1. Do not override the final member. Use composition instead of inheritance.\n2. If the superclass should allow overriding, remove the 'final' keyword from the superclass.\n3. Call the superclass method and add behavior before or after the call.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_CANNOT_INHERIT_FINAL",
+            "category": "override_inheritance",
+            "severity": "error",
+            "messagePattern": "inheritance from a final class '(?<className>.+?)'",
+            "match": "error:\\s*inheritance from a final class '(?<className>.+?)'",
+            "captures": [
+              { "name": "className", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.7,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "className" }, "adjustedProbability": 0.9, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": true, "typicalScope": "type_definition" },
+            "coOccurrence": [],
+            "rootCause": "'{className}' is declared as 'final' and cannot be subclassed. Final classes are intentionally sealed against inheritance.",
+            "prescription": "1. Use composition instead of inheritance: include an instance of '{className}' as a property.\n2. Use protocol-based design instead of class inheritance.\n3. If you control '{className}', remove the 'final' keyword.",
+            "codeBlock": null,
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "concurrency",
+        "name": "Concurrency and Actor Isolation Errors",
+        "description": "Errors about async/await, actors, Sendable, and concurrency safety",
+        "defaultTracingBehavior": "trace_type_definition",
+        "errors": [
+          {
+            "code": "SWIFT_ASYNC_CONTEXT",
+            "category": "concurrency",
+            "severity": "error",
+            "messagePattern": "'async' call in a function that does not support concurrency",
+            "match": "error:\\s*'async' call in a function that does not support concurrency",
+            "captures": [],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "symbolName" }, "adjustedProbability": 0.6, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "wrap_async", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [
+              { "code": "SWIFT_MISSING_AWAIT", "relationship": "sometimes_together", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+            "rootCause": "An async function is being called from a synchronous context. Async functions can only be called from other async functions or within a Task.",
+            "prescription": "1. Make the enclosing function async: func myFunc() async { ... }\n2. Wrap the call in a Task { } block for fire-and-forget execution.\n3. Use Task { await asyncFunc() } to bridge from sync to async context.",
+            "codeBlock": "// BEFORE (wrong):\nfunc loadData() {\n    let data = await fetchData()  // error: async in non-async function\n}\n\n// AFTER (correct) - Option 1: make function async:\nfunc loadData() async {\n    let data = await fetchData()\n}\n\n// AFTER (correct) - Option 2: use Task:\nfunc loadData() {\n    Task {\n        let data = await fetchData()\n    }\n}",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_MISSING_AWAIT",
+            "category": "concurrency",
+            "severity": "error",
+            "messagePattern": "expression is 'async' but is not marked with 'await'",
+            "match": "error:\\s*expression is 'async' but is not marked with 'await'",
+            "captures": [],
+            "baseCrossFileProbability": 0.1,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "add_await", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "SWIFT_ASYNC_CONTEXT", "relationship": "sometimes_together", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+            "rootCause": "An async expression is used without the 'await' keyword. Swift requires 'await' to explicitly mark suspension points.",
+            "prescription": "1. Add 'await' before the async expression.\n2. Ensure the enclosing function is also marked 'async'.",
+            "codeBlock": "// BEFORE (wrong):\nfunc loadData() async {\n    let data = fetchData()  // error: missing 'await'\n}\n\n// AFTER (correct):\nfunc loadData() async {\n    let data = await fetchData()\n}",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_MISSING_TRY",
+            "category": "concurrency",
+            "severity": "error",
+            "messagePattern": "call can throw but is not marked with 'try'",
+            "match": "error:\\s*call can throw but is not marked with 'try'",
+            "captures": [],
+            "baseCrossFileProbability": 0.2,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "symbolName" }, "adjustedProbability": 0.5, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "wrap_async", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "A throwing function is being called without 'try'. Swift requires explicit error handling for functions that can throw.",
+            "prescription": "1. Add 'try' before the call: let result = try throwingFunc()\n2. Use 'try?' for optional result (nil on error): let result = try? throwingFunc()\n3. Use 'try!' if you're certain it won't throw (crashes on error): let result = try! throwingFunc()\n4. Ensure the enclosing function is marked 'throws' or the call is in a do-catch block.",
+            "codeBlock": "// BEFORE (wrong):\nfunc loadData() throws {\n    let data = JSONDecoder().decode(MyType.self, from: jsonData)  // error: missing 'try'\n}\n\n// AFTER (correct):\nfunc loadData() throws {\n    let data = try JSONDecoder().decode(MyType.self, from: jsonData)\n}",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_SENDABLE",
+            "category": "concurrency",
+            "severity": "error",
+            "messagePattern": "(?:capture of|sending) '(?<symbolName>.+?)' (?:with non-sendable type '(?<typeName>.+?)'|risks causing data races)",
+            "match": "error:\\s*(?:capture of|sending) '(?<symbolName>.+?)'",
+            "captures": [
+              { "name": "symbolName", "role": "symbol_name" },
+              { "name": "typeName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "typeName" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "typeName" }, "adjustedProbability": 0.15, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": { "primaryStrategy": "implement_interface", "requiresCrossFileEdit": true, "typicalScope": "type_definition" },
+            "coOccurrence": [
+              { "code": "SWIFT_ACTOR_ISOLATION", "relationship": "sometimes_together", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+            "rootCause": "The value '{symbolName}' of type '{typeName}' is being sent across concurrency boundaries but '{typeName}' does not conform to Sendable. Non-Sendable types cannot safely cross actor or task boundaries.",
+            "prescription": "1. Make '{typeName}' conform to Sendable (struct with all Sendable properties, or final class).\n2. Use @unchecked Sendable if you guarantee thread safety yourself.\n3. Use @Sendable for closure types.\n4. Restructure to avoid crossing concurrency boundaries with this type.",
+            "codeBlock": "// BEFORE (wrong):\nclass Config {\n    var timeout: Int = 30\n}\nfunc process() async {\n    let config = Config()\n    Task { print(config.timeout) }  // error: non-sendable\n}\n\n// AFTER (correct):\nstruct Config: Sendable {\n    let timeout: Int = 30\n}",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_ACTOR_ISOLATION",
+            "category": "concurrency",
+            "severity": "error",
+            "messagePattern": "(?:actor-isolated|main actor-isolated) (?:property|instance method) '(?<memberName>.+?)' can(?:not| only) be (?:referenced|mutated|called) (?:from|on) (?:a nonisolated|the main actor|a different) (?:context|autoclosure)",
+            "match": "error:\\s*(?:actor-isolated|main actor-isolated) (?:property|instance method) '(?<memberName>.+?)'",
+            "captures": [
+              { "name": "memberName", "role": "property_name" }
+            ],
+            "baseCrossFileProbability": 0.45,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "memberName" }, "adjustedProbability": 0.75, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "wrap_async", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [
+              { "code": "SWIFT_SENDABLE", "relationship": "sometimes_together", "sharedCapture": null, "resolution": "fix_either" },
+              { "code": "SWIFT_ASYNC_CONTEXT", "relationship": "sometimes_together", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+            "rootCause": "The member '{memberName}' is isolated to an actor and cannot be accessed from a different isolation domain. Actor isolation protects against data races by ensuring only one execution context accesses the actor's state at a time.",
+            "prescription": "1. Access the member asynchronously: await actor.{memberName}\n2. Mark the calling function as @MainActor or the appropriate actor isolation.\n3. Use 'nonisolated' on the member if it does not actually need actor isolation.\n4. Move the access into an async context.",
+            "codeBlock": "// BEFORE (wrong):\n@MainActor class ViewModel {\n    var title = \"Hello\"\n}\nfunc update(vm: ViewModel) {\n    print(vm.title)  // error: main actor-isolated\n}\n\n// AFTER (correct):\nfunc update(vm: ViewModel) async {\n    await print(vm.title)\n}\n// Or mark the function:\n@MainActor func update(vm: ViewModel) {\n    print(vm.title)\n}",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_ACTOR_MUTABLE_CAPTURE",
+            "category": "concurrency",
+            "severity": "error",
+            "messagePattern": "mutation of captured var '(?<varName>.+?)' in concurrently-executing code",
+            "match": "error:\\s*mutation of captured var '(?<varName>.+?)' in concurrently-executing code",
+            "captures": [
+              { "name": "varName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.1,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [
+              { "code": "SWIFT_SENDABLE", "relationship": "sometimes_together", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+            "rootCause": "The variable '{varName}' is captured and mutated in code that may execute concurrently (e.g., a Task, async closure). This is a potential data race.",
+            "prescription": "1. Use an actor to protect the mutable state.\n2. Use a local copy of the variable inside the concurrent context.\n3. Use atomics or locks if appropriate.\n4. Restructure to avoid shared mutable state.",
+            "codeBlock": "// BEFORE (wrong):\nvar count = 0\nTask {\n    count += 1  // error: mutation of captured var\n}\n\n// AFTER (correct):\nactor Counter {\n    var count = 0\n    func increment() { count += 1 }\n}",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_MISSING_THROWS",
+            "category": "concurrency",
+            "severity": "error",
+            "messagePattern": "error is not handled because the enclosing function is not declared 'throws'",
+            "match": "error:\\s*error is not handled because the enclosing function is not declared 'throws'",
+            "captures": [],
+            "baseCrossFileProbability": 0.15,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "change_signature", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [
+              { "code": "SWIFT_MISSING_TRY", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+            "rootCause": "A 'try' expression is used but the enclosing function is not declared as 'throws'. Errors must be either handled locally (do-catch) or propagated by declaring the function as throwing.",
+            "prescription": "1. Add 'throws' to the function signature: func myFunc() throws { ... }\n2. Or handle the error locally with a do-catch block.\n3. Use 'try?' or 'try!' to convert the throwing call to a non-throwing one.",
+            "codeBlock": "// BEFORE (wrong):\nfunc loadData() {\n    let data = try Data(contentsOf: url)  // error: not declared 'throws'\n}\n\n// AFTER (correct) - Option 1:\nfunc loadData() throws {\n    let data = try Data(contentsOf: url)\n}\n\n// AFTER (correct) - Option 2:\nfunc loadData() {\n    do {\n        let data = try Data(contentsOf: url)\n    } catch {\n        print(\"Failed: \\(error)\")\n    }\n}",
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "protocol_generics",
+        "name": "Protocol, Generic, and Type System Advanced Errors",
+        "description": "Errors with protocols, generics, associated types, opaque/existential types",
+        "defaultTracingBehavior": "trace_type_definition",
+        "errors": [
+          {
+            "code": "SWIFT_PROTOCOL_ASSOCIATED_TYPE",
+            "category": "protocol_generics",
+            "severity": "error",
+            "messagePattern": "protocol '(?<protocolName>.+?)' can only be used as a generic constraint because it has Self or associated type requirements",
+            "match": "error:\\s*protocol '(?<protocolName>.+?)' can only be used as a generic constraint because it has Self or associated type requirements",
+            "captures": [
+              { "name": "protocolName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "protocolName" }, "adjustedProbability": 0.75, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "update_type_annotation", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "SWIFT_EXISTENTIAL_ANY", "relationship": "same_root_cause", "sharedCapture": "protocolName", "resolution": "fix_either" }
+            ],
+            "rootCause": "The protocol '{protocolName}' has Self or associated type requirements, which means it cannot be used as a standalone existential type. The compiler does not know the concrete associated types at compile time.",
+            "prescription": "1. Use a generic constraint: func process<T: {protocolName}>(value: T) { }\n2. Use 'any {protocolName}' (Swift 5.7+) if existential usage is acceptable.\n3. Use 'some {protocolName}' for opaque return types.\n4. Create a type-erased wrapper (e.g., AnySequence, AnyPublisher).",
+            "codeBlock": "// BEFORE (wrong):\nfunc getCollection() -> Collection {  // error: has associated type\n    return [1, 2, 3]\n}\n\n// AFTER (correct) - Option 1: opaque type:\nfunc getCollection() -> some Collection {\n    return [1, 2, 3]\n}\n\n// AFTER (correct) - Option 2: generic:\nfunc process<C: Collection>(collection: C) where C.Element == Int { }",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_ASSOCIATED_TYPE_MISSING",
+            "category": "protocol_generics",
+            "severity": "error",
+            "messagePattern": "type '(?<typeName>.+?)' does not conform to protocol '(?<protocolName>.+?)' \\((?:do you want to add protocol stubs|unable to infer associated type '(?<assocType>.+?)')\\)",
+            "match": "error:\\s*(?:unable to infer associated type '(?<assocType>.+?)' for protocol '(?<protocolName>.+?)'|type '(?<typeName>.+?)' does not conform)",
+            "captures": [
+              { "name": "typeName", "role": "type_name" },
+              { "name": "protocolName", "role": "type_name" },
+              { "name": "assocType", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "protocolName" }, "adjustedProbability": 0.75, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "implement_interface", "requiresCrossFileEdit": false, "typicalScope": "type_definition" },
+            "coOccurrence": [
+              { "code": "SWIFT_MISSING_CONFORMANCE", "relationship": "same_root_cause", "sharedCapture": "protocolName", "resolution": "fix_either" }
+            ],
+            "rootCause": "The compiler cannot infer the associated type '{assocType}' for protocol '{protocolName}'. The conforming type must provide enough information for the compiler to determine the associated type.",
+            "prescription": "1. Add a typealias to explicitly specify the associated type: typealias {assocType} = ConcreteType.\n2. Implement the required methods with concrete types so the compiler can infer the associated type.\n3. Check the protocol definition for all required associated types.",
+            "codeBlock": "// BEFORE (wrong):\nprotocol Container {\n    associatedtype Item\n    func getItem() -> Item\n}\nstruct Box: Container {\n    // error: unable to infer associated type 'Item'\n}\n\n// AFTER (correct):\nstruct Box: Container {\n    typealias Item = String\n    func getItem() -> String { return \"\" }\n}",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_WHERE_CLAUSE_FAIL",
+            "category": "protocol_generics",
+            "severity": "error",
+            "messagePattern": "(?:generic|where) (?:struct|class|enum|function) '(?<symbolName>.+?)' requires that '(?<typeName>.+?)' (?:conform to|be a subclass of|be identical to) '(?<constraintType>.+?)'",
+            "match": "error:\\s*(?:global function|instance method) '(?<symbolName>.+?)' requires that '(?<typeName>.+?)' (?:conform to|be) '(?<constraintType>.+?)'",
+            "captures": [
+              { "name": "symbolName", "role": "symbol_name" },
+              { "name": "typeName", "role": "type_name" },
+              { "name": "constraintType", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.55,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "constraintType" }, "adjustedProbability": 0.75, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_generic_param", "target": "typeName" }, "adjustedProbability": 0.5, "traceDepth": "direct", "traceTarget": "composed_type" }
+            ],
+            "fixHint": { "primaryStrategy": "fix_generic_constraint", "requiresCrossFileEdit": true, "typicalScope": "type_definition" },
+            "coOccurrence": [],
+            "rootCause": "The generic constraint requires '{typeName}' to conform to or be '{constraintType}', but this requirement is not satisfied.",
+            "prescription": "1. Add conformance to '{constraintType}' for '{typeName}'.\n2. Use a different type that already satisfies the constraint.\n3. If the constraint is too strict, consider changing the generic signature.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_PROPERTY_WRAPPER_TYPE",
+            "category": "protocol_generics",
+            "severity": "error",
+            "messagePattern": "property type '(?<actualType>.+?)' does not match that of the 'wrappedValue' property of its wrapper type '(?<wrapperType>.+?)'",
+            "match": "error:\\s*property type '(?<actualType>.+?)' does not match .+ wrapper type '(?<wrapperType>.+?)'",
+            "captures": [
+              { "name": "actualType", "role": "actual_type" },
+              { "name": "wrapperType", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "wrapperType" }, "adjustedProbability": 0.75, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "update_type_annotation", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The property's declared type '{actualType}' does not match the 'wrappedValue' type of the property wrapper '{wrapperType}'.",
+            "prescription": "1. Change the property's type to match the wrappedValue type of '{wrapperType}'.\n2. Or use a different property wrapper that matches '{actualType}'.\n3. Check the property wrapper's generic parameters.",
+            "codeBlock": "// BEFORE (wrong):\n@Published var name: Int  // if wrappedValue expects String\n\n// AFTER (correct):\n@Published var name: String",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_RESULT_BUILDER_ERROR",
+            "category": "protocol_generics",
+            "severity": "error",
+            "messagePattern": "(?:type '(?<actualType>.+?)' cannot be used as a result builder|cannot convert value of type '(?<actualType2>.+?)' to expected result builder type '(?<builderType>.+?)')",
+            "match": "error:\\s*(?:type '(?<actualType>.+?)' cannot be used as a result builder|cannot convert .+ to .+ result builder)",
+            "captures": [
+              { "name": "actualType", "role": "actual_type" },
+              { "name": "actualType2", "role": "actual_type" },
+              { "name": "builderType", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.4,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "builderType" }, "adjustedProbability": 0.7, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "A result builder (like @ViewBuilder) encountered an expression that it cannot incorporate. Result builders transform the contents of a closure using specific build methods.",
+            "prescription": "1. Ensure all expressions in the builder body produce values compatible with the builder.\n2. For @ViewBuilder, all branches must return View-conforming types.\n3. Use Group { } to wrap multiple views or conditional content.\n4. Check that if-else branches have compatible return types.",
+            "codeBlock": "// BEFORE (wrong):\nvar body: some View {\n    if condition {\n        Text(\"Yes\")\n    }\n    // Missing else branch in ViewBuilder\n}\n\n// AFTER (correct):\nvar body: some View {\n    if condition {\n        Text(\"Yes\")\n    } else {\n        EmptyView()\n    }\n}",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_CONDITIONAL_CONFORMANCE",
+            "category": "protocol_generics",
+            "severity": "error",
+            "messagePattern": "conditional conformance of type '(?<typeName>.+?)' to protocol '(?<protocolName>.+?)' does not imply conformance to inherited protocol '(?<inheritedProtocol>.+?)'",
+            "match": "error:\\s*conditional conformance of type '(?<typeName>.+?)' to protocol '(?<protocolName>.+?)' does not imply conformance to inherited protocol '(?<inheritedProtocol>.+?)'",
+            "captures": [
+              { "name": "typeName", "role": "type_name" },
+              { "name": "protocolName", "role": "type_name" },
+              { "name": "inheritedProtocol", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.55,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "protocolName" }, "adjustedProbability": 0.75, "traceDepth": "transitive", "traceTarget": "inherited_parent" }
+            ],
+            "fixHint": { "primaryStrategy": "implement_interface", "requiresCrossFileEdit": true, "typicalScope": "type_definition" },
+            "coOccurrence": [
+              { "code": "SWIFT_MISSING_CONFORMANCE", "relationship": "same_root_cause", "sharedCapture": "typeName", "resolution": "fix_either" }
+            ],
+            "rootCause": "The conditional conformance of '{typeName}' to '{protocolName}' does not automatically provide conformance to '{inheritedProtocol}'. Each protocol in the hierarchy needs its own conformance.",
+            "prescription": "1. Add a separate conditional conformance for '{inheritedProtocol}'.\n2. Or ensure the conditions for '{protocolName}' conformance also satisfy '{inheritedProtocol}'.",
+            "codeBlock": "// Example:\nextension Array: Equatable where Element: Equatable { }\n// This does NOT automatically make Array: Hashable\n// You need:\nextension Array: Hashable where Element: Hashable { }",
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "module_import",
+        "name": "Module and Import Errors",
+        "description": "Errors about importing modules, frameworks, and specific symbols",
+        "defaultTracingBehavior": "trace_import_source",
+        "errors": [
+          {
+            "code": "SWIFT_AMBIGUOUS_MODULE",
+            "category": "module_import",
+            "severity": "error",
+            "messagePattern": "ambiguous name '(?<symbolName>.+?)' in module '(?<moduleName>.+?)'",
+            "match": "error:\\s*ambiguous name '(?<symbolName>.+?)' in module '(?<moduleName>.+?)'",
+            "captures": [
+              { "name": "symbolName", "role": "symbol_name" },
+              { "name": "moduleName", "role": "target_module" }
+            ],
+            "baseCrossFileProbability": 0.8,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_external", "target": "moduleName" }, "adjustedProbability": 0.95, "traceDepth": "none", "traceTarget": "external_package" }
+            ],
+            "fixHint": { "primaryStrategy": "update_import_path", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [],
+            "rootCause": "Multiple symbols named '{symbolName}' exist in module '{moduleName}' and the compiler cannot determine which one to use.",
+            "prescription": "1. Use a more specific import: import struct {moduleName}.{symbolName} or import class {moduleName}.{symbolName}.\n2. Fully qualify the symbol at the use site: {moduleName}.{symbolName}.\n3. Use typealias to disambiguate.",
+            "codeBlock": "// Use specific import:\nimport struct Foundation.URL\nimport class Foundation.URLSession",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_CIRCULAR_DEPENDENCY",
+            "category": "module_import",
+            "severity": "error",
+            "messagePattern": "circular dependency between modules '(?<module1>.+?)' and '(?<module2>.+?)'",
+            "match": "error:\\s*circular dependency between modules '(?<module1>.+?)' and '(?<module2>.+?)'",
+            "captures": [
+              { "name": "module1", "role": "target_module" },
+              { "name": "module2", "role": "target_module" }
+            ],
+            "baseCrossFileProbability": 1.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": true, "typicalScope": "entire_file" },
+            "coOccurrence": [],
+            "rootCause": "Modules '{module1}' and '{module2}' have a circular import dependency. Module '{module1}' imports '{module2}' and '{module2}' imports '{module1}'.",
+            "prescription": "1. Extract shared types into a third module that both can import.\n2. Use protocols to break the dependency (dependency inversion).\n3. Move the shared code to the lower-level module.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_TESTABLE_IMPORT",
+            "category": "module_import",
+            "severity": "error",
+            "messagePattern": "module '(?<moduleName>.+?)' was not compiled for testing",
+            "match": "error:\\s*module '(?<moduleName>.+?)' was not compiled for testing",
+            "captures": [
+              { "name": "moduleName", "role": "target_module" }
+            ],
+            "baseCrossFileProbability": 1.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "update_config", "requiresCrossFileEdit": true, "typicalScope": "entire_file" },
+            "coOccurrence": [],
+            "rootCause": "The @testable import of '{moduleName}' failed because the module was not compiled with the -enable-testing flag.",
+            "prescription": "1. In Xcode, ensure 'Enable Testability' is set to Yes in the build settings for the target.\n2. In SPM, testability is enabled by default in debug builds. Ensure you are building in debug mode.\n3. Alternatively, remove @testable and only test the public API.",
+            "codeBlock": "// Ensure the module is built with testing enabled:\n// In Package.swift, test targets can @testable import by default.\n@testable import MyModule",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_UNAVAILABLE_PLATFORM",
+            "category": "module_import",
+            "severity": "error",
+            "messagePattern": "'(?<symbolName>.+?)' is (?:unavailable|only available) (?:in|on) (?<platform>.+?)(?:\\s+(?<version>.+?) or newer)?",
+            "match": "error:\\s*'(?<symbolName>.+?)' is (?:unavailable|only available) (?:in|on) (?<platform>.+)",
+            "captures": [
+              { "name": "symbolName", "role": "symbol_name" },
+              { "name": "platform", "role": "literal_value" },
+              { "name": "version", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "update_config", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "'{symbolName}' is not available on {platform} {version}. The deployment target is lower than the minimum required version.",
+            "prescription": "1. Increase the deployment target to {platform} {version} or later.\n2. Wrap the usage in an availability check: if #available({platform} {version}, *) { ... }\n3. Use @available({platform} {version}, *) on the enclosing function or type.\n4. Provide a fallback for older versions.",
+            "codeBlock": "// BEFORE (wrong):\nfunc doSomething() {\n    let formatter = PersonNameComponentsFormatter()  // iOS 15+ only\n}\n\n// AFTER (correct):\nfunc doSomething() {\n    if #available(iOS 15.0, *) {\n        let formatter = PersonNameComponentsFormatter()\n    } else {\n        // Fallback for older versions\n    }\n}",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_DEPRECATED",
+            "category": "module_import",
+            "severity": "warning",
+            "messagePattern": "'(?<symbolName>.+?)' (?:is|was) deprecated(?:: (?<reason>.+))?",
+            "match": "warning:\\s*'(?<symbolName>.+?)' (?:is|was) deprecated",
+            "captures": [
+              { "name": "symbolName", "role": "symbol_name" },
+              { "name": "reason", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "symbolName" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "rename_symbol", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "'{symbolName}' has been deprecated. {reason}",
+            "prescription": "1. Replace '{symbolName}' with its recommended replacement.\n2. Check the deprecation message for migration guidance.\n3. If no replacement is specified, check the documentation for alternatives.",
+            "codeBlock": null,
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "enum_pattern",
+        "name": "Enum and Pattern Matching Errors",
+        "description": "Errors in switch/case statements, enum usage, and pattern matching",
+        "defaultTracingBehavior": "trace_type_definition",
+        "errors": [
+          {
+            "code": "SWIFT_NON_EXHAUSTIVE_SWITCH",
+            "category": "enum_pattern",
+            "severity": "error",
+            "messagePattern": "switch must be exhaustive",
+            "match": "error:\\s*switch must be exhaustive",
+            "captures": [],
+            "baseCrossFileProbability": 0.4,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "typeName" }, "adjustedProbability": 0.7, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "The switch statement does not cover all possible cases of the value being switched on. Swift requires switch statements to be exhaustive.",
+            "prescription": "1. Add a 'default:' case to handle remaining values.\n2. Add the missing case(s) explicitly.\n3. If using an enum, check if new cases were added recently.",
+            "codeBlock": "// BEFORE (wrong):\nenum Direction { case north, south, east, west }\nswitch direction {\ncase .north: break\ncase .south: break\n// error: missing .east and .west\n}\n\n// AFTER (correct):\nswitch direction {\ncase .north: break\ncase .south: break\ncase .east: break\ncase .west: break\n}",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_ENUM_CASE_NOT_MEMBER",
+            "category": "enum_pattern",
+            "severity": "error",
+            "messagePattern": "type '(?<typeName>.+?)' has no member '(?<caseName>.+?)'",
+            "match": "error:\\s*type '(?<typeName>.+?)' has no member '(?<caseName>.+?)'",
+            "captures": [
+              { "name": "typeName", "role": "type_name" },
+              { "name": "caseName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.6,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "typeName" }, "adjustedProbability": 0.85, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "fix_enum_value", "requiresCrossFileEdit": true, "typicalScope": "type_definition" },
+            "coOccurrence": [],
+            "rootCause": "The enum or type '{typeName}' does not have a case or member named '{caseName}'. It may have been renamed, removed, or misspelled.",
+            "prescription": "1. Check spelling of '{caseName}'.\n2. Verify the available cases/members of '{typeName}'.\n3. If the case was removed, update the code to use the replacement.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_ENUM_RAW_TYPE",
+            "category": "enum_pattern",
+            "severity": "error",
+            "messagePattern": "raw type '(?<rawType>.+?)' is not expressible by a string, integer, or floating-point literal",
+            "match": "error:\\s*raw type '(?<rawType>.+?)' is not expressible by a string, integer, or floating-point literal",
+            "captures": [
+              { "name": "rawType", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.2,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "update_type_annotation", "requiresCrossFileEdit": false, "typicalScope": "type_definition" },
+            "coOccurrence": [],
+            "rootCause": "The raw type '{rawType}' for the enum is not a valid raw value type. Enum raw values must be String, Int, or another expressible-by-literal type.",
+            "prescription": "1. Change the raw type to String, Int, or Double.\n2. If you need a custom raw type, implement the RawRepresentable protocol manually.\n3. Consider using associated values instead of raw values.",
+            "codeBlock": "// BEFORE (wrong):\nenum Status: CustomType { ... }  // error\n\n// AFTER (correct):\nenum Status: String {\n    case active = \"active\"\n    case inactive = \"inactive\"\n}",
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "swift_ui",
+        "name": "SwiftUI and View Errors",
+        "description": "Common errors specific to SwiftUI development",
+        "defaultTracingBehavior": "trace_type_definition",
+        "errors": [
+          {
+            "code": "SWIFT_VIEW_BODY_TYPE",
+            "category": "swift_ui",
+            "severity": "error",
+            "messagePattern": "function declares an opaque return type, but the return statements in its body do not have matching underlying types",
+            "match": "error:\\s*function declares an opaque return type, but the return statements in its body do not have matching underlying types",
+            "captures": [],
+            "baseCrossFileProbability": 0.15,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "The computed property or function with 'some' return type has return statements that produce different concrete types. Opaque return types require all return paths to produce the same underlying type.",
+            "prescription": "1. Use Group { } to wrap different view types into a single erased type.\n2. Use @ViewBuilder to allow multiple return types.\n3. Use AnyView() to type-erase (not recommended for performance).\n4. Ensure all branches return the same concrete type.",
+            "codeBlock": "// BEFORE (wrong):\nvar body: some View {\n    if showImage {\n        return Image(\"photo\")  // returns Image\n    } else {\n        return Text(\"No photo\")  // returns Text - different type!\n    }\n}\n\n// AFTER (correct) - use @ViewBuilder:\n@ViewBuilder\nvar body: some View {\n    if showImage {\n        Image(\"photo\")\n    } else {\n        Text(\"No photo\")\n    }\n}",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_VIEWBUILDER_LIMIT",
+            "category": "swift_ui",
+            "severity": "error",
+            "messagePattern": "extra argument in call",
+            "match": "error:\\s*extra argument in call",
+            "captures": [],
+            "baseCrossFileProbability": 0.15,
+            "confidence": "heuristic",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "In older Swift versions, @ViewBuilder has a limit on the number of child views (previously 10). This error can occur when too many views are in a single container.",
+            "prescription": "1. Group views using Group { } to reduce the number of direct children.\n2. Extract subviews into separate View structs.\n3. Use ForEach for repetitive views.",
+            "codeBlock": "// BEFORE (wrong):\nVStack {\n    Text(\"1\")\n    Text(\"2\")\n    // ... more than 10 views\n}\n\n// AFTER (correct):\nVStack {\n    Group {\n        Text(\"1\")\n        Text(\"2\")\n        // ...\n    }\n    Group {\n        // ... remaining views\n    }\n}",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_STATE_STRUCT_ONLY",
+            "category": "swift_ui",
+            "severity": "error",
+            "messagePattern": "property wrapper '(?<wrapper>.+?)' (?:is only available on properties of (?:structs|classes)|requires .+? to conform to .+?)",
+            "match": "error:\\s*property wrapper '(?<wrapper>.+?)'",
+            "captures": [
+              { "name": "wrapper", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.2,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "type_definition" },
+            "coOccurrence": [],
+            "rootCause": "The property wrapper '{wrapper}' is being used in an invalid context. Some property wrappers have restrictions on where they can be applied.",
+            "prescription": "1. For @State, ensure it is used on a struct conforming to View.\n2. For @ObservedObject, use a class conforming to ObservableObject.\n3. For @Published, use it inside an ObservableObject class.\n4. Check the property wrapper's documentation for usage requirements.",
+            "codeBlock": null,
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "initialization",
+        "name": "Initialization Errors",
+        "description": "Errors about property initialization, stored properties, and designated initializers",
+        "defaultTracingBehavior": "local_only",
+        "errors": [
+          {
+            "code": "SWIFT_NOT_INITIALIZED",
+            "category": "initialization",
+            "severity": "error",
+            "messagePattern": "(?:return from initializer|class .+? has no initializers|property '(?<propertyName>.+?)' (?:is|not) (?:used before being|)initialized)",
+            "match": "error:\\s*(?:return from initializer|class .+? has no initializers|property '(?<propertyName>.+?)')",
+            "captures": [
+              { "name": "propertyName", "role": "property_name" }
+            ],
+            "baseCrossFileProbability": 0.15,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "initialize_variable", "requiresCrossFileEdit": false, "typicalScope": "type_definition" },
+            "coOccurrence": [],
+            "rootCause": "A stored property '{propertyName}' is not initialized before use. All stored properties must have values before the initializer completes or before first use.",
+            "prescription": "1. Provide a default value for the property: var {propertyName}: Type = defaultValue\n2. Initialize the property in all designated initializers.\n3. Make the property optional: var {propertyName}: Type?\n4. Use a lazy property if initialization is expensive: lazy var {propertyName}: Type = ...",
+            "codeBlock": "// BEFORE (wrong):\nclass User {\n    var name: String  // error: not initialized\n}\n\n// AFTER (correct) - Option 1: default value:\nclass User {\n    var name: String = \"\"\n}\n\n// AFTER (correct) - Option 2: initializer:\nclass User {\n    var name: String\n    init(name: String) {\n        self.name = name\n    }\n}",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_SELF_BEFORE_SUPER",
+            "category": "initialization",
+            "severity": "error",
+            "messagePattern": "'self' used before 'super\\.init' call",
+            "match": "error:\\s*'self' used before 'super\\.init' call",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "Properties of the subclass are being accessed before calling super.init(). Swift's two-phase initialization requires all subclass properties to be initialized before calling super.init(), and self cannot be used until after super.init() completes.",
+            "prescription": "1. Move the super.init() call after all subclass properties are initialized.\n2. Do not access self before super.init() is called.\n3. Restructure the initializer to follow Swift's two-phase initialization rules.",
+            "codeBlock": "// BEFORE (wrong):\nclass Child: Parent {\n    var name: String\n    init() {\n        self.doSomething()  // error: self used before super.init\n        super.init()\n    }\n}\n\n// AFTER (correct):\nclass Child: Parent {\n    var name: String\n    init() {\n        self.name = \"default\"\n        super.init()\n        self.doSomething()  // OK after super.init\n    }\n}",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_SUPER_INIT_NOT_CALLED",
+            "category": "initialization",
+            "severity": "error",
+            "messagePattern": "super\\.init isn't called on all paths before returning from initializer",
+            "match": "error:\\s*super\\.init isn't called on all paths before returning from initializer",
+            "captures": [],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_inherited", "target": "symbolName" }, "adjustedProbability": 0.7, "traceDepth": "direct", "traceTarget": "inherited_parent" }
+            ],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "Not all code paths in the initializer call super.init(). Every designated initializer of a subclass must call a designated initializer of its superclass.",
+            "prescription": "1. Add super.init() call on every code path.\n2. If the initializer has early returns, ensure super.init() is called before each return.\n3. Move the super.init() call to be unconditional.",
+            "codeBlock": null,
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "closure_errors",
+        "name": "Closure and Capture Errors",
+        "description": "Errors related to closures, escaping, and capture lists",
+        "defaultTracingBehavior": "local_only",
+        "errors": [
+          {
+            "code": "SWIFT_ESCAPING_CLOSURE",
+            "category": "closure_errors",
+            "severity": "error",
+            "messagePattern": "escaping closure captures mutating 'self' parameter",
+            "match": "error:\\s*escaping closure captures mutating 'self' parameter",
+            "captures": [],
+            "baseCrossFileProbability": 0.15,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "An escaping closure is capturing 'self' in a mutating context (struct or enum). Escaping closures cannot capture a mutating reference to a value type because the closure may outlive the value.",
+            "prescription": "1. Change the struct to a class (reference type).\n2. Capture specific properties instead of self.\n3. Use a non-escaping closure if possible.\n4. Store the closure result in a local variable and assign back.",
+            "codeBlock": "// BEFORE (wrong):\nstruct Timer {\n    var elapsed = 0\n    mutating func start() {\n        DispatchQueue.main.async {\n            self.elapsed += 1  // error: escaping closure captures mutating self\n        }\n    }\n}\n\n// AFTER (correct) - use a class:\nclass Timer {\n    var elapsed = 0\n    func start() {\n        DispatchQueue.main.async { [weak self] in\n            self?.elapsed += 1\n        }\n    }\n}",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_MISSING_ESCAPING",
+            "category": "closure_errors",
+            "severity": "error",
+            "messagePattern": "passing non-escaping parameter '(?<paramName>.+?)' to function expecting an @escaping closure",
+            "match": "error:\\s*passing non-escaping parameter '(?<paramName>.+?)' to function expecting an @escaping closure",
+            "captures": [
+              { "name": "paramName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "paramName" }, "adjustedProbability": 0.6, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "change_signature", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "The closure parameter '{paramName}' is non-escaping by default, but it is being passed to a function that requires an @escaping closure.",
+            "prescription": "1. Add @escaping to the parameter declaration: func myFunc(completion: @escaping () -> Void).\n2. If the closure should not escape, restructure to avoid passing it to an escaping context.",
+            "codeBlock": "// BEFORE (wrong):\nfunc doWork(completion: () -> Void) {\n    DispatchQueue.main.async(execute: completion)  // error: non-escaping\n}\n\n// AFTER (correct):\nfunc doWork(completion: @escaping () -> Void) {\n    DispatchQueue.main.async(execute: completion)\n}",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_WEAK_OPTIONAL",
+            "category": "closure_errors",
+            "severity": "error",
+            "messagePattern": "'weak' variable should have optional type '(?<typeName>.+?)\\?'",
+            "match": "error:\\s*'weak' variable should have optional type '(?<typeName>.+?)\\?'",
+            "captures": [
+              { "name": "typeName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.1,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "update_type_annotation", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "A 'weak' variable must be optional because the referenced object may be deallocated. Weak references are automatically set to nil when the object is freed.",
+            "prescription": "1. Change the type to optional: weak var delegate: {typeName}?\n2. If the reference must always be valid, use 'unowned' instead of 'weak'.",
+            "codeBlock": "// BEFORE (wrong):\nweak var delegate: MyDelegate  // error\n\n// AFTER (correct):\nweak var delegate: MyDelegate?",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_REFERENCE_CYCLE",
+            "category": "closure_errors",
+            "severity": "warning",
+            "messagePattern": "(?:variable|instance) '(?<varName>.+?)' (?:was written to, but never read|captured by a closure|is likely creating a reference cycle)",
+            "match": "warning:\\s*(?:variable|instance) '(?<varName>.+?)'",
+            "captures": [
+              { "name": "varName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.1,
+            "confidence": "heuristic",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "A potential reference cycle exists through '{varName}'. If an object holds a strong reference to a closure that captures the object, neither will be deallocated.",
+            "prescription": "1. Use [weak self] or [unowned self] in the capture list.\n2. Break the cycle by using a weak reference for one side of the relationship.",
+            "codeBlock": "// BEFORE (potential cycle):\nclass ViewModel {\n    var onUpdate: (() -> Void)?\n    func setup() {\n        onUpdate = { self.refresh() }  // strong reference cycle\n    }\n}\n\n// AFTER (correct):\nclass ViewModel {\n    var onUpdate: (() -> Void)?\n    func setup() {\n        onUpdate = { [weak self] in self?.refresh() }\n    }\n}",
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "objc_interop",
+        "name": "Objective-C Interop Errors",
+        "description": "Errors related to Objective-C bridging and @objc attribute",
+        "defaultTracingBehavior": "trace_type_definition",
+        "errors": [
+          {
+            "code": "SWIFT_OBJC_REQUIRED",
+            "category": "objc_interop",
+            "severity": "error",
+            "messagePattern": "@objc can only be used with members of classes, @objc protocols, and concrete extensions of classes",
+            "match": "error:\\s*@objc can only be used with members of classes",
+            "captures": [],
+            "baseCrossFileProbability": 0.2,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "type_definition" },
+            "coOccurrence": [],
+            "rootCause": "@objc can only be applied to class members or @objc protocol members. Structs, enums, and protocol extensions cannot be exposed to Objective-C.",
+            "prescription": "1. Move the member to a class.\n2. If the type is a struct, consider changing to a class if Objective-C interop is needed.\n3. For protocol requirements, mark the protocol as @objc.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_OBJC_NOT_REPRESENTABLE",
+            "category": "objc_interop",
+            "severity": "error",
+            "messagePattern": "method cannot be marked @objc because the type of the parameter (?:cannot be represented in Objective-C|'(?<typeName>.+?)' is not representable)",
+            "match": "error:\\s*method cannot be marked @objc because (?:the type of the parameter|.+? is not representable)",
+            "captures": [
+              { "name": "typeName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "update_type_annotation", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "The parameter type cannot be represented in Objective-C. Swift-only types like structs with value types, enums with associated values, or generic types cannot be bridged.",
+            "prescription": "1. Use an Objective-C compatible type (NSObject subclass, NSNumber, NSString, etc.).\n2. Create a wrapper class that bridges the Swift type.\n3. Remove @objc if Objective-C interop is not needed.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_SELECTOR_NO_OBJC",
+            "category": "objc_interop",
+            "severity": "error",
+            "messagePattern": "argument of '#selector' refers to (?:instance method|property) '(?<methodName>.+?)' that is not exposed to Objective-C",
+            "match": "error:\\s*argument of '#selector' refers to .+ '(?<methodName>.+?)' that is not exposed to Objective-C",
+            "captures": [
+              { "name": "methodName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.2,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The method '{methodName}' referenced in #selector is not exposed to Objective-C. The #selector syntax requires the method to be @objc-compatible.",
+            "prescription": "1. Add @objc to the method: @objc func {methodName}() { ... }\n2. Ensure the method's parameter types are Objective-C compatible.\n3. The containing class must inherit from NSObject or be @objc.",
+            "codeBlock": "// BEFORE (wrong):\nclass MyView: UIView {\n    func handleTap() { }  // not @objc\n    func setup() {\n        let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap))  // error\n    }\n}\n\n// AFTER (correct):\nclass MyView: UIView {\n    @objc func handleTap() { }\n    func setup() {\n        let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap))\n    }\n}",
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "swiftlint",
+        "name": "SwiftLint Warnings and Errors",
+        "description": "Common SwiftLint rule violations",
+        "defaultTracingBehavior": "local_only",
+        "errors": [
+          {
+            "code": "SWIFTLINT_FORCE_UNWRAP",
+            "category": "swiftlint",
+            "severity": "warning",
+            "messagePattern": "Force Unwrapping Violation: Force unwrapping should be avoided",
+            "match": "warning:\\s*Force Unwrapping Violation",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "add_null_check", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Force unwrapping (!) is used, which will crash if the value is nil. This is a code smell that can be avoided with safer unwrapping techniques.",
+            "prescription": "1. Use optional binding: if let value = optionalValue { ... }\n2. Use guard-let: guard let value = optionalValue else { return }\n3. Use nil-coalescing: optionalValue ?? defaultValue\n4. Only use ! when you can prove the value is never nil.",
+            "codeBlock": "// BEFORE (wrong):\nlet name = user.name!  // force unwrap\n\n// AFTER (correct):\nguard let name = user.name else { return }",
+            "conditions": []
+          },
+          {
+            "code": "SWIFTLINT_FORCE_CAST",
+            "category": "swiftlint",
+            "severity": "warning",
+            "messagePattern": "Force Cast Violation: Force casts should be avoided",
+            "match": "warning:\\s*Force Cast Violation",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "cast_type", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Force casting (as!) is used, which will crash if the cast fails. Use conditional casting for safety.",
+            "prescription": "1. Use conditional cast: if let typed = value as? TargetType { ... }\n2. Use guard-let: guard let typed = value as? TargetType else { return }",
+            "codeBlock": "// BEFORE (wrong):\nlet cell = tableView.dequeueReusableCell(withIdentifier: \"cell\") as! CustomCell\n\n// AFTER (correct):\nguard let cell = tableView.dequeueReusableCell(withIdentifier: \"cell\") as? CustomCell else { return }",
+            "conditions": []
+          },
+          {
+            "code": "SWIFTLINT_LINE_LENGTH",
+            "category": "swiftlint",
+            "severity": "warning",
+            "messagePattern": "Line Length Violation: Line should be (?<maxLen>\\d+) characters or less",
+            "match": "warning:\\s*Line Length Violation",
+            "captures": [
+              { "name": "maxLen", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The line exceeds the configured maximum length ({maxLen} characters). Long lines reduce readability.",
+            "prescription": "1. Break the line into multiple lines.\n2. Extract complex expressions into intermediate variables.\n3. Use trailing closure syntax to reduce line length.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "SWIFTLINT_UNUSED_IMPORT",
+            "category": "swiftlint",
+            "severity": "warning",
+            "messagePattern": "Unused Import Violation: (?<moduleName>.+?) is unused",
+            "match": "warning:\\s*Unused Import Violation",
+            "captures": [
+              { "name": "moduleName", "role": "target_module" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "remove_import", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [],
+            "rootCause": "The import '{moduleName}' is not used in this file. Unused imports add unnecessary build overhead and clutter.",
+            "prescription": "Remove the unused import statement.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "SWIFTLINT_CYCLOMATIC_COMPLEXITY",
+            "category": "swiftlint",
+            "severity": "warning",
+            "messagePattern": "Cyclomatic Complexity Violation: Function should have complexity (?<maxComplexity>\\d+) or less",
+            "match": "warning:\\s*Cyclomatic Complexity Violation",
+            "captures": [
+              { "name": "maxComplexity", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "The function has too many branches (if/else, switch, guard), exceeding the complexity threshold of {maxComplexity}.",
+            "prescription": "1. Extract complex conditions into helper functions.\n2. Use early returns with guard to reduce nesting.\n3. Use pattern matching and enums to simplify branching.\n4. Split the function into smaller, focused functions.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "SWIFTLINT_TRAILING_WHITESPACE",
+            "category": "swiftlint",
+            "severity": "warning",
+            "messagePattern": "Trailing Whitespace Violation: Lines should not have trailing whitespace",
+            "match": "warning:\\s*Trailing Whitespace Violation",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The line has trailing whitespace characters.",
+            "prescription": "Remove trailing whitespace from the line. Configure your editor to automatically trim trailing whitespace on save.",
+            "codeBlock": null,
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "misc_errors",
+        "name": "Miscellaneous Errors",
+        "description": "Other common Swift compilation errors",
+        "defaultTracingBehavior": "local_only",
+        "errors": [
+          {
+            "code": "SWIFT_STRUCT_CLASS_ONLY",
+            "category": "misc_errors",
+            "severity": "error",
+            "messagePattern": "non-class type '(?<typeName>.+?)' cannot conform to class protocol '(?<protocolName>.+?)'",
+            "match": "error:\\s*non-class type '(?<typeName>.+?)' cannot conform to class protocol '(?<protocolName>.+?)'",
+            "captures": [
+              { "name": "typeName", "role": "type_name" },
+              { "name": "protocolName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "protocolName" }, "adjustedProbability": 0.75, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "type_definition" },
+            "coOccurrence": [],
+            "rootCause": "The struct '{typeName}' is trying to conform to protocol '{protocolName}' which is restricted to class types (AnyObject constraint).",
+            "prescription": "1. Change the struct to a class.\n2. If it must be a struct, find or create a protocol without the AnyObject constraint.\n3. Check if the protocol truly requires reference semantics.",
+            "codeBlock": "// BEFORE (wrong):\nprotocol Delegate: AnyObject { }\nstruct Handler: Delegate { }  // error\n\n// AFTER (correct):\nclass Handler: Delegate { }",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_STORED_PROPERTY_EXTENSION",
+            "category": "misc_errors",
+            "severity": "error",
+            "messagePattern": "extensions must not contain stored properties",
+            "match": "error:\\s*extensions must not contain stored properties",
+            "captures": [],
+            "baseCrossFileProbability": 0.2,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "type_definition" },
+            "coOccurrence": [],
+            "rootCause": "Swift extensions cannot add stored properties to types. Extensions can only add computed properties, methods, initializers, subscripts, and nested types.",
+            "prescription": "1. Move the stored property to the original type definition.\n2. Use a computed property in the extension.\n3. Use objc_getAssociatedObject/objc_setAssociatedObject for Objective-C classes.\n4. Use a wrapper or external storage pattern.",
+            "codeBlock": "// BEFORE (wrong):\nextension User {\n    var nickname: String = \"\"  // error: stored property in extension\n}\n\n// AFTER (correct) - Option 1: computed property:\nextension User {\n    var nickname: String {\n        return name.lowercased()\n    }\n}\n\n// AFTER (correct) - Option 2: move to original:\nstruct User {\n    var name: String\n    var nickname: String = \"\"  // in the main definition\n}",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_PROTOCOL_EXTENSION_OVERRIDE",
+            "category": "misc_errors",
+            "severity": "warning",
+            "messagePattern": "non-'@objc' (?:instance )?method '(?<methodName>.+?)' is declared in extension of '(?<protocolName>.+?)' and cannot be overridden",
+            "match": "(?:warning|error):\\s*non-'@objc' (?:instance )?method '(?<methodName>.+?)' is declared in extension",
+            "captures": [
+              { "name": "methodName", "role": "symbol_name" },
+              { "name": "protocolName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.6,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "protocolName" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": true, "typicalScope": "type_definition" },
+            "coOccurrence": [],
+            "rootCause": "Method '{methodName}' defined in a protocol extension cannot be overridden by conforming types (it uses static dispatch). Only methods declared in the protocol itself (not extensions) use dynamic dispatch and can be overridden.",
+            "prescription": "1. Move the method declaration into the protocol definition (not the extension) to enable dynamic dispatch.\n2. If the method should not be overridable, keep it in the extension as a default implementation.\n3. Understand that protocol extension methods are statically dispatched.",
+            "codeBlock": "// Protocol extension methods use static dispatch:\nprotocol Animal {\n    // Only methods declared HERE can be overridden\n    func speak()\n}\n\nextension Animal {\n    // This is a DEFAULT implementation, uses static dispatch\n    func eat() { print(\"eating\") }\n}",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_UNUSED_RESULT",
+            "category": "misc_errors",
+            "severity": "warning",
+            "messagePattern": "result of call to '(?<funcName>.+?)' is unused",
+            "match": "warning:\\s*result of call to '(?<funcName>.+?)' is unused",
+            "captures": [
+              { "name": "funcName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The return value of '{funcName}' is not used. This may indicate a missing assignment or a misunderstanding of the function's behavior.",
+            "prescription": "1. Assign the result to a variable: let result = {funcName}()\n2. If the result is intentionally unused, use: _ = {funcName}()\n3. If the function is called for its side effects, mark it @discardableResult.",
+            "codeBlock": "// BEFORE (warning):\narray.sorted()  // returns a new array, does not mutate\n\n// AFTER (correct):\nlet sorted = array.sorted()\n// Or mutate in place:\narray.sort()",
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_UNAVAILABLE_DECL",
+            "category": "misc_errors",
+            "severity": "error",
+            "messagePattern": "'(?<symbolName>.+?)' has been (?:renamed to|replaced by) '(?<replacement>.+?)'",
+            "match": "error:\\s*'(?<symbolName>.+?)' has been (?:renamed to|replaced by) '(?<replacement>.+?)'",
+            "captures": [
+              { "name": "symbolName", "role": "symbol_name" },
+              { "name": "replacement", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "symbolName" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "rename_symbol", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "'{symbolName}' has been renamed or replaced by '{replacement}'. This is typically part of an API migration between Swift versions or framework updates.",
+            "prescription": "Replace '{symbolName}' with '{replacement}'.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "SWIFT_MAIN_ATTR",
+            "category": "misc_errors",
+            "severity": "error",
+            "messagePattern": "'(?<typeName>.+?)' is annotated with @main and must provide a (?:main|static main) (?:type|function|method)",
+            "match": "error:\\s*'(?<typeName>.+?)' is annotated with @main and must provide",
+            "captures": [
+              { "name": "typeName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.1,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "implement_interface", "requiresCrossFileEdit": false, "typicalScope": "type_definition" },
+            "coOccurrence": [],
+            "rootCause": "The type '{typeName}' is marked with @main but does not provide the required static main() method or conform to a protocol that provides one.",
+            "prescription": "1. Add a static func main() method.\n2. For SwiftUI apps, conform to the App protocol.\n3. For ArgumentParser, conform to ParsableCommand.",
+            "codeBlock": "// For a basic app:\n@main\nstruct MyApp {\n    static func main() {\n        print(\"Hello, World!\")\n    }\n}\n\n// For SwiftUI:\n@main\nstruct MyApp: App {\n    var body: some Scene {\n        WindowGroup {\n            ContentView()\n        }\n    }\n}",
+            "conditions": []
+          }
+        ]
+      }
+    ]
+  },
+
+  "importSystem": {
+    "importPatterns": [
+      {
+        "type": "module_import",
+        "regex": "^\\s*import\\s+(?<moduleName>[A-Za-z_][A-Za-z0-9_.]+)\\s*$",
+        "captures": [
+          { "name": "moduleName", "index": 1, "isList": false }
+        ],
+        "example": "import Foundation",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "specific_import",
+        "regex": "^\\s*import\\s+(?<kind>struct|class|enum|protocol|typealias|func|var|let)\\s+(?<moduleName>[A-Za-z_][A-Za-z0-9_]+)\\.(?<symbolName>[A-Za-z_][A-Za-z0-9_.]+)\\s*$",
+        "captures": [
+          { "name": "kind", "index": 1, "isList": false },
+          { "name": "moduleName", "index": 2, "isList": false },
+          { "name": "symbolName", "index": 3, "isList": false }
+        ],
+        "example": "import struct Foundation.URL",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "testable_import",
+        "regex": "^\\s*@testable\\s+import\\s+(?<moduleName>[A-Za-z_][A-Za-z0-9_.]+)\\s*$",
+        "captures": [
+          { "name": "moduleName", "index": 1, "isList": false }
+        ],
+        "example": "@testable import MyModule",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "canImport_conditional",
+        "regex": "#if\\s+canImport\\((?<moduleName>[A-Za-z_][A-Za-z0-9_.]+)\\)",
+        "captures": [
+          { "name": "moduleName", "index": 1, "isList": false }
+        ],
+        "example": "#if canImport(UIKit)",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "exported_import",
+        "regex": "^\\s*@_exported\\s+import\\s+(?<moduleName>[A-Za-z_][A-Za-z0-9_.]+)\\s*$",
+        "captures": [
+          { "name": "moduleName", "index": 1, "isList": false }
+        ],
+        "example": "@_exported import Foundation",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      }
+    ],
+    "exportPatterns": [
+      {
+        "type": "public_declaration",
+        "regex": "(?:^|\\s)public\\s+(?:class|struct|enum|protocol|func|var|let|typealias|actor)\\s+(?<symbolName>[A-Za-z_][A-Za-z0-9_]*)",
+        "captures": [
+          { "name": "symbolName", "index": 1, "isList": false }
+        ],
+        "isReExport": false,
+        "example": "public struct User { }"
+      },
+      {
+        "type": "open_declaration",
+        "regex": "(?:^|\\s)open\\s+(?:class|func|var|let)\\s+(?<symbolName>[A-Za-z_][A-Za-z0-9_]*)",
+        "captures": [
+          { "name": "symbolName", "index": 1, "isList": false }
+        ],
+        "isReExport": false,
+        "example": "open class BaseController { }"
+      },
+      {
+        "type": "internal_declaration",
+        "regex": "^(?:internal\\s+)?(?:class|struct|enum|protocol|func|var|let|typealias|actor)\\s+(?<symbolName>[A-Za-z_][A-Za-z0-9_]*)",
+        "captures": [
+          { "name": "symbolName", "index": 1, "isList": false }
+        ],
+        "isReExport": false,
+        "example": "struct Config { }  // internal by default"
+      },
+      {
+        "type": "exported_import",
+        "regex": "@_exported\\s+import\\s+(?<moduleName>[A-Za-z_][A-Za-z0-9_.]+)",
+        "captures": [
+          { "name": "moduleName", "index": 1, "isList": false }
+        ],
+        "isReExport": true,
+        "example": "@_exported import Foundation  // re-exports all Foundation symbols"
+      }
+    ],
+    "moduleResolution": {
+      "strategy": "swift",
+      "extensions": [".swift"],
+      "indexFiles": [],
+      "aliasConfig": {
+        "file": "Package.swift",
+        "path": "targets[].dependencies",
+        "format": "Module names are defined by target names in Package.swift. Dependencies are listed per-target."
+      },
+      "packageEntryPoints": [],
+      "relativeImportRules": "Swift does not use relative imports. All imports reference module names (targets). Files within the same target/module can access internal symbols without importing.",
+      "absoluteImportRules": "All import statements reference module names. The compiler resolves modules from the build system (SPM, Xcode project). System frameworks are resolved from the SDK."
+    }
+  },
+
+  "typeTracing": {
+    "definitionPatterns": [
+      {
+        "kind": "struct",
+        "regex": "(?:public\\s+|open\\s+|internal\\s+|fileprivate\\s+|private\\s+)?struct\\s+(?<name>[A-Za-z_][A-Za-z0-9_]*)(?:<[^>]+>)?(?:\\s*:\\s*[^{]+)?\\s*\\{",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "public struct User: Codable { }"
+      },
+      {
+        "kind": "class",
+        "regex": "(?:public\\s+|open\\s+|internal\\s+|fileprivate\\s+|private\\s+)?(?:final\\s+)?class\\s+(?<name>[A-Za-z_][A-Za-z0-9_]*)(?:<[^>]+>)?(?:\\s*:\\s*[^{]+)?\\s*\\{",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "final class ViewModel: ObservableObject { }"
+      },
+      {
+        "kind": "enum",
+        "regex": "(?:public\\s+|open\\s+|internal\\s+|fileprivate\\s+|private\\s+)?enum\\s+(?<name>[A-Za-z_][A-Za-z0-9_]*)(?:<[^>]+>)?(?:\\s*:\\s*[^{]+)?\\s*\\{",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "enum NetworkError: Error { case timeout }"
+      },
+      {
+        "kind": "protocol",
+        "regex": "(?:public\\s+|internal\\s+|fileprivate\\s+|private\\s+)?protocol\\s+(?<name>[A-Za-z_][A-Za-z0-9_]*)(?:\\s*:\\s*[^{]+)?\\s*\\{",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "public protocol Repository { associatedtype Entity }"
+      },
+      {
+        "kind": "actor",
+        "regex": "(?:public\\s+|internal\\s+|fileprivate\\s+|private\\s+)?actor\\s+(?<name>[A-Za-z_][A-Za-z0-9_]*)(?:<[^>]+>)?(?:\\s*:\\s*[^{]+)?\\s*\\{",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "actor DataStore { var items: [Item] = [] }"
+      },
+      {
+        "kind": "type_alias",
+        "regex": "(?:public\\s+|internal\\s+|fileprivate\\s+|private\\s+)?typealias\\s+(?<name>[A-Za-z_][A-Za-z0-9_]*)(?:<[^>]+>)?\\s*=",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "public typealias Completion = (Result<Data, Error>) -> Void"
+      },
+      {
+        "kind": "function",
+        "regex": "(?:public\\s+|open\\s+|internal\\s+|fileprivate\\s+|private\\s+)?(?:static\\s+|class\\s+)?(?:override\\s+)?func\\s+(?<name>[A-Za-z_][A-Za-z0-9_]*)(?:<[^>]+>)?\\s*\\(",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "public func fetchData() async throws -> Data { }"
+      },
+      {
+        "kind": "variable",
+        "regex": "(?:public\\s+|open\\s+|internal\\s+|fileprivate\\s+|private\\s+)?(?:static\\s+|class\\s+)?(?:lazy\\s+)?(?:var|let)\\s+(?<name>[A-Za-z_][A-Za-z0-9_]*)\\s*(?::\\s*(?<typeAnnotation>[^=\\n{]+))?",
+        "captures": [
+          { "name": "name", "index": 1 },
+          { "name": "typeAnnotation", "index": 2 }
+        ],
+        "canBeExported": true,
+        "example": "public static let shared = MyService()"
+      },
+      {
+        "kind": "extension",
+        "regex": "extension\\s+(?<name>[A-Za-z_][A-Za-z0-9_.]*)(?:<[^>]+>)?(?:\\s*:\\s*(?<conformances>[^{]+))?\\s*(?:where\\s+[^{]+)?\\s*\\{",
+        "captures": [
+          { "name": "name", "index": 1 },
+          { "name": "conformances", "index": 2 }
+        ],
+        "canBeExported": true,
+        "example": "extension Array: Equatable where Element: Equatable { }"
+      }
+    ],
+    "inheritancePatterns": [
+      {
+        "kind": "class_inheritance",
+        "regex": "class\\s+(?<child>[A-Za-z_][A-Za-z0-9_]*)(?:<[^>]+>)?\\s*:\\s*(?<parents>[A-Za-z_][A-Za-z0-9_.,\\s<>?!]+?)\\s*\\{",
+        "captures": [
+          { "name": "child", "index": 1, "isList": false },
+          { "name": "parents", "index": 2, "isList": true, "listSeparator": "," }
+        ],
+        "traceConfidence": 0.95,
+        "example": "class ViewController: UIViewController, UITableViewDelegate { }"
+      },
+      {
+        "kind": "protocol_conformance",
+        "regex": "(?:struct|enum|actor)\\s+(?<child>[A-Za-z_][A-Za-z0-9_]*)(?:<[^>]+>)?\\s*:\\s*(?<parents>[A-Za-z_][A-Za-z0-9_.,\\s<>?!]+?)\\s*\\{",
+        "captures": [
+          { "name": "child", "index": 1, "isList": false },
+          { "name": "parents", "index": 2, "isList": true, "listSeparator": "," }
+        ],
+        "traceConfidence": 0.90,
+        "example": "struct User: Codable, Identifiable { }"
+      },
+      {
+        "kind": "extension_conformance",
+        "regex": "extension\\s+(?<child>[A-Za-z_][A-Za-z0-9_.]*)(?:<[^>]+>)?\\s*:\\s*(?<parents>[A-Za-z_][A-Za-z0-9_.,\\s<>?!]+?)\\s*(?:where[^{]*)?\\{",
+        "captures": [
+          { "name": "child", "index": 1, "isList": false },
+          { "name": "parents", "index": 2, "isList": true, "listSeparator": "," }
+        ],
+        "traceConfidence": 0.85,
+        "example": "extension User: CustomStringConvertible { var description: String { name } }"
+      },
+      {
+        "kind": "protocol_inheritance",
+        "regex": "protocol\\s+(?<child>[A-Za-z_][A-Za-z0-9_]*)\\s*:\\s*(?<parents>[A-Za-z_][A-Za-z0-9_.,\\s<>?!]+?)\\s*\\{",
+        "captures": [
+          { "name": "child", "index": 1, "isList": false },
+          { "name": "parents", "index": 2, "isList": true, "listSeparator": "," }
+        ],
+        "traceConfidence": 0.95,
+        "example": "protocol Repository: AnyObject, Sendable { }"
+      }
+    ],
+    "compositionPatterns": [
+      {
+        "kind": "protocol_composition",
+        "regex": "(?:var|let|func)\\s+\\w+[^:]*:\\s*(?:some\\s+|any\\s+)?(?<types>[A-Za-z_][A-Za-z0-9_]+\\s*&\\s*[A-Za-z_][A-Za-z0-9_&\\s]+)",
+        "captures": [
+          { "name": "types", "index": 1 }
+        ],
+        "decomposable": true,
+        "traceConfidence": 0.80,
+        "example": "var delegate: (UITableViewDelegate & UIScrollViewDelegate)?"
+      },
+      {
+        "kind": "generic_instantiation",
+        "regex": "(?<name>[A-Za-z_][A-Za-z0-9_]*)<(?<typeParams>[^>]+)>",
+        "captures": [
+          { "name": "name", "index": 1 },
+          { "name": "typeParams", "index": 2 }
+        ],
+        "decomposable": true,
+        "traceConfidence": 0.70,
+        "example": "Array<String>, Dictionary<String, Any>, Result<Data, Error>"
+      },
+      {
+        "kind": "opaque_type",
+        "regex": "(?:->|:\\s*)\\s*some\\s+(?<protocolName>[A-Za-z_][A-Za-z0-9_&\\s]+)",
+        "captures": [
+          { "name": "protocolName", "index": 1 }
+        ],
+        "decomposable": false,
+        "traceConfidence": 0.60,
+        "example": "var body: some View"
+      },
+      {
+        "kind": "existential_type",
+        "regex": "(?:->|:\\s*)\\s*any\\s+(?<protocolName>[A-Za-z_][A-Za-z0-9_&\\s]+)",
+        "captures": [
+          { "name": "protocolName", "index": 1 }
+        ],
+        "decomposable": true,
+        "traceConfidence": 0.65,
+        "example": "func handle(event: any Event)"
+      },
+      {
+        "kind": "optional_type",
+        "regex": "(?<baseType>[A-Za-z_][A-Za-z0-9_<>,\\s]+)\\?",
+        "captures": [
+          { "name": "baseType", "index": 1 }
+        ],
+        "decomposable": true,
+        "traceConfidence": 0.85,
+        "example": "var name: String?"
+      }
+    ],
+    "confidenceTiers": {
+      "direct_import": 0.95,
+      "re_export_one_hop": 0.85,
+      "re_export_multi_hop": 0.70,
+      "inheritance_direct": 0.90,
+      "inheritance_chain": 0.75,
+      "generic_resolution": 0.50,
+      "inferred_type": 0.30,
+      "dynamic_type": 0.15,
+      "protocol_extension_dispatch": 0.45,
+      "conditional_conformance": 0.55,
+      "opaque_type_resolution": 0.40
+    }
+  },
+
+  "externalDependencies": {
+    "pathIndicators": [".build/checkouts/", "Pods/", "Carthage/Checkouts/", "DerivedData/"],
+    "packageManifest": "Package.swift",
+    "lockFiles": ["Package.resolved"],
+    "typesPackagePattern": null,
+    "typeDeclarationLocations": [
+      {
+        "description": "SPM dependencies fetched by swift package resolve",
+        "path": ".build/checkouts/{package}/Sources/{module}",
+        "fallback": ".build/checkouts/{package}/Sources",
+        "entryPointField": "Package.swift targets"
+      },
+      {
+        "description": "CocoaPods dependencies",
+        "path": "Pods/{pod}/Sources",
+        "fallback": "Pods/{pod}",
+        "entryPointField": "{pod}.podspec"
+      },
+      {
+        "description": "System frameworks",
+        "path": "$(SDKROOT)/System/Library/Frameworks/{framework}.framework/Modules/{framework}.swiftmodule",
+        "fallback": "$(SDKROOT)/usr/lib/swift",
+        "entryPointField": "Framework module map"
+      }
+    ],
+    "detectionRules": [
+      {
+        "signal": "package_not_in_manifest",
+        "condition": "Import refers to a module not listed in Package.swift dependencies or targets",
+        "errorCodes": ["SWIFT_NO_MODULE"],
+        "suggestedActions": ["Add the package dependency to Package.swift", "Run swift package resolve"],
+        "autoFixable": false,
+        "autoFixCommand": null
+      },
+      {
+        "signal": "package_not_resolved",
+        "condition": "Package is in Package.swift but dependencies have not been resolved",
+        "errorCodes": ["SWIFT_NO_MODULE"],
+        "suggestedActions": ["Run swift package resolve", "Run swift package update"],
+        "autoFixable": true,
+        "autoFixCommand": "swift package resolve"
+      },
+      {
+        "signal": "target_missing_dependency",
+        "condition": "Module exists in the package but the current target does not list it as a dependency",
+        "errorCodes": ["SWIFT_NO_MODULE"],
+        "suggestedActions": ["Add the module to the target's dependencies array in Package.swift"],
+        "autoFixable": false,
+        "autoFixCommand": null
+      },
+      {
+        "signal": "cocoapods_not_installed",
+        "condition": "A pod is referenced but not installed via pod install",
+        "errorCodes": ["SWIFT_NO_MODULE"],
+        "suggestedActions": ["Run pod install", "Check the Podfile for the missing pod"],
+        "autoFixable": true,
+        "autoFixCommand": "pod install"
+      },
+      {
+        "signal": "platform_mismatch",
+        "condition": "Framework exists but is not available on the current deployment target or platform",
+        "errorCodes": ["SWIFT_NO_MODULE", "SWIFT_UNAVAILABLE_PLATFORM"],
+        "suggestedActions": ["Check deployment target version", "Use #if canImport() for conditional compilation"],
+        "autoFixable": false,
+        "autoFixCommand": null
+      }
+    ],
+    "commonBreakingPatterns": [
+      {
+        "description": "Package major version update with API changes",
+        "errorCodes": ["SWIFT_MISSING_MEMBER", "SWIFT_USE_UNRESOLVED", "SWIFT_TYPE_MISMATCH", "SWIFT_UNAVAILABLE_DECL"],
+        "resolution": "Check the package's migration guide or CHANGELOG. Pin to the previous version in Package.swift if needed."
+      },
+      {
+        "description": "Swift version update changes standard library APIs",
+        "errorCodes": ["SWIFT_UNAVAILABLE_DECL", "SWIFT_TYPE_MISMATCH", "SWIFT_MISSING_MEMBER"],
+        "resolution": "Review Swift migration guide for the relevant version. Use swift-version tools setting in Package.swift."
+      },
+      {
+        "description": "Xcode update changes SDK framework availability",
+        "errorCodes": ["SWIFT_NO_MODULE", "SWIFT_UNAVAILABLE_PLATFORM"],
+        "resolution": "Check Xcode release notes for framework changes. Update deployment target or use availability checks."
+      }
+    ]
+  },
+
+  "quirks": [
+    {
+      "id": "protocol_conformance_in_extensions",
+      "name": "Protocol Conformance in Extensions",
+      "description": "Swift allows protocol conformance to be added in extensions, potentially in a completely different file from the type definition. The conforming methods may be split across the main definition and multiple extensions. This makes tracing protocol requirements complex.",
+      "affectsTracing": true,
+      "affectsResolution": true,
+      "workaround": "When checking protocol conformance, search not just the type definition but all extensions of that type across all files in the module. Aggregate members from the type definition and all its extensions.",
+      "example": "// User.swift\nstruct User {\n    var name: String\n}\n\n// User+Codable.swift\nextension User: Codable { }\n\n// User+CustomStringConvertible.swift\nextension User: CustomStringConvertible {\n    var description: String { name }\n}",
+      "relatedErrorCodes": ["SWIFT_MISSING_CONFORMANCE", "SWIFT_MISSING_MEMBER"]
+    },
+    {
+      "id": "access_control_defaults",
+      "name": "Access Control Defaults",
+      "description": "Swift defaults to 'internal' access, meaning symbols are visible across files within the same module but invisible to other modules. There is no 'export' keyword. Visibility is controlled entirely by access level keywords (open, public, internal, fileprivate, private).",
+      "affectsTracing": true,
+      "affectsResolution": true,
+      "workaround": "When tracing symbols within the same module, treat all non-private/fileprivate declarations as accessible. For cross-module tracing, only consider public/open declarations.",
+      "example": "// This struct is internal (default) - visible in same module only:\nstruct Config { var timeout: Int }\n\n// This struct is public - visible to other modules:\npublic struct APIConfig { public var timeout: Int }",
+      "relatedErrorCodes": ["SWIFT_ACCESS_CONTROL", "SWIFT_INIT_INACCESSIBLE"]
+    },
+    {
+      "id": "conditional_conformance",
+      "name": "Conditional Conformance",
+      "description": "Swift supports conditional conformance where a generic type conforms to a protocol only when its type parameters satisfy certain constraints. Array: Equatable only when Element: Equatable. This means the same type may or may not conform to a protocol depending on context.",
+      "affectsTracing": true,
+      "affectsResolution": false,
+      "workaround": "When evaluating protocol conformance for generic types, check not just the type declaration but also conditional conformance extensions. Evaluate the where clause against the concrete type parameters.",
+      "example": "extension Array: Equatable where Element: Equatable { }\n// [Int] is Equatable (Int: Equatable)\n// [UIView] is NOT Equatable (UIView is not Equatable)",
+      "relatedErrorCodes": ["SWIFT_MISSING_CONFORMANCE", "SWIFT_CONDITIONAL_CONFORMANCE", "SWIFT_GENERIC_CONSTRAINT_FAIL"]
+    },
+    {
+      "id": "actor_isolation",
+      "name": "Actor Isolation Rules",
+      "description": "Actors isolate their mutable state. Properties and methods of actors can only be accessed from the actor's execution context or asynchronously. @MainActor annotated code must run on the main thread. These isolation rules create invisible dependencies between call sites.",
+      "affectsTracing": true,
+      "affectsResolution": true,
+      "workaround": "Track actor isolation annotations (@MainActor, actor types) and propagate isolation requirements through call chains. A function calling a @MainActor function must itself be @MainActor or async.",
+      "example": "@MainActor\nclass ViewModel {\n    var title = \"\"  // main-actor isolated\n}\n\n// Must be called on main actor or with await:\nfunc update(vm: ViewModel) async {\n    await vm.title = \"New\"  // crosses isolation boundary\n}",
+      "relatedErrorCodes": ["SWIFT_ACTOR_ISOLATION", "SWIFT_SENDABLE", "SWIFT_ASYNC_CONTEXT"]
+    },
+    {
+      "id": "type_inference_complexity",
+      "name": "Complex Type Inference",
+      "description": "Swift has very powerful type inference, but complex expressions (long closure chains, nested generics) can exceed the type checker's time limit. The compiler may report 'expression was too complex' errors that are purely local but caused by the combination of types from multiple sources.",
+      "affectsTracing": false,
+      "affectsResolution": false,
+      "workaround": "When seeing 'too complex' errors, the fix is always local: add explicit type annotations to break the inference chain. No cross-file tracing needed.",
+      "example": "// This may be too complex:\nlet result = items.lazy.filter { $0.isValid }.map { $0.value }.reduce(0, +)\n\n// Fix: add type annotations:\nlet filtered: [Item] = items.filter { $0.isValid }\nlet values: [Int] = filtered.map { $0.value }\nlet result: Int = values.reduce(0, +)",
+      "relatedErrorCodes": ["SWIFT_CANNOT_INFER_TYPE"]
+    },
+    {
+      "id": "property_wrapper_magic",
+      "name": "Property Wrapper Synthesized Code",
+      "description": "Property wrappers (@State, @Published, @Binding, custom) synthesize backing storage and accessors. The actual type of a @Published var is Published<T>.Publisher, not T. This affects type checking and error messages.",
+      "affectsTracing": true,
+      "affectsResolution": false,
+      "workaround": "When a type error involves a property wrapper, check the wrapper's wrappedValue and projectedValue types. The $ prefix accesses projectedValue (e.g., $published is Publisher).",
+      "example": "class Model: ObservableObject {\n    @Published var name: String = \"\"  // name is String, $name is Published<String>.Publisher\n}\n\nstruct MyView: View {\n    @State var count = 0  // count is Int, $count is Binding<Int>\n}",
+      "relatedErrorCodes": ["SWIFT_PROPERTY_WRAPPER_TYPE", "SWIFT_TYPE_MISMATCH"]
+    },
+    {
+      "id": "result_builder_dsl",
+      "name": "Result Builder DSL Transform",
+      "description": "Result builders (@ViewBuilder, @resultBuilder) transform the body of closures and functions at compile time. Error messages in result builder contexts can be confusing because they refer to the transformed code, not the source code the developer wrote.",
+      "affectsTracing": false,
+      "affectsResolution": false,
+      "workaround": "When errors occur in a result builder context (especially @ViewBuilder), look for type mismatches in individual expressions. Each line in a @ViewBuilder must produce a View. Conditional branches must both produce View types.",
+      "example": "// Each line in a @ViewBuilder produces a View:\nvar body: some View {\n    Text(\"Hello\")       // View\n    if condition {\n        Image(\"photo\")  // View\n    }                    // Both branches must return Views\n    42                   // Error: Int is not a View\n}",
+      "relatedErrorCodes": ["SWIFT_VIEW_BODY_TYPE", "SWIFT_RESULT_BUILDER_ERROR"]
+    },
+    {
+      "id": "objc_bridging",
+      "name": "Objective-C Bridging",
+      "description": "Swift types are automatically bridged to Objective-C types in some contexts (String <-> NSString, Array <-> NSArray). This bridging is invisible but can cause unexpected type errors when explicit types are needed.",
+      "affectsTracing": true,
+      "affectsResolution": false,
+      "workaround": "When seeing type errors involving NS* types and their Swift equivalents, check if automatic bridging applies. Use explicit 'as NSString' or 'as String' to bridge manually when needed.",
+      "example": "let swiftString: String = \"hello\"\nlet nsString: NSString = swiftString as NSString\nlet backToSwift: String = nsString as String",
+      "relatedErrorCodes": ["SWIFT_TYPE_MISMATCH", "SWIFT_CANNOT_CONVERT_RETURN", "SWIFT_OBJC_NOT_REPRESENTABLE"]
+    },
+    {
+      "id": "spm_target_boundaries",
+      "name": "SPM Target Boundaries",
+      "description": "In Swift Package Manager, each target is a separate module. Files in the same target can access each other's internal symbols, but files in different targets need public access. This is different from Xcode projects where all files in a target share a single module.",
+      "affectsTracing": true,
+      "affectsResolution": true,
+      "workaround": "When tracing cross-file dependencies, first determine the target structure from Package.swift. Files in the same target share internal access. Files in different targets require public access and explicit imports.",
+      "example": "// Package.swift:\n// .target(name: \"Models\", ...)\n// .target(name: \"Services\", dependencies: [\"Models\"])\n\n// In Services/UserService.swift:\nimport Models  // Required to use Models module\npublic class UserService {\n    let user: User  // User must be public in Models\n}",
+      "relatedErrorCodes": ["SWIFT_NO_MODULE", "SWIFT_ACCESS_CONTROL", "SWIFT_USE_UNRESOLVED"]
+    },
+    {
+      "id": "circular_module_deps",
+      "name": "Circular Module Dependencies",
+      "description": "Swift does not allow circular module dependencies. If module A imports module B, module B cannot import module A. This must be resolved architecturally.",
+      "affectsTracing": true,
+      "affectsResolution": true,
+      "workaround": "Detect circular dependencies by building the module import graph. When found, suggest extracting shared types into a third module, or using protocols for dependency inversion.",
+      "example": "// This is NOT allowed:\n// ModuleA imports ModuleB\n// ModuleB imports ModuleA\n\n// Fix: Extract shared types to ModuleShared\n// ModuleA imports ModuleShared\n// ModuleB imports ModuleShared",
+      "relatedErrorCodes": ["SWIFT_CIRCULAR_DEPENDENCY", "SWIFT_NO_MODULE"]
+    },
+    {
+      "id": "auto_generated_code",
+      "name": "Auto-Generated Code (Codable, CaseIterable, etc.)",
+      "description": "Swift compiler auto-synthesizes implementations for certain protocols (Codable, Equatable, Hashable, CaseIterable, RawRepresentable). Errors in synthesized code appear at the type declaration but the fix may involve stored properties.",
+      "affectsTracing": true,
+      "affectsResolution": false,
+      "workaround": "When a synthesized conformance fails (e.g., Codable), check all stored properties of the type. Each property must also conform to the synthesized protocol.",
+      "example": "// This will fail Codable synthesis because CustomType is not Codable:\nstruct Model: Codable {\n    var name: String       // OK: String is Codable\n    var custom: CustomType // Error: CustomType is not Codable\n}",
+      "relatedErrorCodes": ["SWIFT_MISSING_CONFORMANCE", "SWIFT_ASSOCIATED_TYPE_MISSING"]
+    },
+    {
+      "id": "canImport_conditional_compilation",
+      "name": "Conditional Compilation with canImport",
+      "description": "#if canImport(Module) allows code to be conditionally compiled based on module availability. This affects which symbols are available and can cause confusing errors when the condition evaluates differently than expected.",
+      "affectsTracing": true,
+      "affectsResolution": true,
+      "workaround": "Parse #if canImport blocks and determine which branch is active based on the current platform and available modules. Only consider symbols from the active branch.",
+      "example": "#if canImport(UIKit)\nimport UIKit\ntypealias PlatformColor = UIColor\n#elseif canImport(AppKit)\nimport AppKit\ntypealias PlatformColor = NSColor\n#endif",
+      "relatedErrorCodes": ["SWIFT_NO_MODULE", "SWIFT_USE_UNRESOLVED", "SWIFT_CANNOT_FIND_TYPE"]
+    }
+  ],
+
+  "buildTools": [
+    {
+      "name": "swift-build",
+      "detectFiles": ["Package.swift"],
+      "buildCommand": "swift build 2>&1",
+      "watchCommand": null,
+      "errorStream": "stderr",
+      "supportsJsonOutput": false,
+      "jsonOutputFlag": null,
+      "commonConfigs": ["Package.swift", "Package.resolved"]
+    },
+    {
+      "name": "xcodebuild",
+      "detectFiles": ["*.xcodeproj", "*.xcworkspace"],
+      "buildCommand": "xcodebuild build 2>&1",
+      "watchCommand": null,
+      "errorStream": "stderr",
+      "supportsJsonOutput": false,
+      "jsonOutputFlag": null,
+      "commonConfigs": ["*.xcodeproj/project.pbxproj", "*.xcworkspace/contents.xcworkspacedata"]
+    },
+    {
+      "name": "swiftlint",
+      "detectFiles": [".swiftlint.yml", ".swiftlint.yaml"],
+      "buildCommand": "swiftlint lint 2>&1",
+      "watchCommand": null,
+      "errorStream": "stdout",
+      "supportsJsonOutput": true,
+      "jsonOutputFlag": "--reporter json",
+      "commonConfigs": [".swiftlint.yml", ".swiftlint.yaml"]
+    },
+    {
+      "name": "swift-test",
+      "detectFiles": ["Package.swift"],
+      "buildCommand": "swift test 2>&1",
+      "watchCommand": null,
+      "errorStream": "stderr",
+      "supportsJsonOutput": false,
+      "jsonOutputFlag": null,
+      "commonConfigs": ["Package.swift"]
+    }
+  ]
+}

@@ -1,0 +1,326 @@
+{
+  "technology": "java",
+  "version": 1,
+  "patterns": [
+    {
+      "id": "JAVA_SYMBOL",
+      "match": "error: cannot find symbol\\s+symbol:\\s+(method|variable|class) (\\w+)",
+      "captures": ["symbolKind", "symbolName"],
+      "rootCause": "The {symbolKind} `{symbolName}` cannot be found. It may be misspelled, not imported, or not in scope.",
+      "prescription": "Check the spelling of `{symbolName}`, add the necessary import statement, or ensure the {symbolKind} is defined and accessible in the current scope.",
+      "codeBlock": null
+    },
+    {
+      "id": "JAVA_INCOMPATIBLE",
+      "match": "error: incompatible types: (\\S+) cannot be converted to (\\S+)",
+      "captures": ["sourceType", "targetType"],
+      "rootCause": "Cannot convert from `{sourceType}` to `{targetType}`. The types are incompatible.",
+      "prescription": "Use explicit casting if the types are related, call an appropriate conversion method, or change the variable type to match.",
+      "codeBlock": "// For numeric types:\nint value = (int) doubleValue;\n\n// For objects:\nString text = String.valueOf(number);\nint num = Integer.parseInt(text);"
+    },
+    {
+      "id": "JAVA_PACKAGE",
+      "match": "error: package (\\S+) does not exist",
+      "captures": ["packageName"],
+      "rootCause": "The package `{packageName}` does not exist on the classpath.",
+      "prescription": "Add the required dependency to your pom.xml or build.gradle, or verify the package name is correct.",
+      "codeBlock": "<!-- Maven -->\n<dependency>\n    <groupId>com.example</groupId>\n    <artifactId>library</artifactId>\n    <version>1.0.0</version>\n</dependency>"
+    },
+    {
+      "id": "JAVA_UNREACHABLE",
+      "match": "error: unreachable statement",
+      "captures": [],
+      "rootCause": "There is code after a return, throw, break, or continue statement that can never be executed.",
+      "prescription": "Remove the unreachable code or restructure the control flow so that the statement is reachable.",
+      "codeBlock": null
+    },
+    {
+      "id": "JAVA_STATIC_CONTEXT",
+      "match": "error: non-static (method|variable) (\\w+)\\(?\\)? cannot be referenced from a static context",
+      "captures": ["memberKind", "memberName"],
+      "rootCause": "The non-static {memberKind} `{memberName}` cannot be accessed from a static method (e.g., main).",
+      "prescription": "Create an instance of the class to access the non-static {memberKind}, or make the {memberKind} static.",
+      "codeBlock": "// Option 1: Create an instance\nMyClass obj = new MyClass();\nobj.{memberName};\n\n// Option 2: Make it static\nstatic void myMethod() { }"
+    },
+    {
+      "id": "JAVA_MISSING_RETURN",
+      "match": "error: missing return statement",
+      "captures": [],
+      "rootCause": "A method with a non-void return type does not return a value on all code paths.",
+      "prescription": "Ensure every code path in the method returns a value. Add a return statement at the end of the method or in all branches of conditional logic.",
+      "codeBlock": "public int getValue(boolean flag) {\n    if (flag) {\n        return 1;\n    }\n    return 0; // default return for all paths\n}"
+    },
+    {
+      "id": "JAVA_DUPLICATE_CLASS",
+      "match": "error: duplicate class: (\\S+)",
+      "captures": ["className"],
+      "rootCause": "The class `{className}` is defined more than once in the project.",
+      "prescription": "Remove the duplicate class definition, or move one of them to a different package.",
+      "codeBlock": null
+    },
+    {
+      "id": "JAVA_ABSTRACT",
+      "match": "error: (\\w+) is abstract; cannot be instantiated",
+      "captures": ["className"],
+      "rootCause": "The class `{className}` is abstract and cannot be directly instantiated with `new`.",
+      "prescription": "Create a concrete subclass that implements all abstract methods, or use an anonymous inner class to provide the implementation inline.",
+      "codeBlock": "// Option 1: Concrete subclass\nclass ConcreteClass extends {className} {\n    @Override\n    public void abstractMethod() { /* impl */ }\n}\n\n// Option 2: Anonymous class\n{className} obj = new {className}() {\n    @Override\n    public void abstractMethod() { /* impl */ }\n};"
+    },
+    {
+      "id": "JAVA_ACCESS",
+      "match": "error: (\\w+) has private access in (\\w+)",
+      "captures": ["member", "className"],
+      "rootCause": "The member `{member}` has private visibility in class `{className}` and cannot be accessed from outside.",
+      "prescription": "Use a public getter/setter method to access the private member, change the visibility modifier, or access it through a public API.",
+      "codeBlock": "// Add a getter in the class:\npublic Type getMember() {\n    return this.member;\n}"
+    },
+    {
+      "id": "JAVA_FINAL",
+      "match": "error: cannot assign a value to final variable (\\w+)",
+      "captures": ["variable"],
+      "rootCause": "The variable `{variable}` is declared as final and cannot be reassigned after initialization.",
+      "prescription": "Remove the `final` modifier if the variable needs to be reassigned, or use a different variable.",
+      "codeBlock": null
+    },
+    {
+      "id": "JAVA_UNCHECKED",
+      "match": "warning:.*uses unchecked or unsafe operations",
+      "captures": [],
+      "rootCause": "The code uses raw types or unchecked type operations, which can lead to ClassCastException at runtime.",
+      "prescription": "Add proper generic type parameters to eliminate raw type usage. Use @SuppressWarnings(\"unchecked\") only if type safety is guaranteed by other means.",
+      "codeBlock": "// Instead of:\nList list = new ArrayList();\n// Use:\nList<String> list = new ArrayList<>();"
+    },
+    {
+      "id": "JAVA_RAW_TYPE",
+      "match": "warning:.*uses? raw type[s]?",
+      "captures": [],
+      "rootCause": "Raw types are being used without generic type parameters, bypassing compile-time type checking.",
+      "prescription": "Add generic type parameters to all collections and generic classes.",
+      "codeBlock": "// Instead of:\nMap map = new HashMap();\n// Use:\nMap<String, Integer> map = new HashMap<>();"
+    },
+    {
+      "id": "JAVA_OVERRIDE",
+      "match": "error: method does not override or implement a method from a supertype",
+      "captures": [],
+      "rootCause": "A method annotated with @Override does not actually override any method from a parent class or interface.",
+      "prescription": "Verify the method signature matches the parent method exactly (name, parameters, return type). Check that the parent class or interface actually declares the method.",
+      "codeBlock": null
+    },
+    {
+      "id": "JAVA_AMBIGUOUS",
+      "match": "error: reference to (\\w+) is ambiguous",
+      "captures": ["methodName"],
+      "rootCause": "The call to `{methodName}` is ambiguous because multiple overloaded methods match the provided arguments.",
+      "prescription": "Cast the arguments to the specific types expected by the intended overload to disambiguate the call.",
+      "codeBlock": "// Disambiguate by casting:\nprocess((String) null);\nprocess((int) value);"
+    },
+    {
+      "id": "JAVA_ALREADY_DEFINED",
+      "match": "error: variable (\\w+) is already defined in method (\\w+)",
+      "captures": ["variable", "method"],
+      "rootCause": "The variable `{variable}` is declared more than once in the method `{method}`.",
+      "prescription": "Rename one of the duplicate variable declarations or remove the redundant declaration.",
+      "codeBlock": null
+    },
+    {
+      "id": "JAVA_NULL_POINTER",
+      "match": "java\\.lang\\.NullPointerException(?:: (.+))?",
+      "captures": ["message"],
+      "rootCause": "A NullPointerException occurred: attempted to use a null reference. {message}",
+      "prescription": "Add null checks before accessing the object, use Optional<T> for values that may be absent, or use Objects.requireNonNull() for early validation.",
+      "codeBlock": "// Null check:\nif (obj != null) {\n    obj.method();\n}\n\n// Optional:\nOptional.ofNullable(obj)\n    .map(o -> o.getValue())\n    .orElse(defaultValue);"
+    },
+    {
+      "id": "JAVA_CLASS_CAST",
+      "match": "java\\.lang\\.ClassCastException: (\\S+) cannot be cast to (\\S+)",
+      "captures": ["actualType", "targetType"],
+      "rootCause": "Cannot cast `{actualType}` to `{targetType}`. The object is not an instance of the target type.",
+      "prescription": "Use `instanceof` to check the type before casting, or review the code logic to ensure the correct type is being used.",
+      "codeBlock": "if (obj instanceof TargetType) {\n    TargetType target = (TargetType) obj;\n    // use target\n}"
+    },
+    {
+      "id": "JAVA_INDEX_OUT_OF_BOUNDS",
+      "match": "java\\.lang\\.ArrayIndexOutOfBoundsException: Index (\\d+) out of bounds for length (\\d+)",
+      "captures": ["index", "length"],
+      "rootCause": "Array index {index} is out of bounds for an array of length {length}.",
+      "prescription": "Validate the index is within bounds (0 to length-1) before accessing the array. Use a bounds check or iterate with a for-each loop.",
+      "codeBlock": "// Bounds check:\nif (index >= 0 && index < array.length) {\n    value = array[index];\n}\n\n// For-each loop:\nfor (var element : array) {\n    // process element\n}"
+    },
+    {
+      "id": "JAVA_STRING_INDEX",
+      "match": "java\\.lang\\.StringIndexOutOfBoundsException: (?:String index out of range|Range \\[)(\\d+)(?:, (\\d+)\\))?(?: out of bounds for length (\\d+))?",
+      "captures": ["index", "endIndex", "length"],
+      "rootCause": "String index out of bounds at position {index}. The string is shorter than the requested index.",
+      "prescription": "Check the string length before using charAt(), substring(), or similar index-based methods.",
+      "codeBlock": "if (index < str.length()) {\n    char c = str.charAt(index);\n}"
+    },
+    {
+      "id": "JAVA_ARITHMETIC",
+      "match": "java\\.lang\\.ArithmeticException: / by zero",
+      "captures": [],
+      "rootCause": "Division by zero occurred in an integer arithmetic operation.",
+      "prescription": "Check that the divisor is not zero before performing division.",
+      "codeBlock": "if (divisor != 0) {\n    int result = dividend / divisor;\n} else {\n    // handle zero divisor\n}"
+    },
+    {
+      "id": "JAVA_STACK_OVERFLOW",
+      "match": "java\\.lang\\.StackOverflowError",
+      "captures": [],
+      "rootCause": "A StackOverflowError occurred, typically caused by infinite or excessively deep recursion.",
+      "prescription": "Add or fix the base case in recursive methods, convert deep recursion to iteration, or increase the stack size with -Xss JVM flag.",
+      "codeBlock": "// Convert recursion to iteration:\npublic int factorial(int n) {\n    int result = 1;\n    for (int i = 2; i <= n; i++) {\n        result *= i;\n    }\n    return result;\n}"
+    },
+    {
+      "id": "JAVA_CLASS_NOT_FOUND",
+      "match": "java\\.lang\\.ClassNotFoundException: (\\S+)",
+      "captures": ["className"],
+      "rootCause": "The class `{className}` could not be found at runtime. It may be missing from the classpath.",
+      "prescription": "Ensure the class is included in the project dependencies, verify the fully qualified class name is correct, and check that the JAR containing the class is on the classpath.",
+      "codeBlock": null
+    },
+    {
+      "id": "JAVA_NO_SUCH_METHOD",
+      "match": "java\\.lang\\.NoSuchMethodException: (\\S+)",
+      "captures": ["methodSignature"],
+      "rootCause": "The method `{methodSignature}` was not found at runtime, often during reflection.",
+      "prescription": "Verify the method name, parameter types, and accessibility. If using reflection, ensure the method exists and use getDeclaredMethod() for private methods.",
+      "codeBlock": "// Using reflection:\nMethod method = clazz.getDeclaredMethod(\"methodName\", String.class, int.class);\nmethod.setAccessible(true);\nmethod.invoke(instance, arg1, arg2);"
+    },
+    {
+      "id": "JAVA_ILLEGAL_ARG",
+      "match": "java\\.lang\\.IllegalArgumentException: (.*)",
+      "captures": ["message"],
+      "rootCause": "An illegal argument was passed to a method: {message}",
+      "prescription": "Validate method arguments before passing them. Check the method's documentation for acceptable parameter values and ranges.",
+      "codeBlock": "// Validate arguments early:\npublic void process(String input) {\n    if (input == null || input.isEmpty()) {\n        throw new IllegalArgumentException(\"input must not be null or empty\");\n    }\n    // proceed\n}"
+    },
+    {
+      "id": "JAVA_ILLEGAL_STATE",
+      "match": "java\\.lang\\.IllegalStateException: (.*)",
+      "captures": ["message"],
+      "rootCause": "An operation was invoked at an illegal or inappropriate time: {message}",
+      "prescription": "Ensure the object is in the correct state before calling the method. Check initialization, lifecycle state, and preconditions.",
+      "codeBlock": null
+    },
+    {
+      "id": "JAVA_CONCURRENT_MOD",
+      "match": "java\\.util\\.ConcurrentModificationException",
+      "captures": [],
+      "rootCause": "A collection was modified while being iterated over, which is not permitted by most Java collection iterators.",
+      "prescription": "Use Iterator.remove() to remove elements during iteration, use CopyOnWriteArrayList for concurrent access, or collect items to remove and process them after the loop.",
+      "codeBlock": "// Use Iterator.remove():\nIterator<String> it = list.iterator();\nwhile (it.hasNext()) {\n    if (shouldRemove(it.next())) {\n        it.remove();\n    }\n}\n\n// Or use removeIf:\nlist.removeIf(item -> shouldRemove(item));"
+    },
+    {
+      "id": "JAVA_UNSUPPORTED_OP",
+      "match": "java\\.lang\\.UnsupportedOperationException",
+      "captures": [],
+      "rootCause": "An unsupported operation was called, typically on an unmodifiable or fixed-size collection (e.g., Arrays.asList() or List.of()).",
+      "prescription": "Wrap the collection in a mutable implementation if modification is needed.",
+      "codeBlock": "// Instead of:\nList<String> list = List.of(\"a\", \"b\");\n// Use:\nList<String> list = new ArrayList<>(List.of(\"a\", \"b\"));\nlist.add(\"c\"); // now allowed"
+    },
+    {
+      "id": "JAVA_FILE_NOT_FOUND",
+      "match": "java\\.io\\.FileNotFoundException: ([^\\s(]+)",
+      "captures": ["filePath"],
+      "rootCause": "The file `{filePath}` was not found. It may not exist, or the path may be incorrect.",
+      "prescription": "Verify the file path is correct, check that the file exists before accessing it, and ensure the application has read permissions.",
+      "codeBlock": "Path path = Path.of(filePath);\nif (Files.exists(path)) {\n    // read the file\n} else {\n    // handle missing file\n}"
+    },
+    {
+      "id": "JAVA_IO_EXCEPTION",
+      "match": "java\\.io\\.IOException: (.*)",
+      "captures": ["message"],
+      "rootCause": "An I/O error occurred: {message}",
+      "prescription": "Handle the IOException with try-catch or try-with-resources. Check file permissions, disk space, network connectivity, and resource availability.",
+      "codeBlock": "try (var reader = new BufferedReader(new FileReader(file))) {\n    String line;\n    while ((line = reader.readLine()) != null) {\n        // process line\n    }\n} catch (IOException e) {\n    logger.error(\"Failed to read file\", e);\n}"
+    },
+    {
+      "id": "JAVA_NUMBER_FORMAT",
+      "match": "java\\.lang\\.NumberFormatException: For input string: \"([^\"]+)\"",
+      "captures": ["input"],
+      "rootCause": "Cannot parse \"{input}\" as a number. The string contains non-numeric characters.",
+      "prescription": "Validate the input string before parsing, use try-catch to handle invalid input, or trim whitespace from the input.",
+      "codeBlock": "try {\n    int value = Integer.parseInt(input.trim());\n} catch (NumberFormatException e) {\n    // handle invalid input\n    System.err.println(\"Invalid number: \" + input);\n}"
+    },
+    {
+      "id": "MAVEN_DEPENDENCY",
+      "match": "\\[ERROR\\].*Could not resolve dependencies for project (\\S+)",
+      "captures": ["project"],
+      "rootCause": "Maven could not resolve dependencies for project `{project}`. One or more dependencies are unavailable.",
+      "prescription": "Check that all dependency coordinates (groupId, artifactId, version) are correct, verify the repository URLs in pom.xml or settings.xml, and try running `mvn dependency:resolve` to identify the missing artifact.",
+      "codeBlock": "# Force update snapshots and releases:\nmvn clean install -U\n\n# Check dependency tree:\nmvn dependency:tree"
+    },
+    {
+      "id": "MAVEN_PLUGIN",
+      "match": "\\[ERROR\\] Plugin (\\S+) not found in repository",
+      "captures": ["pluginId"],
+      "rootCause": "The Maven plugin `{pluginId}` was not found in any configured repository.",
+      "prescription": "Verify the plugin groupId, artifactId, and version in pom.xml. Ensure the Maven Central repository is configured and accessible.",
+      "codeBlock": "<plugin>\n    <groupId>org.apache.maven.plugins</groupId>\n    <artifactId>maven-compiler-plugin</artifactId>\n    <version>3.11.0</version>\n</plugin>"
+    },
+    {
+      "id": "MAVEN_COMPILE",
+      "match": "\\[ERROR\\] COMPILATION ERROR.*\\[ERROR\\] (\\S+):\\[(\\d+),(\\d+)\\] (.*)",
+      "captures": ["file", "line", "column", "message"],
+      "rootCause": "Maven compilation failed at {file}:{line}:{column} - {message}",
+      "prescription": "Fix the compilation error reported at the specified location. Check the error message for details on what went wrong.",
+      "codeBlock": null
+    },
+    {
+      "id": "GRADLE_DEPENDENCY",
+      "match": "Could not resolve(?:\\s+all)? dependency[:\\s]+(\\S+)",
+      "captures": ["dependency"],
+      "rootCause": "Gradle could not resolve the dependency `{dependency}`.",
+      "prescription": "Verify the dependency coordinates in build.gradle, ensure the correct repositories are configured (mavenCentral, google), and check network connectivity.",
+      "codeBlock": "repositories {\n    mavenCentral()\n    google()\n}\n\ndependencies {\n    implementation 'group:artifact:version'\n}"
+    },
+    {
+      "id": "GRADLE_TASK",
+      "match": "Task '(\\w+)' not found in (root project|project '[^']+')",
+      "captures": ["taskName", "project"],
+      "rootCause": "The Gradle task `{taskName}` was not found in {project}.",
+      "prescription": "Run `./gradlew tasks` to list all available tasks. Check for typos in the task name or ensure the required plugin is applied.",
+      "codeBlock": "# List all available tasks:\n./gradlew tasks --all\n\n# Run the correct task:\n./gradlew build"
+    },
+    {
+      "id": "SPRING_BEAN_NOT_FOUND",
+      "match": "org\\.springframework\\.beans\\.factory\\.NoSuchBeanDefinitionException: No (?:qualifying )?bean of type '(\\S+)'",
+      "captures": ["beanType"],
+      "rootCause": "Spring could not find a bean of type `{beanType}` in the application context.",
+      "prescription": "Ensure the class is annotated with @Component, @Service, @Repository, or @Configuration. Verify component scanning includes the package. Check that the bean is defined in a configuration class if manual registration is needed.",
+      "codeBlock": "@Service\npublic class MyService implements {beanType} {\n    // implementation\n}\n\n// Or register as a bean:\n@Configuration\npublic class AppConfig {\n    @Bean\n    public MyType myBean() {\n        return new MyType();\n    }\n}"
+    },
+    {
+      "id": "SPRING_CIRCULAR",
+      "match": "The dependencies of some of the beans in the application context form a cycle[:\\s]*(.*)",
+      "captures": ["cycle"],
+      "rootCause": "Spring detected a circular dependency between beans: {cycle}",
+      "prescription": "Break the circular dependency by using @Lazy on one of the injected dependencies, refactoring to use setter injection, or extracting common logic into a separate bean.",
+      "codeBlock": "// Use @Lazy to break the cycle:\n@Service\npublic class ServiceA {\n    private final ServiceB serviceB;\n\n    public ServiceA(@Lazy ServiceB serviceB) {\n        this.serviceB = serviceB;\n    }\n}"
+    },
+    {
+      "id": "SPRING_AUTOWIRE",
+      "match": "No qualifying bean of type '(\\S+)' available: expected (?:at least|single matching) (\\d+|bean) but found (\\d+|none)",
+      "captures": ["beanType", "expected", "found"],
+      "rootCause": "Spring autowiring failed for type `{beanType}`: expected {expected} but found {found}.",
+      "prescription": "If multiple beans exist, use @Qualifier to specify which one. If no beans exist, ensure the class is annotated and scanned. Use @Primary to designate a default bean.",
+      "codeBlock": "// Use @Qualifier:\n@Autowired\n@Qualifier(\"specificBean\")\nprivate MyService service;\n\n// Or mark one as primary:\n@Primary\n@Service\npublic class PreferredService implements MyService { }"
+    },
+    {
+      "id": "SPRING_MAPPING",
+      "match": "(?:Ambiguous handler methods mapped|There is already '(\\w+)' bean method.*mapped|No mapping for (GET|POST|PUT|DELETE) (\\S+))",
+      "captures": ["existingHandler", "httpMethod", "path"],
+      "rootCause": "Spring MVC request mapping conflict or missing mapping for the requested endpoint.",
+      "prescription": "Ensure each endpoint has a unique combination of HTTP method and path. Check for duplicate @RequestMapping annotations and verify the controller is scanned.",
+      "codeBlock": "@RestController\n@RequestMapping(\"/api\")\npublic class MyController {\n    @GetMapping(\"/unique-path\")\n    public ResponseEntity<?> handleRequest() {\n        // ...\n    }\n}"
+    },
+    {
+      "id": "SPRING_DATASOURCE",
+      "match": "Cannot determine embedded database driver class for database type (NONE)?",
+      "captures": ["dbType"],
+      "rootCause": "Spring Boot cannot determine the embedded database type. No database driver or configuration was found.",
+      "prescription": "Add a database driver dependency to your project and configure the datasource in application.properties/application.yml.",
+      "codeBlock": "# application.properties:\nspring.datasource.url=jdbc:mysql://localhost:3306/mydb\nspring.datasource.username=root\nspring.datasource.password=secret\nspring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver"
+    }
+  ]
+}

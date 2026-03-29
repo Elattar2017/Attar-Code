@@ -1,0 +1,2772 @@
+{
+  "metadata": {
+    "language": "Rust",
+    "version": "1.0.0",
+    "description": "Error classification, dependency tracing, and fix ordering for Rust projects using rustc, cargo, and clippy",
+    "toolchains": [
+      {
+        "name": "rustc",
+        "errorPrefix": "E",
+        "errorFormat": "error\\[(?<code>E\\d{4})\\]:\\s*(?<message>.+?)\\n\\s*-->\\s*(?<file>[^:]+):(?<line>\\d+):(?<column>\\d+)",
+        "errorFormatCaptures": ["code", "message", "file", "line", "column"],
+        "outputStream": "stderr",
+        "supportsJsonOutput": true,
+        "jsonOutputFlag": "--error-format=json"
+      },
+      {
+        "name": "cargo",
+        "errorPrefix": "E",
+        "errorFormat": "error\\[(?<code>E\\d{4})\\]:\\s*(?<message>.+?)\\n\\s*-->\\s*(?<file>[^:]+):(?<line>\\d+):(?<column>\\d+)",
+        "errorFormatCaptures": ["code", "message", "file", "line", "column"],
+        "outputStream": "stderr",
+        "supportsJsonOutput": true,
+        "jsonOutputFlag": "--message-format=json"
+      },
+      {
+        "name": "cargo-uncoded",
+        "errorPrefix": null,
+        "errorFormat": "error:\\s*(?<message>.+?)\\n\\s*-->\\s*(?<file>[^:]+):(?<line>\\d+):(?<column>\\d+)",
+        "errorFormatCaptures": ["message", "file", "line", "column"],
+        "outputStream": "stderr",
+        "supportsJsonOutput": true,
+        "jsonOutputFlag": "--message-format=json"
+      },
+      {
+        "name": "clippy",
+        "errorPrefix": "clippy",
+        "errorFormat": "warning:\\s*(?<message>.+?)\\n\\s*-->\\s*(?<file>[^:]+):(?<line>\\d+):(?<column>\\d+)\\n[\\s\\S]*?=\\s*note:\\s*`#\\[warn\\((?<code>clippy::[\\w:]+)\\)\\]`",
+        "errorFormatCaptures": ["message", "file", "line", "column", "code"],
+        "outputStream": "stderr",
+        "supportsJsonOutput": true,
+        "jsonOutputFlag": "--message-format=json"
+      }
+    ],
+    "fileExtensions": [".rs"],
+    "generatedBy": "plugin-generator-v1",
+    "generatedFor": "attar-code-smart-fix"
+  },
+
+  "errorCatalog": {
+    "categories": [
+      {
+        "id": "ownership_borrowing",
+        "name": "Ownership and Borrowing Errors",
+        "description": "Errors related to Rust's ownership system, move semantics, and borrow checker",
+        "defaultTracingBehavior": "local_only",
+        "errors": [
+          {
+            "code": "E0382",
+            "category": "ownership_borrowing",
+            "severity": "error",
+            "messagePattern": "(?:borrow of|use of) moved value: `(?<variable>[^`]+)`",
+            "match": "error\\[E0382\\]:.*(?:borrow of|use of) moved value: `(?<variable>[^`]+)`",
+            "captures": [{ "name": "variable", "role": "symbol_name" }],
+            "baseCrossFileProbability": 0.15,
+            "confidence": "known",
+            "refinements": [
+              {
+                "check": { "type": "is_imported", "target": "variable" },
+                "adjustedProbability": 0.4,
+                "traceDepth": "direct",
+                "traceTarget": "imported_file"
+              },
+              {
+                "check": { "type": "is_local", "target": "variable" },
+                "adjustedProbability": 0.05,
+                "traceDepth": "none",
+                "traceTarget": "same_file"
+              }
+            ],
+            "fixHint": {
+              "primaryStrategy": "restructure_code",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "function_body"
+            },
+            "coOccurrence": [
+              { "code": "E0505", "relationship": "same_root_cause", "sharedCapture": "variable", "resolution": "fix_either" },
+              { "code": "E0507", "relationship": "sometimes_together", "sharedCapture": "variable", "resolution": "fix_this_first" }
+            ],
+            "rootCause": "The variable `{variable}` was moved to a new owner (by assignment, function call, or return) and can no longer be used. In Rust, each value has a single owner, and when ownership is transferred (moved), the original binding becomes invalid.",
+            "prescription": "1. Clone the value before the move: `let copy = {variable}.clone();` then use the clone.\n2. Pass a reference instead of moving: change the function to accept `&{variable}` or `&mut {variable}`.\n3. If the type is small and Copy-able, derive or implement the Copy trait.\n4. Restructure code so the value is not used after the move.",
+            "codeBlock": "// BEFORE (error):\nlet data = String::from(\"hello\");\nlet moved = data;\nprintln!(\"{}\", data); // E0382: use of moved value\n\n// AFTER (fix with clone):\nlet data = String::from(\"hello\");\nlet moved = data.clone();\nprintln!(\"{}\", data); // works\n\n// AFTER (fix with reference):\nlet data = String::from(\"hello\");\nlet borrowed = &data;\nprintln!(\"{}\", data); // works",
+            "conditions": [
+              {
+                "when": "variable contains self",
+                "rootCause": "`self` was moved in a previous method call within the same method body. Methods that take `self` by value consume the receiver.",
+                "prescription": "Change the method signature to take `&self` or `&mut self` instead of `self`, or call `.clone()` on self before the consuming call.",
+                "codeBlock": "// BEFORE:\nimpl MyType {\n    fn process(self) -> Result {\n        self.validate(); // moves self\n        self.execute()   // E0382\n    }\n}\n// AFTER:\nimpl MyType {\n    fn process(&self) -> Result {\n        self.validate();\n        self.execute()\n    }\n}"
+              }
+            ]
+          },
+          {
+            "code": "E0499",
+            "category": "ownership_borrowing",
+            "severity": "error",
+            "messagePattern": "cannot borrow `(?<variable>[^`]+)` as mutable more than once at a time",
+            "match": "error\\[E0499\\]:.*cannot borrow `(?<variable>[^`]+)` as mutable more than once at a time",
+            "captures": [{ "name": "variable", "role": "symbol_name" }],
+            "baseCrossFileProbability": 0.05,
+            "confidence": "known",
+            "refinements": [
+              {
+                "check": { "type": "is_local", "target": "variable" },
+                "adjustedProbability": 0.02,
+                "traceDepth": "none",
+                "traceTarget": "same_file"
+              }
+            ],
+            "fixHint": {
+              "primaryStrategy": "restructure_code",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "function_body"
+            },
+            "coOccurrence": [
+              { "code": "E0502", "relationship": "same_root_cause", "sharedCapture": "variable", "resolution": "fix_either" }
+            ],
+            "rootCause": "The variable `{variable}` is being mutably borrowed more than once at the same time. Rust enforces that only one mutable reference can exist at a time to prevent data races.",
+            "prescription": "1. Limit the scope of the first mutable borrow with curly braces so it drops before the second borrow.\n2. Combine the operations into a single mutable borrow.\n3. Use interior mutability patterns like `RefCell<T>` or `Cell<T>` if you genuinely need aliased mutability.\n4. Split the struct into separate fields that can be borrowed independently.",
+            "codeBlock": "// BEFORE (error):\nlet a = &mut vec;\nlet b = &mut vec; // E0499\na.push(1);\nb.push(2);\n\n// AFTER (fix with scoping):\n{\n    let a = &mut vec;\n    a.push(1);\n} // a's borrow ends here\nlet b = &mut vec;\nb.push(2);\n\n// AFTER (fix with split borrows on struct):\nlet (left, right) = data.split_at_mut(mid);",
+            "conditions": [
+              {
+                "when": "variable contains self",
+                "rootCause": "Two methods are being called on `self` that both require `&mut self`, and the borrow from the first call has not ended before the second begins.",
+                "prescription": "Extract the result of the first mutable borrow into a local variable before making the second mutable borrow. Or restructure the struct so the two methods borrow disjoint fields.",
+                "codeBlock": "// BEFORE:\nlet val = self.get_mut_a();\nself.set_b(val); // E0499\n\n// AFTER:\nlet val = self.get_mut_a().clone();\nself.set_b(val);"
+              }
+            ]
+          },
+          {
+            "code": "E0502",
+            "category": "ownership_borrowing",
+            "severity": "error",
+            "messagePattern": "cannot borrow `(?<variable>[^`]+)` as (?<borrowKind>immutable|mutable) because it is also borrowed as (?<conflictKind>mutable|immutable)",
+            "match": "error\\[E0502\\]:.*cannot borrow `(?<variable>[^`]+)` as (?<borrowKind>immutable|mutable) because it is also borrowed as (?<conflictKind>mutable|immutable)",
+            "captures": [
+              { "name": "variable", "role": "symbol_name" },
+              { "name": "borrowKind", "role": "literal_value" },
+              { "name": "conflictKind", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.05,
+            "confidence": "known",
+            "refinements": [
+              {
+                "check": { "type": "is_local", "target": "variable" },
+                "adjustedProbability": 0.02,
+                "traceDepth": "none",
+                "traceTarget": "same_file"
+              }
+            ],
+            "fixHint": {
+              "primaryStrategy": "restructure_code",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "function_body"
+            },
+            "coOccurrence": [
+              { "code": "E0499", "relationship": "same_root_cause", "sharedCapture": "variable", "resolution": "fix_either" }
+            ],
+            "rootCause": "The variable `{variable}` has an active {conflictKind} borrow, preventing a new {borrowKind} borrow. Rust does not allow a mutable reference to coexist with any other reference.",
+            "prescription": "1. End the mutable borrow before creating the immutable borrow (use scoping with curly braces).\n2. Clone the data you need from the immutable borrow before starting the mutable borrow.\n3. Use `Cell`, `RefCell`, or `Mutex` for interior mutability if the borrowing pattern is genuinely needed.\n4. Restructure to separate the mutable and immutable access into different scopes.",
+            "codeBlock": "// BEFORE (error):\nlet r = &mut vec;\nlet len = vec.len(); // E0502: immutable borrow while mutable exists\nr.push(len);\n\n// AFTER:\nlet len = vec.len(); // immutable borrow first\nvec.push(len);       // mutable borrow after immutable is done",
+            "conditions": []
+          },
+          {
+            "code": "E0505",
+            "category": "ownership_borrowing",
+            "severity": "error",
+            "messagePattern": "cannot move out of `(?<variable>[^`]+)` because it is borrowed",
+            "match": "error\\[E0505\\]:.*cannot move out of `(?<variable>[^`]+)` because it is borrowed",
+            "captures": [{ "name": "variable", "role": "symbol_name" }],
+            "baseCrossFileProbability": 0.05,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "restructure_code",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "function_body"
+            },
+            "coOccurrence": [
+              { "code": "E0382", "relationship": "same_root_cause", "sharedCapture": "variable", "resolution": "fix_either" }
+            ],
+            "rootCause": "The variable `{variable}` cannot be moved because an outstanding borrow still references it. Moving the value would invalidate the reference.",
+            "prescription": "1. Ensure all borrows of the variable go out of scope before attempting to move it.\n2. Clone the value instead of moving: `{variable}.clone()`.\n3. Use `drop(reference)` explicitly to end the borrow early.\n4. Restructure the code to avoid holding a reference across the move point.",
+            "codeBlock": "// BEFORE (error):\nlet r = &data;\nlet moved = data; // E0505: cannot move, still borrowed\nprintln!(\"{}\", r);\n\n// AFTER:\nlet r = &data;\nprintln!(\"{}\", r); // use the borrow first\nlet moved = data;  // borrow ended, move is fine",
+            "conditions": []
+          },
+          {
+            "code": "E0507",
+            "category": "ownership_borrowing",
+            "severity": "error",
+            "messagePattern": "cannot move out of (?<expression>.+?) which is behind a (?<refKind>shared|mutable) reference",
+            "match": "error\\[E0507\\]:.*cannot move out of (?<expression>.+?) which is behind a (?<refKind>shared|mutable) reference",
+            "captures": [
+              { "name": "expression", "role": "symbol_name" },
+              { "name": "refKind", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.1,
+            "confidence": "known",
+            "refinements": [
+              {
+                "check": { "type": "is_composed_type", "target": "expression" },
+                "adjustedProbability": 0.3,
+                "traceDepth": "direct",
+                "traceTarget": "composed_type"
+              }
+            ],
+            "fixHint": {
+              "primaryStrategy": "restructure_code",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [
+              { "code": "E0382", "relationship": "sometimes_together", "sharedCapture": null, "resolution": "fix_this_first" }
+            ],
+            "rootCause": "Attempted to move a value out of `{expression}` which is behind a {refKind} reference. You cannot take ownership of data behind a reference because the reference does not own the data.",
+            "prescription": "1. Clone the value: `{expression}.clone()` instead of moving it.\n2. Use `.to_owned()` for string slices: `s.to_owned()`.\n3. Use `std::mem::replace` or `std::mem::take` to swap the value out if you have `&mut`.\n4. Change the function signature to take ownership instead of a reference.\n5. Use `.iter()` instead of `.into_iter()` when iterating over borrowed collections.",
+            "codeBlock": "// BEFORE (error):\nfn process(items: &Vec<String>) {\n    for item in items.into_iter() { } // E0507: moves out of reference\n}\n\n// AFTER:\nfn process(items: &Vec<String>) {\n    for item in items.iter() { } // borrows each element\n}\n\n// Or with mem::take on &mut:\nlet val = std::mem::take(&mut self.field);",
+            "conditions": [
+              {
+                "when": "expression contains index",
+                "rootCause": "Attempting to move a value out of an indexed position (e.g., `vec[0]`) behind a reference. Indexing returns a reference, not an owned value.",
+                "prescription": "Use `.remove(index)` if you own the collection, `.clone()` on the indexed element, or `std::mem::replace` with a placeholder value.",
+                "codeBlock": "// BEFORE:\nlet item = borrowed_vec[0]; // E0507\n\n// AFTER:\nlet item = borrowed_vec[0].clone();\n// or if you own it:\nlet item = owned_vec.remove(0);"
+              }
+            ]
+          },
+          {
+            "code": "E0384",
+            "category": "ownership_borrowing",
+            "severity": "error",
+            "messagePattern": "cannot assign twice to immutable variable `(?<variable>[^`]+)`",
+            "match": "error\\[E0384\\]:.*cannot assign twice to immutable variable `(?<variable>[^`]+)`",
+            "captures": [{ "name": "variable", "role": "symbol_name" }],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "restructure_code",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [],
+            "rootCause": "The variable `{variable}` is immutable by default and cannot be reassigned after its initial binding. In Rust, all variables are immutable unless declared with `mut`.",
+            "prescription": "Add `mut` to the variable declaration: `let mut {variable} = ...;`",
+            "codeBlock": "// BEFORE (error):\nlet {variable} = 0;\n{variable} = 1; // E0384\n\n// AFTER:\nlet mut {variable} = 0;\n{variable} = 1; // works",
+            "conditions": []
+          },
+          {
+            "code": "E0596",
+            "category": "ownership_borrowing",
+            "severity": "error",
+            "messagePattern": "cannot borrow `(?<variable>[^`]+)` as mutable, as it is not declared as mutable",
+            "match": "error\\[E0596\\]:.*cannot borrow `(?<variable>[^`]+)` as mutable, as it is not declared as mutable",
+            "captures": [{ "name": "variable", "role": "symbol_name" }],
+            "baseCrossFileProbability": 0.05,
+            "confidence": "known",
+            "refinements": [
+              {
+                "check": { "type": "is_imported", "target": "variable" },
+                "adjustedProbability": 0.3,
+                "traceDepth": "direct",
+                "traceTarget": "imported_file"
+              }
+            ],
+            "fixHint": {
+              "primaryStrategy": "restructure_code",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [
+              { "code": "E0384", "relationship": "same_root_cause", "sharedCapture": "variable", "resolution": "fix_either" }
+            ],
+            "rootCause": "The variable `{variable}` needs to be mutable to allow a mutable borrow, but it was declared without `mut`.",
+            "prescription": "Add `mut` to the variable declaration, or if it is a function parameter, change the parameter to `mut {variable}` or accept `&mut` instead of `&`.",
+            "codeBlock": "// BEFORE:\nlet data = vec![1, 2, 3];\ndata.push(4); // E0596\n\n// AFTER:\nlet mut data = vec![1, 2, 3];\ndata.push(4);",
+            "conditions": [
+              {
+                "when": "variable contains self",
+                "rootCause": "The method takes `&self` but attempts to mutate through it. The method signature must use `&mut self` to allow mutation.",
+                "prescription": "Change the method signature from `fn method(&self)` to `fn method(&mut self)`. Update all call sites if needed.",
+                "codeBlock": "// BEFORE:\nimpl MyStruct {\n    fn update(&self) {\n        self.field = 42; // E0596\n    }\n}\n// AFTER:\nimpl MyStruct {\n    fn update(&mut self) {\n        self.field = 42;\n    }\n}"
+              }
+            ]
+          },
+          {
+            "code": "E0381",
+            "category": "ownership_borrowing",
+            "severity": "error",
+            "messagePattern": "used binding `(?<variable>[^`]+)` isn't initialized",
+            "match": "error\\[E0381\\]:.*used binding `(?<variable>[^`]+)` isn't initialized",
+            "captures": [{ "name": "variable", "role": "symbol_name" }],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "initialize_variable",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [],
+            "rootCause": "The variable `{variable}` is used before being assigned a value. Rust requires all variables to be initialized before use.",
+            "prescription": "Initialize the variable at declaration, or ensure all code paths assign a value before the first use.",
+            "codeBlock": "// BEFORE:\nlet x: i32;\nprintln!(\"{}\", x); // E0381\n\n// AFTER:\nlet x: i32 = 0;\nprintln!(\"{}\", x);",
+            "conditions": []
+          },
+          {
+            "code": "E0597",
+            "category": "ownership_borrowing",
+            "severity": "error",
+            "messagePattern": "`(?<variable>[^`]+)` does not live long enough",
+            "match": "error\\[E0597\\]:.*`(?<variable>[^`]+)` does not live long enough",
+            "captures": [{ "name": "variable", "role": "symbol_name" }],
+            "baseCrossFileProbability": 0.1,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "restructure_code",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "function_body"
+            },
+            "coOccurrence": [
+              { "code": "E0106", "relationship": "sometimes_together", "sharedCapture": null, "resolution": "fix_other_first" }
+            ],
+            "rootCause": "The variable `{variable}` is dropped (deallocated) while a reference to it still exists. The referenced data must outlive all references to it.",
+            "prescription": "1. Move the variable declaration to an outer scope so it lives longer.\n2. Return an owned value instead of a reference.\n3. Use `'static` lifetime or `Box<dyn Trait>` for heap allocation.\n4. Use `Rc<T>` or `Arc<T>` for shared ownership.",
+            "codeBlock": "// BEFORE (error):\nlet r;\n{\n    let x = 5;\n    r = &x; // E0597: x does not live long enough\n}\nprintln!(\"{}\", r);\n\n// AFTER:\nlet x = 5;\nlet r = &x;\nprintln!(\"{}\", r);",
+            "conditions": []
+          }
+        ]
+      },
+      {
+        "id": "lifetimes",
+        "name": "Lifetime Errors",
+        "description": "Errors related to lifetime annotations, elision, and lifetime bounds",
+        "defaultTracingBehavior": "local_or_cross",
+        "errors": [
+          {
+            "code": "E0106",
+            "category": "lifetimes",
+            "severity": "error",
+            "messagePattern": "missing lifetime specifier",
+            "match": "error\\[E0106\\]:.*missing lifetime specifier",
+            "captures": [],
+            "baseCrossFileProbability": 0.2,
+            "confidence": "known",
+            "refinements": [
+              {
+                "check": { "type": "is_composed_type", "target": "symbol_name" },
+                "adjustedProbability": 0.5,
+                "traceDepth": "direct",
+                "traceTarget": "composed_type"
+              }
+            ],
+            "fixHint": {
+              "primaryStrategy": "update_type_annotation",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "function_body"
+            },
+            "coOccurrence": [
+              { "code": "E0621", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_this_first" },
+              { "code": "E0597", "relationship": "sometimes_together", "sharedCapture": null, "resolution": "fix_this_first" }
+            ],
+            "rootCause": "A reference type is missing a lifetime annotation. The compiler cannot determine how long the reference should be valid based on the function signature alone.",
+            "prescription": "1. Add a lifetime parameter to the function/struct: `<'a>`.\n2. Annotate the reference with the lifetime: `&'a T`.\n3. If the function has one reference input, lifetime elision may apply -- check if adding a single lifetime to input and output suffices.\n4. For structs holding references, add a lifetime parameter to the struct definition.",
+            "codeBlock": "// BEFORE (error):\nstruct Config {\n    name: &str, // E0106: missing lifetime\n}\n\n// AFTER:\nstruct Config<'a> {\n    name: &'a str,\n}\n\n// Function example:\nfn first_word<'a>(s: &'a str) -> &'a str {\n    &s[..s.find(' ').unwrap_or(s.len())]\n}",
+            "conditions": [
+              {
+                "when": "message contains struct",
+                "rootCause": "A struct contains a reference field without a lifetime parameter. Structs that hold references must declare lifetime parameters.",
+                "prescription": "Add a lifetime parameter to the struct definition and annotate all reference fields with it.",
+                "codeBlock": "struct MyStruct<'a> {\n    data: &'a [u8],\n    name: &'a str,\n}"
+              }
+            ]
+          },
+          {
+            "code": "E0621",
+            "category": "lifetimes",
+            "severity": "error",
+            "messagePattern": "explicit lifetime required in the type of `(?<parameter>[^`]+)`",
+            "match": "error\\[E0621\\]:.*explicit lifetime required in the type of `(?<parameter>[^`]+)`",
+            "captures": [{ "name": "parameter", "role": "symbol_name" }],
+            "baseCrossFileProbability": 0.15,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "update_type_annotation",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "function_body"
+            },
+            "coOccurrence": [
+              { "code": "E0106", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+            "rootCause": "The parameter `{parameter}` needs an explicit lifetime annotation. The compiler cannot determine the relationship between input and output lifetimes from the current signature.",
+            "prescription": "Add a lifetime parameter to the function and annotate the parameter type with it. Ensure the return type also uses the same lifetime if it borrows from this parameter.",
+            "codeBlock": "// BEFORE:\nfn extract(data: &[u8]) -> &[u8] { // E0621\n    &data[1..]\n}\n\n// AFTER:\nfn extract<'a>(data: &'a [u8]) -> &'a [u8] {\n    &data[1..]\n}",
+            "conditions": []
+          },
+          {
+            "code": "E0623",
+            "category": "lifetimes",
+            "severity": "error",
+            "messagePattern": "lifetime mismatch",
+            "match": "error\\[E0623\\]:.*lifetime mismatch",
+            "captures": [],
+            "baseCrossFileProbability": 0.2,
+            "confidence": "known",
+            "refinements": [
+              {
+                "check": { "type": "is_inherited", "target": "symbol_name" },
+                "adjustedProbability": 0.5,
+                "traceDepth": "direct",
+                "traceTarget": "inherited_parent"
+              }
+            ],
+            "fixHint": {
+              "primaryStrategy": "update_type_annotation",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "function_body"
+            },
+            "coOccurrence": [
+              { "code": "E0106", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" },
+              { "code": "E0621", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+            "rootCause": "The lifetimes of two references do not match as required by the function signature or trait definition. The compiler found that one reference does not live long enough to satisfy the expected lifetime relationship.",
+            "prescription": "1. Ensure input and output lifetimes are correctly connected with the same lifetime parameter.\n2. If implementing a trait, match the lifetime annotations from the trait definition exactly.\n3. Consider whether you need separate lifetime parameters for different inputs.",
+            "codeBlock": "// BEFORE (error):\nfn pick(a: &str, b: &str) -> &str { a } // E0623\n\n// AFTER:\nfn pick<'a>(a: &'a str, b: &str) -> &'a str { a }",
+            "conditions": []
+          },
+          {
+            "code": "E0495",
+            "category": "lifetimes",
+            "severity": "error",
+            "messagePattern": "cannot infer an appropriate lifetime",
+            "match": "error\\[E0495\\]:.*cannot infer an appropriate lifetime",
+            "captures": [],
+            "baseCrossFileProbability": 0.15,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "update_type_annotation",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "function_body"
+            },
+            "coOccurrence": [
+              { "code": "E0106", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+            "rootCause": "The compiler cannot determine the correct lifetime for a reference based on the function signature and usage context.",
+            "prescription": "1. Add explicit lifetime annotations to clarify the relationship between input and output references.\n2. Consider returning an owned value instead of a reference.\n3. Use `'static` if the data truly lives for the entire program.\n4. For closures, consider using `move` to take ownership instead of borrowing.",
+            "codeBlock": "// BEFORE:\nfn make_closure(s: &str) -> impl Fn() { // E0495\n    move || println!(\"{}\", s)\n}\n\n// AFTER:\nfn make_closure(s: String) -> impl Fn() {\n    move || println!(\"{}\", s)\n}",
+            "conditions": []
+          },
+          {
+            "code": "E0759",
+            "category": "lifetimes",
+            "severity": "error",
+            "messagePattern": "`(?<parameter>[^`]+)` has (?<currentLifetime>.+?) but it needs to satisfy a `'(?<requiredLifetime>[^`]+)` lifetime requirement",
+            "match": "error\\[E0759\\]:.*`(?<parameter>[^`]+)` has .+? but it needs to satisfy a `'(?<requiredLifetime>[^`]+)` lifetime requirement",
+            "captures": [
+              { "name": "parameter", "role": "symbol_name" },
+              { "name": "requiredLifetime", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.2,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "update_type_annotation",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "function_body"
+            },
+            "coOccurrence": [],
+            "rootCause": "The parameter `{parameter}` has a lifetime that does not satisfy the `'{requiredLifetime}` lifetime requirement. The reference does not live long enough for its intended use.",
+            "prescription": "Adjust the lifetime annotations so the parameter satisfies the required bound. If `'static` is required, consider using an owned type (String instead of &str, Box<dyn Trait> instead of &dyn Trait).",
+            "codeBlock": "// BEFORE:\nfn make_trait_object(s: &str) -> Box<dyn Display> { // needs 'static\n    Box::new(s)\n}\n\n// AFTER:\nfn make_trait_object(s: &str) -> Box<dyn Display + '_> {\n    Box::new(s.to_string())\n}",
+            "conditions": []
+          },
+          {
+            "code": "E0700",
+            "category": "lifetimes",
+            "severity": "error",
+            "messagePattern": "hidden type for `(?<typeName>[^`]+)` captures lifetime that does not appear in bounds",
+            "match": "error\\[E0700\\]:.*hidden type for `(?<typeName>[^`]+)` captures lifetime",
+            "captures": [{ "name": "typeName", "role": "type_name" }],
+            "baseCrossFileProbability": 0.1,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "update_type_annotation",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "function_body"
+            },
+            "coOccurrence": [],
+            "rootCause": "The return type `{typeName}` (an `impl Trait` or opaque type) captures a lifetime from the function's inputs, but that lifetime is not declared in the return type's bounds.",
+            "prescription": "Add the captured lifetime to the return type bounds using `+ 'a` or `+ '_` syntax, or return an owned type instead.",
+            "codeBlock": "// BEFORE:\nfn iter<'a>(data: &'a [i32]) -> impl Iterator<Item = &i32> { // E0700\n    data.iter()\n}\n\n// AFTER:\nfn iter<'a>(data: &'a [i32]) -> impl Iterator<Item = &'a i32> + 'a {\n    data.iter()\n}",
+            "conditions": []
+          }
+        ]
+      },
+      {
+        "id": "type_errors",
+        "name": "Type Mismatch and Type System Errors",
+        "description": "Errors related to type mismatches, missing trait implementations, and type inference failures",
+        "defaultTracingBehavior": "local_or_cross",
+        "errors": [
+          {
+            "code": "E0308",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "mismatched types.*expected `(?<expected>[^`]+)`, found `(?<found>[^`]+)`",
+            "match": "error\\[E0308\\]:.*mismatched types",
+            "captures": [
+              { "name": "expected", "role": "expected_type" },
+              { "name": "found", "role": "actual_type" }
+            ],
+            "baseCrossFileProbability": 0.35,
+            "confidence": "known",
+            "refinements": [
+              {
+                "check": { "type": "is_imported", "target": "expected" },
+                "adjustedProbability": 0.6,
+                "traceDepth": "direct",
+                "traceTarget": "imported_file"
+              },
+              {
+                "check": { "type": "is_local", "target": "expected" },
+                "adjustedProbability": 0.15,
+                "traceDepth": "none",
+                "traceTarget": "same_file"
+              },
+              {
+                "check": { "type": "comes_from_package", "target": "expected" },
+                "adjustedProbability": 0.7,
+                "traceDepth": "transitive",
+                "traceTarget": "external_package"
+              }
+            ],
+            "fixHint": {
+              "primaryStrategy": "update_type_annotation",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [
+              { "code": "E0277", "relationship": "sometimes_together", "sharedCapture": null, "resolution": "fix_this_first" },
+              { "code": "E0107", "relationship": "sometimes_together", "sharedCapture": null, "resolution": "fix_other_first" }
+            ],
+            "rootCause": "Type mismatch: the code expects `{expected}` but received `{found}`. The types are not compatible for assignment, return, or argument passing.",
+            "prescription": "1. Convert the value using `.into()`, `as`, or explicit conversion methods.\n2. If working with Option/Result, use `.unwrap()`, `.map()`, `.ok()`, `.err()`, or `?` operator.\n3. If it is a reference vs owned mismatch, add `&`, `*`, `.as_ref()`, or `.to_owned()`.\n4. Check the function signature or variable type annotation and correct it.",
+            "codeBlock": "// BEFORE:\nfn add(a: i32, b: i32) -> i64 {\n    a + b // E0308: expected i64, found i32\n}\n\n// AFTER:\nfn add(a: i32, b: i32) -> i64 {\n    (a + b) as i64\n}",
+            "conditions": [
+              {
+                "when": "expected contains Option",
+                "rootCause": "The function expects an `Option<T>` but received a bare `T` value (or vice versa).",
+                "prescription": "Wrap the value with `Some(value)` if a bare value is provided where an Option is expected. Use `.unwrap()` or pattern matching to extract the inner value if an Option is provided where a bare value is expected.",
+                "codeBlock": "// Wrap with Some:\nfn set_name(name: Option<String>) { }\nset_name(Some(\"Alice\".to_string()));\n\n// Unwrap:\nlet name: String = optional_name.unwrap_or_default();"
+              },
+              {
+                "when": "expected contains Result",
+                "rootCause": "The function expects a `Result<T, E>` but received a bare `T` or the wrong Result variant.",
+                "prescription": "Wrap the value with `Ok(value)` if a bare value is provided. Use `?` to propagate errors. Use `.map_err()` to convert error types.",
+                "codeBlock": "fn process() -> Result<i32, String> {\n    Ok(42) // wrap with Ok\n}\n\n// Convert error types:\nlet val = operation().map_err(|e| e.to_string())?;"
+              },
+              {
+                "when": "found contains &str",
+                "rootCause": "A `String` was expected but a string slice `&str` was provided, or vice versa.",
+                "prescription": "Use `.to_string()` or `.to_owned()` to convert `&str` to `String`. Use `&s` or `.as_str()` to get a `&str` from a `String`.",
+                "codeBlock": "// &str to String:\nlet s: String = \"hello\".to_string();\n// String to &str:\nlet s: &str = my_string.as_str();"
+              },
+              {
+                "when": "expected contains ()",
+                "rootCause": "The function is expected to return `()` (unit type) but a value is being returned. This often happens when a semicolon is added to the last expression in a function body.",
+                "prescription": "Remove the trailing semicolon from the last expression in the function body to make it the implicit return value, or change the return type.",
+                "codeBlock": "// BEFORE:\nfn compute() -> i32 {\n    42; // semicolon turns this into a statement, returns ()\n}\n\n// AFTER:\nfn compute() -> i32 {\n    42 // no semicolon = implicit return\n}"
+              }
+            ]
+          },
+          {
+            "code": "E0277",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "the trait bound `(?<typeName>[^`]+): (?<traitName>[^`]+)` is not satisfied",
+            "match": "error\\[E0277\\]:.*the trait bound `(?<typeName>[^`]+): (?<traitName>[^`]+)` is not satisfied",
+            "captures": [
+              { "name": "typeName", "role": "type_name" },
+              { "name": "traitName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.4,
+            "confidence": "known",
+            "refinements": [
+              {
+                "check": { "type": "is_imported", "target": "typeName" },
+                "adjustedProbability": 0.65,
+                "traceDepth": "direct",
+                "traceTarget": "imported_file"
+              },
+              {
+                "check": { "type": "is_local", "target": "typeName" },
+                "adjustedProbability": 0.15,
+                "traceDepth": "none",
+                "traceTarget": "same_file"
+              },
+              {
+                "check": { "type": "comes_from_package", "target": "traitName" },
+                "adjustedProbability": 0.7,
+                "traceDepth": "transitive",
+                "traceTarget": "external_package"
+              }
+            ],
+            "fixHint": {
+              "primaryStrategy": "implement_interface",
+              "requiresCrossFileEdit": true,
+              "typicalScope": "type_definition"
+            },
+            "coOccurrence": [
+              { "code": "E0308", "relationship": "sometimes_together", "sharedCapture": null, "resolution": "fix_this_first" },
+              { "code": "E0599", "relationship": "sometimes_together", "sharedCapture": "typeName", "resolution": "fix_this_first" }
+            ],
+            "rootCause": "The type `{typeName}` does not implement the trait `{traitName}`, which is required by a generic bound, function parameter, or trait object.",
+            "prescription": "1. Derive the trait: `#[derive({traitName})]` if it is a standard derivable trait (Debug, Clone, PartialEq, Eq, Hash, Default, Copy).\n2. Implement the trait manually: `impl {traitName} for {typeName} { ... }`.\n3. Check if a feature flag is needed to enable the trait implementation.\n4. If the type is from an external crate, you cannot implement the trait due to the orphan rule -- use a newtype wrapper.",
+            "codeBlock": "// Derive:\n#[derive(Debug, Clone, PartialEq)]\nstruct MyType {\n    field: String,\n}\n\n// Manual implementation:\nimpl Display for MyType {\n    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {\n        write!(f, \"{}\", self.field)\n    }\n}",
+            "conditions": [
+              {
+                "when": "traitName contains Send",
+                "rootCause": "The type `{typeName}` is not `Send`, meaning it cannot be safely transferred between threads. This commonly happens with types containing `Rc`, raw pointers, or non-Send fields.",
+                "prescription": "Replace `Rc<T>` with `Arc<T>`, replace `Cell`/`RefCell` with `Mutex`/`RwLock`, or ensure all fields implement `Send`. If wrapping a foreign type, use a newtype with `unsafe impl Send`.",
+                "codeBlock": "// Replace Rc with Arc:\nuse std::sync::Arc;\nlet shared = Arc::new(data);"
+              },
+              {
+                "when": "traitName contains Sync",
+                "rootCause": "The type `{typeName}` is not `Sync`, meaning it cannot be safely shared between threads via references. Types with interior mutability using `Cell`/`RefCell` are not Sync.",
+                "prescription": "Replace `Cell`/`RefCell` with `Mutex`/`RwLock`/`Atomic*` for thread-safe interior mutability.",
+                "codeBlock": "use std::sync::Mutex;\nlet data = Mutex::new(value);"
+              },
+              {
+                "when": "traitName contains Sized",
+                "rootCause": "The type `{typeName}` is unsized (e.g., `dyn Trait`, `str`, `[T]`). Most generic parameters require `Sized` by default.",
+                "prescription": "Add `?Sized` bound to relax the Sized requirement: `fn process<T: ?Sized>(t: &T)`, or use `Box<dyn Trait>` for heap allocation.",
+                "codeBlock": "// Relax Sized bound:\nfn print_it<T: Display + ?Sized>(t: &T) {\n    println!(\"{}\", t);\n}"
+              }
+            ]
+          },
+          {
+            "code": "E0599",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "no method named `(?<method>[^`]+)` found for (?<kind>type|struct|enum|reference|mutable reference) `(?<typeName>[^`]+)` in the current scope",
+            "match": "error\\[E0599\\]:.*no method named `(?<method>[^`]+)` found for (?<kind>\\w[\\w\\s]*?) `(?<typeName>[^`]+)`",
+            "captures": [
+              { "name": "method", "role": "property_name" },
+              { "name": "kind", "role": "literal_value" },
+              { "name": "typeName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              {
+                "check": { "type": "is_imported", "target": "typeName" },
+                "adjustedProbability": 0.7,
+                "traceDepth": "direct",
+                "traceTarget": "imported_file"
+              },
+              {
+                "check": { "type": "is_local", "target": "typeName" },
+                "adjustedProbability": 0.2,
+                "traceDepth": "none",
+                "traceTarget": "same_file"
+              },
+              {
+                "check": { "type": "comes_from_package", "target": "typeName" },
+                "adjustedProbability": 0.8,
+                "traceDepth": "transitive",
+                "traceTarget": "external_package"
+              }
+            ],
+            "fixHint": {
+              "primaryStrategy": "add_import",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "file_header"
+            },
+            "coOccurrence": [
+              { "code": "E0277", "relationship": "sometimes_together", "sharedCapture": "typeName", "resolution": "fix_other_first" }
+            ],
+            "rootCause": "No method named `{method}` exists for {kind} `{typeName}` in the current scope. The method may be defined by a trait that is not imported, the method may not exist, or the type may be wrong.",
+            "prescription": "1. Import the trait that provides the method: `use trait_module::TraitName;`.\n2. Check for typos in the method name.\n3. Verify the type is correct -- the method may exist on a different type.\n4. Implement the method in an `impl` block for the type.\n5. Enable a feature flag that gates the method.",
+            "codeBlock": "// Import the trait:\nuse std::io::Read;\nlet mut buf = String::new();\nfile.read_to_string(&mut buf)?;\n\n// Or implement the method:\nimpl MyType {\n    fn {method}(&self) -> ReturnType {\n        // implementation\n    }\n}",
+            "conditions": [
+              {
+                "when": "method contains iter",
+                "rootCause": "The type `{typeName}` does not have an `.iter()` method in scope. For custom collections, the `IntoIterator` trait may need to be implemented.",
+                "prescription": "Use `.into_iter()` if you own the collection, or implement `IntoIterator` for the type. For slices, ensure the type dereferences to a slice.",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "E0609",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "no field `(?<field>[^`]+)` on type `(?<typeName>[^`]+)`",
+            "match": "error\\[E0609\\]:.*no field `(?<field>[^`]+)` on type `(?<typeName>[^`]+)`",
+            "captures": [
+              { "name": "field", "role": "property_name" },
+              { "name": "typeName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              {
+                "check": { "type": "is_imported", "target": "typeName" },
+                "adjustedProbability": 0.75,
+                "traceDepth": "direct",
+                "traceTarget": "imported_file"
+              },
+              {
+                "check": { "type": "is_local", "target": "typeName" },
+                "adjustedProbability": 0.15,
+                "traceDepth": "none",
+                "traceTarget": "same_file"
+              }
+            ],
+            "fixHint": {
+              "primaryStrategy": "add_property",
+              "requiresCrossFileEdit": true,
+              "typicalScope": "type_definition"
+            },
+            "coOccurrence": [],
+            "rootCause": "The type `{typeName}` does not have a field named `{field}`. The field may be misspelled, may not exist, or may be private.",
+            "prescription": "1. Check the struct definition for the correct field name and fix any typos.\n2. Add the field to the struct definition if it should exist.\n3. If the field is in another module, ensure it is `pub`.\n4. Use a method (getter) instead of direct field access if the field is private.",
+            "codeBlock": "// Add the field:\nstruct MyStruct {\n    existing_field: i32,\n    {field}: String, // added\n}\n\n// Or make it public:\npub struct Config {\n    pub {field}: String,\n}",
+            "conditions": []
+          },
+          {
+            "code": "E0412",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "cannot find type `(?<typeName>[^`]+)` in this scope",
+            "match": "error\\[E0412\\]:.*cannot find type `(?<typeName>[^`]+)` in this scope",
+            "captures": [{ "name": "typeName", "role": "type_name" }],
+            "baseCrossFileProbability": 0.7,
+            "confidence": "known",
+            "refinements": [
+              {
+                "check": { "type": "is_external", "target": "typeName" },
+                "adjustedProbability": 0.9,
+                "traceDepth": "transitive",
+                "traceTarget": "external_package"
+              },
+              {
+                "check": { "type": "is_local", "target": "typeName" },
+                "adjustedProbability": 0.3,
+                "traceDepth": "direct",
+                "traceTarget": "same_file"
+              }
+            ],
+            "fixHint": {
+              "primaryStrategy": "add_import",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "file_header"
+            },
+            "coOccurrence": [
+              { "code": "E0433", "relationship": "same_root_cause", "sharedCapture": "typeName", "resolution": "fix_either" },
+              { "code": "E0432", "relationship": "sometimes_together", "sharedCapture": null, "resolution": "fix_other_first" }
+            ],
+            "rootCause": "The type `{typeName}` is not found in the current scope. It may not be imported, may be misspelled, or may not exist in the referenced crate or module.",
+            "prescription": "1. Add a `use` statement: `use crate::module::{typeName};` or `use some_crate::{typeName};`.\n2. Check for typos in the type name.\n3. Ensure the crate providing the type is in Cargo.toml dependencies.\n4. Check if the type is gated behind a feature flag.",
+            "codeBlock": "// Add import:\nuse crate::models::{typeName};\n\n// Or from external crate:\nuse serde::{typeName};",
+            "conditions": []
+          },
+          {
+            "code": "E0282",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "type annotations needed(?:\\s+for `(?<variable>[^`]+)`)?",
+            "match": "error\\[E0282\\]:.*type annotations needed",
+            "captures": [{ "name": "variable", "role": "symbol_name" }],
+            "baseCrossFileProbability": 0.1,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "update_type_annotation",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [],
+            "rootCause": "The compiler cannot infer the type and needs an explicit annotation. This often happens with empty collections, `parse()`, `collect()`, or generic function calls.",
+            "prescription": "1. Add a type annotation to the variable: `let x: Type = ...;`.\n2. Use turbofish syntax: `iter.collect::<Vec<_>>()`.\n3. Annotate a generic function call: `parse::<i32>()`.",
+            "codeBlock": "// Add type annotation:\nlet values: Vec<i32> = vec![];\n\n// Turbofish:\nlet values = data.iter().collect::<Vec<_>>();\n\n// Parse with turbofish:\nlet num = \"42\".parse::<i32>()?;",
+            "conditions": []
+          },
+          {
+            "code": "E0107",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "(?:wrong number of|missing) (?<argKind>type|lifetime|const) arguments: expected (?<expected>\\d+), found (?<found>\\d+)",
+            "match": "error\\[E0107\\]:.*(?:wrong number of|missing) (?<argKind>type|lifetime|const) arguments",
+            "captures": [
+              { "name": "argKind", "role": "literal_value" },
+              { "name": "expected", "role": "literal_value" },
+              { "name": "found", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.4,
+            "confidence": "known",
+            "refinements": [
+              {
+                "check": { "type": "is_imported", "target": "symbol_name" },
+                "adjustedProbability": 0.6,
+                "traceDepth": "direct",
+                "traceTarget": "imported_file"
+              }
+            ],
+            "fixHint": {
+              "primaryStrategy": "fix_generic_constraint",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [
+              { "code": "E0308", "relationship": "sometimes_together", "sharedCapture": null, "resolution": "fix_this_first" }
+            ],
+            "rootCause": "The generic item has the wrong number of {argKind} arguments: expected {expected} but found {found}. The generic parameters do not match the definition.",
+            "prescription": "Check the type or function definition for the correct number of generic parameters and adjust your usage accordingly.",
+            "codeBlock": "// BEFORE:\nlet map: HashMap<String> = HashMap::new(); // E0107: expected 2 type args\n\n// AFTER:\nlet map: HashMap<String, i32> = HashMap::new();",
+            "conditions": []
+          },
+          {
+            "code": "E0369",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "(?:binary operation|cannot) `(?<operator>[^`]+)` cannot be applied to type `(?<typeName>[^`]+)`",
+            "match": "error\\[E0369\\]:.*`(?<operator>[^`]+)` cannot be applied to type `(?<typeName>[^`]+)`",
+            "captures": [
+              { "name": "operator", "role": "literal_value" },
+              { "name": "typeName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.2,
+            "confidence": "known",
+            "refinements": [
+              {
+                "check": { "type": "is_imported", "target": "typeName" },
+                "adjustedProbability": 0.5,
+                "traceDepth": "direct",
+                "traceTarget": "imported_file"
+              }
+            ],
+            "fixHint": {
+              "primaryStrategy": "implement_interface",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "type_definition"
+            },
+            "coOccurrence": [],
+            "rootCause": "The operator `{operator}` is not implemented for the type `{typeName}`. Rust requires explicit trait implementations for operators.",
+            "prescription": "Implement the corresponding operator trait (Add, Sub, Mul, Div, PartialEq, PartialOrd, etc.) for the type, or derive it with `#[derive(PartialEq)]` etc.",
+            "codeBlock": "use std::ops::Add;\n\nimpl Add for MyType {\n    type Output = Self;\n    fn add(self, other: Self) -> Self {\n        MyType { value: self.value + other.value }\n    }\n}",
+            "conditions": []
+          },
+          {
+            "code": "E0271",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "type mismatch resolving `<(?<typeName>[^>]+) as (?<traitName>[^>]+)>::(?<assocType>\\w+) == (?<expected>[^`]+)`",
+            "match": "error\\[E0271\\]:.*type mismatch resolving",
+            "captures": [
+              { "name": "typeName", "role": "type_name" },
+              { "name": "traitName", "role": "type_name" },
+              { "name": "assocType", "role": "symbol_name" },
+              { "name": "expected", "role": "expected_type" }
+            ],
+            "baseCrossFileProbability": 0.45,
+            "confidence": "known",
+            "refinements": [
+              {
+                "check": { "type": "is_imported", "target": "typeName" },
+                "adjustedProbability": 0.65,
+                "traceDepth": "direct",
+                "traceTarget": "imported_file"
+              }
+            ],
+            "fixHint": {
+              "primaryStrategy": "update_type_annotation",
+              "requiresCrossFileEdit": true,
+              "typicalScope": "type_definition"
+            },
+            "coOccurrence": [],
+            "rootCause": "The associated type `{assocType}` of trait `{traitName}` for type `{typeName}` does not match the expected type `{expected}`.",
+            "prescription": "Update the associated type in the trait implementation to match the expected type, or adjust the generic constraints at the call site.",
+            "codeBlock": "impl Iterator for MyIter {\n    type Item = i32; // Ensure this matches what callers expect\n    fn next(&mut self) -> Option<Self::Item> { ... }\n}",
+            "conditions": []
+          },
+          {
+            "code": "E0061",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "this function takes (?<expected>\\d+) arguments? but (?<supplied>\\d+) (?:arguments? )?(?:was|were) supplied",
+            "match": "error\\[E0061\\]:.*this function takes (?<expected>\\d+) arguments? but (?<supplied>\\d+)",
+            "captures": [
+              { "name": "expected", "role": "literal_value" },
+              { "name": "supplied", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [
+              {
+                "check": { "type": "is_imported", "target": "symbol_name" },
+                "adjustedProbability": 0.6,
+                "traceDepth": "direct",
+                "traceTarget": "imported_file"
+              }
+            ],
+            "fixHint": {
+              "primaryStrategy": "change_signature",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [],
+            "rootCause": "Function argument count mismatch: expected {expected} arguments but {supplied} were supplied.",
+            "prescription": "Check the function signature and provide the correct number of arguments. If the function signature was recently changed, update all call sites.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "E0063",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "missing field[s]? `(?<field>[^`]+)` in initializer of `(?<structName>[^`]+)`",
+            "match": "error\\[E0063\\]:.*missing field.* in initializer of `(?<structName>[^`]+)`",
+            "captures": [
+              { "name": "field", "role": "property_name" },
+              { "name": "structName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.4,
+            "confidence": "known",
+            "refinements": [
+              {
+                "check": { "type": "is_imported", "target": "structName" },
+                "adjustedProbability": 0.65,
+                "traceDepth": "direct",
+                "traceTarget": "imported_file"
+              }
+            ],
+            "fixHint": {
+              "primaryStrategy": "add_property",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [
+              { "code": "E0560", "relationship": "sometimes_together", "sharedCapture": "structName", "resolution": "fix_either" }
+            ],
+            "rootCause": "The struct `{structName}` initializer is missing the required field `{field}`.",
+            "prescription": "1. Add the missing field to the struct initializer.\n2. Use `..Default::default()` to fill remaining fields if the struct implements Default.\n3. If the field was recently added to the struct, update all constructors.",
+            "codeBlock": "let instance = {structName} {\n    existing_field: value,\n    {field}: default_value,\n    ..Default::default() // optional: fills remaining fields\n};",
+            "conditions": []
+          },
+          {
+            "code": "E0560",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "struct `(?<structName>[^`]+)` has no field named `(?<field>[^`]+)`",
+            "match": "error\\[E0560\\]:.*struct `(?<structName>[^`]+)` has no field named `(?<field>[^`]+)`",
+            "captures": [
+              { "name": "structName", "role": "type_name" },
+              { "name": "field", "role": "property_name" }
+            ],
+            "baseCrossFileProbability": 0.45,
+            "confidence": "known",
+            "refinements": [
+              {
+                "check": { "type": "is_imported", "target": "structName" },
+                "adjustedProbability": 0.7,
+                "traceDepth": "direct",
+                "traceTarget": "imported_file"
+              }
+            ],
+            "fixHint": {
+              "primaryStrategy": "rename_symbol",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [
+              { "code": "E0063", "relationship": "sometimes_together", "sharedCapture": "structName", "resolution": "fix_either" }
+            ],
+            "rootCause": "The struct `{structName}` does not have a field named `{field}`. The field name may be misspelled or the field may have been renamed/removed.",
+            "prescription": "Check the struct definition for the correct field name. Fix any typos, or add the field to the struct if it should exist.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "E0573",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "expected type, found variant `(?<variant>[^`]+)`",
+            "match": "error\\[E0573\\]:.*expected type, found variant `(?<variant>[^`]+)`",
+            "captures": [{ "name": "variant", "role": "type_name" }],
+            "baseCrossFileProbability": 0.1,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "update_type_annotation",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [],
+            "rootCause": "A type was expected but the enum variant `{variant}` was provided. Enum variants are not types on their own; use the full enum type.",
+            "prescription": "Use the full enum type (e.g., `Option<T>`, `Result<T, E>`) instead of the variant name (e.g., `Some`, `Ok`).",
+            "codeBlock": "// BEFORE:\nfn process(input: Some) { } // E0573\n\n// AFTER:\nfn process(input: Option<String>) {\n    if let Some(val) = input { /* ... */ }\n}",
+            "conditions": []
+          }
+        ]
+      },
+      {
+        "id": "module_resolution",
+        "name": "Module Resolution and Import Errors",
+        "description": "Errors related to module paths, imports, crate resolution, and visibility",
+        "defaultTracingBehavior": "cross_file",
+        "errors": [
+          {
+            "code": "E0433",
+            "category": "module_resolution",
+            "severity": "error",
+            "messagePattern": "failed to resolve:? ?(?:use of )?undeclared (?<kind>crate or module|type|crate) `(?<name>[^`]+)`",
+            "match": "error\\[E0433\\]:.*failed to resolve.*`(?<name>[^`]+)`",
+            "captures": [
+              { "name": "kind", "role": "literal_value" },
+              { "name": "name", "role": "target_module" }
+            ],
+            "baseCrossFileProbability": 0.85,
+            "confidence": "known",
+            "refinements": [
+              {
+                "check": { "type": "is_external", "target": "name" },
+                "adjustedProbability": 1.0,
+                "traceDepth": "none",
+                "traceTarget": "external_package"
+              },
+              {
+                "check": { "type": "is_local", "target": "name" },
+                "adjustedProbability": 0.6,
+                "traceDepth": "direct",
+                "traceTarget": "imported_file"
+              }
+            ],
+            "fixHint": {
+              "primaryStrategy": "add_import",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "file_header"
+            },
+            "coOccurrence": [
+              { "code": "E0412", "relationship": "caused_by_this", "sharedCapture": "name", "resolution": "fix_this_first" },
+              { "code": "E0432", "relationship": "same_root_cause", "sharedCapture": "name", "resolution": "fix_either" },
+              { "code": "E0425", "relationship": "caused_by_this", "sharedCapture": "name", "resolution": "fix_this_first" }
+            ],
+            "rootCause": "The {kind} `{name}` is undeclared. It may need to be imported, added as a dependency in Cargo.toml, or declared as a module with `mod {name};`.",
+            "prescription": "1. Add the crate to Cargo.toml: `{name} = \"version\"`.\n2. Add a `mod {name};` declaration in lib.rs or main.rs.\n3. Add a `use` statement to import the module.\n4. Verify the name is spelled correctly.",
+            "codeBlock": "// Cargo.toml:\n[dependencies]\n{name} = \"1.0\"\n\n// Or declare module:\nmod {name};\nuse crate::{name}::SomeType;",
+            "conditions": [
+              {
+                "when": "kind contains crate",
+                "rootCause": "The crate `{name}` is not declared in Cargo.toml or is not a known standard library crate.",
+                "prescription": "Add the crate to your [dependencies] in Cargo.toml and run `cargo build` to fetch it.",
+                "codeBlock": "# Cargo.toml:\n[dependencies]\n{name} = \"1.0\"\n\n# Then run:\ncargo build"
+              }
+            ]
+          },
+          {
+            "code": "E0432",
+            "category": "module_resolution",
+            "severity": "error",
+            "messagePattern": "unresolved import `(?<importPath>[^`]+)`",
+            "match": "error\\[E0432\\]:.*unresolved import `(?<importPath>[^`]+)`",
+            "captures": [{ "name": "importPath", "role": "target_module" }],
+            "baseCrossFileProbability": 0.8,
+            "confidence": "known",
+            "refinements": [
+              {
+                "check": { "type": "is_external", "target": "importPath" },
+                "adjustedProbability": 1.0,
+                "traceDepth": "none",
+                "traceTarget": "external_package"
+              },
+              {
+                "check": { "type": "is_local", "target": "importPath" },
+                "adjustedProbability": 0.6,
+                "traceDepth": "direct",
+                "traceTarget": "imported_file"
+              }
+            ],
+            "fixHint": {
+              "primaryStrategy": "update_import_path",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "file_header"
+            },
+            "coOccurrence": [
+              { "code": "E0433", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" },
+              { "code": "E0412", "relationship": "caused_by_this", "sharedCapture": null, "resolution": "fix_this_first" }
+            ],
+            "rootCause": "The import path `{importPath}` could not be resolved. The module, function, or type may not exist, may be private, or the path may be incorrect.",
+            "prescription": "1. Verify the import path matches the module structure.\n2. Ensure the crate is listed in Cargo.toml dependencies.\n3. Check that the item is `pub` (publicly exported).\n4. Use `crate::` for absolute paths within the current crate.\n5. Use `super::` for parent module references.",
+            "codeBlock": "// Correct import forms:\nuse crate::module::Item;       // absolute within crate\nuse super::sibling::Item;      // relative to parent\nuse self::child::Item;         // relative to current\nuse external_crate::Item;      // from dependency",
+            "conditions": [
+              {
+                "when": "importPath contains ::",
+                "rootCause": "A specific item within module path `{importPath}` could not be found. The module may exist but the item may be private or renamed.",
+                "prescription": "Check that the item is `pub` in the source module. Look for re-exports or renames. The item may have been moved to a different submodule.",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "E0425",
+            "category": "module_resolution",
+            "severity": "error",
+            "messagePattern": "cannot find (?<kind>value|function|macro) `(?<name>[^`]+)` in this scope",
+            "match": "error\\[E0425\\]:.*cannot find (?<kind>value|function|macro) `(?<name>[^`]+)` in this scope",
+            "captures": [
+              { "name": "kind", "role": "literal_value" },
+              { "name": "name", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              {
+                "check": { "type": "is_imported", "target": "name" },
+                "adjustedProbability": 0.75,
+                "traceDepth": "direct",
+                "traceTarget": "imported_file"
+              },
+              {
+                "check": { "type": "is_local", "target": "name" },
+                "adjustedProbability": 0.1,
+                "traceDepth": "none",
+                "traceTarget": "same_file"
+              }
+            ],
+            "fixHint": {
+              "primaryStrategy": "add_import",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "file_header"
+            },
+            "coOccurrence": [
+              { "code": "E0433", "relationship": "same_root_cause", "sharedCapture": "name", "resolution": "fix_either" }
+            ],
+            "rootCause": "The {kind} `{name}` is not found in the current scope. It may be undefined, misspelled, or not imported.",
+            "prescription": "1. Add a `use` statement to import the {kind}.\n2. Check for typos in the name.\n3. For macros, ensure `#[macro_use]` or `use crate::macro_name;` is present.\n4. Define the {kind} if it does not exist yet.",
+            "codeBlock": "use crate::module::{name};\n// or for macros:\nuse crate::macro_name;",
+            "conditions": [
+              {
+                "when": "kind equals macro",
+                "rootCause": "The macro `{name}` is not in scope. Macros must be imported or declared before use, and macro scoping rules differ from regular items.",
+                "prescription": "1. For declarative macros: use `#[macro_use]` on the module, or `use crate::module::macro_name;` (Rust 2018+).\n2. For proc macros: ensure the proc-macro crate is in Cargo.toml.\n3. Check that the macro is `#[macro_export]` if used across modules.",
+                "codeBlock": "// Import a macro (Rust 2018+):\nuse crate::my_module::my_macro;\n\n// Or at crate root:\n#[macro_use]\nmod my_module;"
+              }
+            ]
+          },
+          {
+            "code": "E0463",
+            "category": "module_resolution",
+            "severity": "error",
+            "messagePattern": "can't find crate for `(?<crateName>[^`]+)`",
+            "match": "error\\[E0463\\]:.*can't find crate for `(?<crateName>[^`]+)`",
+            "captures": [{ "name": "crateName", "role": "package_name" }],
+            "baseCrossFileProbability": 1.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "install_package",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "entire_file"
+            },
+            "coOccurrence": [
+              { "code": "E0433", "relationship": "caused_by_this", "sharedCapture": "crateName", "resolution": "fix_this_first" },
+              { "code": "E0432", "relationship": "caused_by_this", "sharedCapture": "crateName", "resolution": "fix_this_first" }
+            ],
+            "rootCause": "The crate `{crateName}` cannot be found. It is not listed in Cargo.toml dependencies or is not installed.",
+            "prescription": "1. Add the crate to Cargo.toml: `{crateName} = \"version\"`.\n2. Run `cargo build` to download and compile the dependency.\n3. Check the crate name on crates.io for the correct spelling.",
+            "codeBlock": "# Cargo.toml:\n[dependencies]\n{crateName} = \"1.0\"\n\n# Then:\ncargo build",
+            "conditions": []
+          },
+          {
+            "code": "E0603",
+            "category": "module_resolution",
+            "severity": "error",
+            "messagePattern": "(?<kind>struct|function|module|enum|type alias|constant|trait|field) `(?<name>[^`]+)` is private",
+            "match": "error\\[E0603\\]:.*`(?<name>[^`]+)` is private",
+            "captures": [
+              { "name": "kind", "role": "literal_value" },
+              { "name": "name", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.85,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "fix_access_modifier",
+              "requiresCrossFileEdit": true,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [],
+            "rootCause": "The {kind} `{name}` is private and cannot be accessed from the current module. In Rust, items are private by default.",
+            "prescription": "1. Add `pub` to the item definition to make it public.\n2. Use `pub(crate)` for crate-internal visibility.\n3. Use `pub(super)` for parent-module-only visibility.\n4. Access the item through a public API (getter/setter methods) if direct access should not be allowed.",
+            "codeBlock": "// Make public:\npub fn {name}() { ... }\npub struct {name} { ... }\n\n// Crate-internal only:\npub(crate) fn {name}() { ... }",
+            "conditions": []
+          },
+          {
+            "code": "E0255",
+            "category": "module_resolution",
+            "severity": "error",
+            "messagePattern": "the name `(?<name>[^`]+)` is defined multiple times",
+            "match": "error\\[E0255\\]:.*the name `(?<name>[^`]+)` is defined multiple times",
+            "captures": [{ "name": "name", "role": "symbol_name" }],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "rename_symbol",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "file_header"
+            },
+            "coOccurrence": [],
+            "rootCause": "The name `{name}` has duplicate definitions in the same scope, typically from two different imports.",
+            "prescription": "Use `as` to alias one of the conflicting imports, or remove one of the duplicate definitions.",
+            "codeBlock": "use crate::module1::Thing as Thing1;\nuse crate::module2::Thing as Thing2;",
+            "conditions": []
+          },
+          {
+            "code": "E0252",
+            "category": "module_resolution",
+            "severity": "error",
+            "messagePattern": "the name `(?<name>[^`]+)` is defined multiple times",
+            "match": "error\\[E0252\\]:.*the name `(?<name>[^`]+)` is defined multiple times",
+            "captures": [{ "name": "name", "role": "symbol_name" }],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "rename_symbol",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "file_header"
+            },
+            "coOccurrence": [],
+            "rootCause": "Two imports bring the same name `{name}` into scope.",
+            "prescription": "Use `as` to create an alias for one of the imports.",
+            "codeBlock": "use std::io::Result as IoResult;\nuse std::fmt::Result as FmtResult;",
+            "conditions": []
+          },
+          {
+            "code": "E0405",
+            "category": "module_resolution",
+            "severity": "error",
+            "messagePattern": "cannot find trait `(?<traitName>[^`]+)` in this scope",
+            "match": "error\\[E0405\\]:.*cannot find trait `(?<traitName>[^`]+)` in this scope",
+            "captures": [{ "name": "traitName", "role": "type_name" }],
+            "baseCrossFileProbability": 0.7,
+            "confidence": "known",
+            "refinements": [
+              {
+                "check": { "type": "is_external", "target": "traitName" },
+                "adjustedProbability": 0.9,
+                "traceDepth": "transitive",
+                "traceTarget": "external_package"
+              }
+            ],
+            "fixHint": {
+              "primaryStrategy": "add_import",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "file_header"
+            },
+            "coOccurrence": [
+              { "code": "E0433", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+            "rootCause": "The trait `{traitName}` is not found in the current scope. It needs to be imported or defined.",
+            "prescription": "Add a `use` statement to import the trait, or define it in the current module.",
+            "codeBlock": "use crate::traits::{traitName};\n// or from std:\nuse std::fmt::Display;",
+            "conditions": []
+          }
+        ]
+      },
+      {
+        "id": "trait_errors",
+        "name": "Trait Implementation Errors",
+        "description": "Errors related to trait implementations, associated types, and trait bounds",
+        "defaultTracingBehavior": "cross_file",
+        "errors": [
+          {
+            "code": "E0046",
+            "category": "trait_errors",
+            "severity": "error",
+            "messagePattern": "not all trait items implemented, missing: `(?<missingItems>[^`]+)`",
+            "match": "error\\[E0046\\]:.*not all trait items implemented, missing: `(?<missingItems>[^`]+)`",
+            "captures": [{ "name": "missingItems", "role": "symbol_name" }],
+            "baseCrossFileProbability": 0.6,
+            "confidence": "known",
+            "refinements": [
+              {
+                "check": { "type": "is_imported", "target": "missingItems" },
+                "adjustedProbability": 0.75,
+                "traceDepth": "direct",
+                "traceTarget": "imported_file"
+              }
+            ],
+            "fixHint": {
+              "primaryStrategy": "implement_interface",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "type_definition"
+            },
+            "coOccurrence": [
+              { "code": "E0053", "relationship": "sometimes_together", "sharedCapture": null, "resolution": "fix_this_first" }
+            ],
+            "rootCause": "The trait implementation is incomplete. Missing items: `{missingItems}`. All required trait methods, associated types, and constants must be implemented.",
+            "prescription": "Implement all required items listed. Check the trait definition for the exact signatures. Associated types must match, and method signatures must be compatible.",
+            "codeBlock": "impl MyTrait for MyType {\n    type Output = i32; // required associated type\n\n    fn required_method(&self) -> Self::Output {\n        // implementation\n        42\n    }\n}",
+            "conditions": []
+          },
+          {
+            "code": "E0053",
+            "category": "trait_errors",
+            "severity": "error",
+            "messagePattern": "method `(?<method>[^`]+)` has an incompatible (?<mismatchKind>type|signature) for trait",
+            "match": "error\\[E0053\\]:.*method `(?<method>[^`]+)` has an incompatible",
+            "captures": [
+              { "name": "method", "role": "symbol_name" },
+              { "name": "mismatchKind", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.6,
+            "confidence": "known",
+            "refinements": [
+              {
+                "check": { "type": "is_inherited", "target": "method" },
+                "adjustedProbability": 0.8,
+                "traceDepth": "direct",
+                "traceTarget": "inherited_parent"
+              }
+            ],
+            "fixHint": {
+              "primaryStrategy": "change_signature",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "function_body"
+            },
+            "coOccurrence": [
+              { "code": "E0046", "relationship": "sometimes_together", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+            "rootCause": "The method `{method}` has an incompatible {mismatchKind} compared to the trait definition. The implementation must exactly match the trait's method signature.",
+            "prescription": "Compare your method signature with the trait definition and ensure parameter types, return type, lifetimes, and `self` receiver all match exactly.",
+            "codeBlock": "// Trait definition:\ntrait MyTrait {\n    fn process(&self, input: &str) -> Result<(), Error>;\n}\n\n// Implementation must match exactly:\nimpl MyTrait for MyType {\n    fn process(&self, input: &str) -> Result<(), Error> {\n        // ...\n        Ok(())\n    }\n}",
+            "conditions": []
+          },
+          {
+            "code": "E0119",
+            "category": "trait_errors",
+            "severity": "error",
+            "messagePattern": "conflicting implementations of trait `(?<traitName>[^`]+)` for type `(?<typeName>[^`]+)`",
+            "match": "error\\[E0119\\]:.*conflicting implementations of trait `(?<traitName>[^`]+)` for type `(?<typeName>[^`]+)`",
+            "captures": [
+              { "name": "traitName", "role": "type_name" },
+              { "name": "typeName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.6,
+            "confidence": "known",
+            "refinements": [
+              {
+                "check": { "type": "is_imported", "target": "traitName" },
+                "adjustedProbability": 0.8,
+                "traceDepth": "direct",
+                "traceTarget": "imported_file"
+              }
+            ],
+            "fixHint": {
+              "primaryStrategy": "remove_duplicate",
+              "requiresCrossFileEdit": true,
+              "typicalScope": "type_definition"
+            },
+            "coOccurrence": [],
+            "rootCause": "There are multiple implementations of trait `{traitName}` for type `{typeName}`. Only one implementation is allowed per type-trait combination (including blanket implementations).",
+            "prescription": "1. Remove one of the duplicate implementations.\n2. If conflicting with a blanket impl (e.g., `impl<T> Trait for T`), use specialization (nightly only) or restructure.\n3. Use a newtype wrapper to distinguish the types.",
+            "codeBlock": "// Use a newtype to avoid conflict:\nstruct Wrapper(OriginalType);\n\nimpl {traitName} for Wrapper {\n    // different implementation\n}",
+            "conditions": []
+          },
+          {
+            "code": "E0195",
+            "category": "trait_errors",
+            "severity": "error",
+            "messagePattern": "lifetime parameters or bounds on (?:method|type) `(?<name>[^`]+)` do not match the trait declaration",
+            "match": "error\\[E0195\\]:.*lifetime parameters.*do not match the trait declaration",
+            "captures": [{ "name": "name", "role": "symbol_name" }],
+            "baseCrossFileProbability": 0.6,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "change_signature",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "function_body"
+            },
+            "coOccurrence": [
+              { "code": "E0053", "relationship": "same_root_cause", "sharedCapture": "name", "resolution": "fix_either" }
+            ],
+            "rootCause": "The lifetime parameters on `{name}` do not match those in the trait declaration. The implementation must use identical lifetime parameters.",
+            "prescription": "Copy the exact lifetime parameters from the trait definition to your implementation. Ensure the number and bounds of lifetime parameters match.",
+            "codeBlock": "// Trait:\ntrait Parser {\n    fn parse<'a>(&self, input: &'a str) -> &'a str;\n}\n\n// Impl must match:\nimpl Parser for MyParser {\n    fn parse<'a>(&self, input: &'a str) -> &'a str {\n        input\n    }\n}",
+            "conditions": []
+          },
+          {
+            "code": "E0220",
+            "category": "trait_errors",
+            "severity": "error",
+            "messagePattern": "associated type `(?<assocType>[^`]+)` not found for `(?<typeName>[^`]+)`",
+            "match": "error\\[E0220\\]:.*associated type `(?<assocType>[^`]+)` not found for `(?<typeName>[^`]+)`",
+            "captures": [
+              { "name": "assocType", "role": "type_name" },
+              { "name": "typeName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.55,
+            "confidence": "known",
+            "refinements": [
+              {
+                "check": { "type": "is_imported", "target": "typeName" },
+                "adjustedProbability": 0.75,
+                "traceDepth": "direct",
+                "traceTarget": "imported_file"
+              }
+            ],
+            "fixHint": {
+              "primaryStrategy": "update_type_annotation",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [],
+            "rootCause": "The associated type `{assocType}` does not exist on trait or type `{typeName}`. The associated type name may be misspelled or the wrong trait may be referenced.",
+            "prescription": "Check the trait definition for the correct associated type name. Ensure the trait is the one you intend to use.",
+            "codeBlock": "// Check the trait's associated types:\ntrait MyTrait {\n    type Output; // This is the correct name\n    type Item;   // Not 'Element' or 'Value'\n}",
+            "conditions": []
+          },
+          {
+            "code": "E0277_display",
+            "actualCode": "E0277",
+            "category": "trait_errors",
+            "severity": "error",
+            "messagePattern": "`(?<typeName>[^`]+)` doesn't implement `(?<traitName>std::fmt::Display|Display)`",
+            "match": "error\\[E0277\\]:.*`(?<typeName>[^`]+)` doesn't implement.*Display",
+            "captures": [
+              { "name": "typeName", "role": "type_name" },
+              { "name": "traitName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "implement_interface",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "type_definition"
+            },
+            "coOccurrence": [],
+            "rootCause": "The type `{typeName}` does not implement `Display`, which is required for formatting with `{}` in format strings, `.to_string()`, or error messages.",
+            "prescription": "Implement `std::fmt::Display` for the type. If you only need debug output, use `{:?}` and derive `Debug` instead.",
+            "codeBlock": "use std::fmt;\n\nimpl fmt::Display for {typeName} {\n    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {\n        write!(f, \"...\", self.field)\n    }\n}",
+            "conditions": []
+          },
+          {
+            "code": "E0277_from",
+            "actualCode": "E0277",
+            "category": "trait_errors",
+            "severity": "error",
+            "messagePattern": "the trait bound `(?<typeName>[^`]+): From<(?<sourceType>[^>]+)>` is not satisfied",
+            "match": "error\\[E0277\\]:.*`(?<typeName>[^`]+): From<(?<sourceType>[^>]+)>`",
+            "captures": [
+              { "name": "typeName", "role": "type_name" },
+              { "name": "sourceType", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.4,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "implement_interface",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "type_definition"
+            },
+            "coOccurrence": [],
+            "rootCause": "The type `{typeName}` does not implement `From<{sourceType}>`. This is often triggered by the `?` operator which requires the error type to be convertible.",
+            "prescription": "1. Implement `From<{sourceType}> for {typeName}`.\n2. Use `.map_err()` to manually convert the error.\n3. Use a crate like `thiserror` or `anyhow` to simplify error type conversions.",
+            "codeBlock": "impl From<{sourceType}> for {typeName} {\n    fn from(err: {sourceType}) -> Self {\n        {typeName}::new(err.to_string())\n    }\n}\n\n// Or with thiserror:\n#[derive(thiserror::Error, Debug)]\nenum MyError {\n    #[error(\"IO error: {0}\")]\n    Io(#[from] std::io::Error),\n}",
+            "conditions": []
+          },
+          {
+            "code": "E0117",
+            "category": "trait_errors",
+            "severity": "error",
+            "messagePattern": "only traits defined in the current crate can be implemented for (?:arbitrary|primitive) types",
+            "match": "error\\[E0117\\]:.*only traits defined in the current crate",
+            "captures": [],
+            "baseCrossFileProbability": 0.8,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "restructure_code",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "type_definition"
+            },
+            "coOccurrence": [],
+            "rootCause": "The orphan rule prevents implementing a foreign trait for a foreign type. At least one of the trait or the type must be defined in the current crate.",
+            "prescription": "1. Create a newtype wrapper: `struct MyWrapper(ForeignType);` and implement the trait on the wrapper.\n2. Define your own trait instead of using the foreign one.\n3. If you control the trait crate, add a blanket implementation there.",
+            "codeBlock": "// Newtype wrapper pattern:\nstruct MyVec(Vec<i32>);\n\nimpl ForeignTrait for MyVec {\n    fn method(&self) { /* ... */ }\n}\n\n// Implement Deref for ergonomic access:\nimpl std::ops::Deref for MyVec {\n    type Target = Vec<i32>;\n    fn deref(&self) -> &Self::Target { &self.0 }\n}",
+            "conditions": []
+          }
+        ]
+      },
+      {
+        "id": "pattern_matching",
+        "name": "Pattern Matching Errors",
+        "description": "Errors related to match expressions, if-let, and destructuring patterns",
+        "defaultTracingBehavior": "local_or_cross",
+        "errors": [
+          {
+            "code": "E0004",
+            "category": "pattern_matching",
+            "severity": "error",
+            "messagePattern": "non-exhaustive patterns: `(?<patterns>[^`]+)` not covered",
+            "match": "error\\[E0004\\]:.*non-exhaustive patterns.*not covered",
+            "captures": [{ "name": "patterns", "role": "literal_value" }],
+            "baseCrossFileProbability": 0.35,
+            "confidence": "known",
+            "refinements": [
+              {
+                "check": { "type": "is_imported", "target": "symbol_name" },
+                "adjustedProbability": 0.6,
+                "traceDepth": "direct",
+                "traceTarget": "imported_file"
+              }
+            ],
+            "fixHint": {
+              "primaryStrategy": "restructure_code",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "function_body"
+            },
+            "coOccurrence": [],
+            "rootCause": "The match expression does not cover all possible variants. Missing patterns: `{patterns}`. Rust requires match expressions to be exhaustive.",
+            "prescription": "1. Add the missing pattern arms to the match expression.\n2. Add a wildcard arm `_ => { ... }` as a catch-all.\n3. If the enum was recently modified to add new variants, update all match expressions.",
+            "codeBlock": "match value {\n    Variant::A => { /* ... */ },\n    Variant::B => { /* ... */ },\n    Variant::C => { /* ... */ }, // add missing variant\n    // or use wildcard:\n    _ => { /* default */ },\n}",
+            "conditions": [
+              {
+                "when": "patterns contains None",
+                "rootCause": "The match on an `Option` does not handle the `None` case.",
+                "prescription": "Add a `None => { ... }` arm to the match, or use `if let Some(val) = expr` if you only care about the Some case.",
+                "codeBlock": "match opt_value {\n    Some(val) => { /* use val */ },\n    None => { /* handle missing */ },\n}"
+              }
+            ]
+          },
+          {
+            "code": "E0005",
+            "category": "pattern_matching",
+            "severity": "error",
+            "messagePattern": "refutable pattern in (?<context>local binding|function argument)",
+            "match": "error\\[E0005\\]:.*refutable pattern in (?<context>local binding|function argument)",
+            "captures": [{ "name": "context", "role": "literal_value" }],
+            "baseCrossFileProbability": 0.05,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "restructure_code",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [],
+            "rootCause": "A refutable pattern (one that might not match) is used in a {context} which requires an irrefutable pattern. `let` bindings require patterns that always match.",
+            "prescription": "Use `if let` or `match` instead of `let` for patterns that might not match, or restructure to use an irrefutable pattern.",
+            "codeBlock": "// BEFORE (error):\nlet Some(x) = get_value(); // E0005: refutable\n\n// AFTER:\nif let Some(x) = get_value() {\n    // use x\n} else {\n    // handle None\n}\n\n// Or with let-else (Rust 1.65+):\nlet Some(x) = get_value() else {\n    return;\n};",
+            "conditions": []
+          },
+          {
+            "code": "E0408",
+            "category": "pattern_matching",
+            "severity": "error",
+            "messagePattern": "variable `(?<variable>[^`]+)` is not bound in all patterns",
+            "match": "error\\[E0408\\]:.*variable `(?<variable>[^`]+)` is not bound in all patterns",
+            "captures": [{ "name": "variable", "role": "symbol_name" }],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "restructure_code",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [],
+            "rootCause": "The variable `{variable}` is bound in some alternatives of an or-pattern (`|`) but not all of them. All alternatives must bind the same set of variables.",
+            "prescription": "Ensure all alternatives in the or-pattern bind `{variable}`, or split the pattern into separate match arms.",
+            "codeBlock": "// BEFORE (error):\nmatch value {\n    A(x) | B => { use(x) } // E0408: x not bound in B\n}\n\n// AFTER:\nmatch value {\n    A(x) => { use(x) },\n    B => { /* different logic */ },\n}\n// Or bind in both:\nmatch value {\n    A(x) | B(x) => { use(x) }\n}",
+            "conditions": []
+          },
+          {
+            "code": "E0023",
+            "category": "pattern_matching",
+            "severity": "error",
+            "messagePattern": "this pattern has (?<found>\\d+) field[s]?, but the corresponding (?<kind>tuple variant|tuple struct) has (?<expected>\\d+)",
+            "match": "error\\[E0023\\]:.*this pattern has (?<found>\\d+) field",
+            "captures": [
+              { "name": "found", "role": "literal_value" },
+              { "name": "kind", "role": "literal_value" },
+              { "name": "expected", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.35,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "restructure_code",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [],
+            "rootCause": "The destructuring pattern has {found} fields but the {kind} has {expected} fields.",
+            "prescription": "Adjust the pattern to match the correct number of fields. Use `..` to ignore remaining fields.",
+            "codeBlock": "// With correct field count:\nmatch tuple_struct {\n    MyStruct(a, b, c) => { /* ... */ },\n}\n\n// Or ignore extra fields:\nmatch tuple_struct {\n    MyStruct(a, ..) => { /* only care about first */ },\n}",
+            "conditions": []
+          }
+        ]
+      },
+      {
+        "id": "syntax",
+        "name": "Syntax and Parse Errors",
+        "description": "Errors in code structure, unexpected tokens, and syntax violations",
+        "defaultTracingBehavior": "local_only",
+        "errors": [
+          {
+            "code": "E0585",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "found a documentation comment that doesn't document anything",
+            "match": "error\\[E0585\\]:.*found a documentation comment that doesn't document anything",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "fix_syntax",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [],
+            "rootCause": "A documentation comment (`///` or `//!`) is not attached to any item. Doc comments must immediately precede a struct, function, module, or other documentable item.",
+            "prescription": "Move the doc comment to directly above an item, convert it to a regular comment (`//`), or remove it.",
+            "codeBlock": "// BEFORE:\n/// This documents nothing\n\nfn my_function() {}\n\n// AFTER:\n/// This documents my_function\nfn my_function() {}",
+            "conditions": []
+          },
+          {
+            "code": "E0658",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "(?:use of )?(?:unstable library feature|the feature) `(?<feature>[^`]+)` is (?:unstable|not stable)",
+            "match": "error\\[E0658\\]:.*`(?<feature>[^`]+)` is (?:unstable|not stable)",
+            "captures": [{ "name": "feature", "role": "symbol_name" }],
+            "baseCrossFileProbability": 0.1,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "update_config",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "file_header"
+            },
+            "coOccurrence": [],
+            "rootCause": "The feature `{feature}` is unstable and requires a nightly compiler or feature gate.",
+            "prescription": "1. Switch to nightly: `rustup default nightly`.\n2. Add `#![feature({feature})]` to your crate root (lib.rs or main.rs).\n3. Find a stable alternative if you cannot use nightly.",
+            "codeBlock": "#![feature({feature})]\n// Requires: rustup default nightly",
+            "conditions": []
+          },
+          {
+            "code": "E0015",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "calls in (?<context>constants|statics|const fn) are limited to (?<limitation>constant|const) functions",
+            "match": "error\\[E0015\\]:.*calls in (?<context>constants|statics|const fn) are limited to",
+            "captures": [
+              { "name": "context", "role": "literal_value" },
+              { "name": "limitation", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.2,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "restructure_code",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [],
+            "rootCause": "Only const functions can be called in {context}. Non-const function calls are not allowed at compile time.",
+            "prescription": "1. Use a const fn version of the function if available.\n2. Use `lazy_static!` or `once_cell::sync::Lazy` for runtime initialization.\n3. Move the computation to runtime.",
+            "codeBlock": "use once_cell::sync::Lazy;\n\nstatic VALUE: Lazy<MyType> = Lazy::new(|| {\n    compute_value()\n});",
+            "conditions": []
+          },
+          {
+            "code": "E0133",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "call to unsafe function(?: `(?<function>[^`]+)`)? (?:is unsafe and )?requires unsafe (?:function or )?block",
+            "match": "error\\[E0133\\]:.*(?:call to unsafe|use of unsafe).*requires unsafe",
+            "captures": [{ "name": "function", "role": "symbol_name" }],
+            "baseCrossFileProbability": 0.1,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "restructure_code",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [],
+            "rootCause": "An unsafe operation is being performed outside an `unsafe` block. Unsafe operations include calling unsafe functions, dereferencing raw pointers, and accessing mutable statics.",
+            "prescription": "Wrap the unsafe operation in an `unsafe { }` block. Add a `// SAFETY:` comment explaining why the operation is sound.",
+            "codeBlock": "// SAFETY: the pointer is guaranteed to be valid and properly aligned\nunsafe {\n    ptr::read(raw_ptr)\n}",
+            "conditions": []
+          },
+          {
+            "code": "E0423",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "expected (?<expectedKind>value|function), found (?<foundKind>struct variant|module|type alias|struct|enum variant) `(?<name>[^`]+)`",
+            "match": "error\\[E0423\\]:.*expected (?<expectedKind>\\w+), found .* `(?<name>[^`]+)`",
+            "captures": [
+              { "name": "expectedKind", "role": "literal_value" },
+              { "name": "name", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "restructure_code",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [],
+            "rootCause": "A {expectedKind} was expected but `{name}` is a different kind of item. This often happens when constructing structs without braces or calling types as functions.",
+            "prescription": "Use the correct syntax for the item kind. Structs need `{ }` or `( )` syntax for construction, not function-call syntax.",
+            "codeBlock": "// BEFORE:\nlet x = MyStruct(1, 2); // E0423 if MyStruct has named fields\n\n// AFTER:\nlet x = MyStruct { field1: 1, field2: 2 };",
+            "conditions": []
+          },
+          {
+            "code": "E0618",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "expected function, found `(?<typeName>[^`]+)`",
+            "match": "error\\[E0618\\]:.*expected function, found `(?<typeName>[^`]+)`",
+            "captures": [{ "name": "typeName", "role": "type_name" }],
+            "baseCrossFileProbability": 0.1,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "restructure_code",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [],
+            "rootCause": "Attempted to call `{typeName}` as a function, but it is not callable. Only functions, closures, and types implementing `Fn`/`FnMut`/`FnOnce` can be called.",
+            "prescription": "Check that you are calling the correct item. If you want to construct a struct, use struct literal syntax. If you want to call a method, use dot notation.",
+            "codeBlock": null,
+            "conditions": []
+          }
+        ]
+      },
+      {
+        "id": "async_concurrency",
+        "name": "Async and Concurrency Errors",
+        "description": "Errors related to async/await, Send/Sync bounds, and concurrency patterns",
+        "defaultTracingBehavior": "local_or_cross",
+        "errors": [
+          {
+            "code": "E0277_send",
+            "actualCode": "E0277",
+            "category": "async_concurrency",
+            "severity": "error",
+            "messagePattern": "`(?<typeName>[^`]+)` cannot be sent between threads safely",
+            "match": "error\\[E0277\\]:.*`(?<typeName>[^`]+)` cannot be sent between threads safely",
+            "captures": [{ "name": "typeName", "role": "type_name" }],
+            "baseCrossFileProbability": 0.35,
+            "confidence": "known",
+            "refinements": [
+              {
+                "check": { "type": "is_imported", "target": "typeName" },
+                "adjustedProbability": 0.6,
+                "traceDepth": "direct",
+                "traceTarget": "imported_file"
+              }
+            ],
+            "fixHint": {
+              "primaryStrategy": "restructure_code",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "function_body"
+            },
+            "coOccurrence": [],
+            "rootCause": "The type `{typeName}` does not implement `Send` and cannot be transferred between threads. This commonly occurs with `Rc`, raw pointers, or types containing non-Send fields used across `.await` points.",
+            "prescription": "1. Replace `Rc<T>` with `Arc<T>`.\n2. Replace `RefCell<T>` with `Mutex<T>` or `RwLock<T>`.\n3. Ensure the non-Send value does not exist across an `.await` point (drop it before awaiting).\n4. If using a non-Send type in async, wrap the future with `spawn_local` instead of `spawn`.",
+            "codeBlock": "// BEFORE:\nlet data = Rc::new(value);\ntokio::spawn(async move {\n    use_data(data).await; // E0277: Rc is not Send\n});\n\n// AFTER:\nlet data = Arc::new(value);\ntokio::spawn(async move {\n    use_data(data).await;\n});",
+            "conditions": []
+          },
+          {
+            "code": "E0277_sync",
+            "actualCode": "E0277",
+            "category": "async_concurrency",
+            "severity": "error",
+            "messagePattern": "`(?<typeName>[^`]+)` cannot be shared between threads safely",
+            "match": "error\\[E0277\\]:.*`(?<typeName>[^`]+)` cannot be shared between threads safely",
+            "captures": [{ "name": "typeName", "role": "type_name" }],
+            "baseCrossFileProbability": 0.35,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "restructure_code",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "function_body"
+            },
+            "coOccurrence": [],
+            "rootCause": "The type `{typeName}` does not implement `Sync` and cannot be shared between threads via references. Types with non-atomic interior mutability (Cell, RefCell) are not Sync.",
+            "prescription": "Replace `Cell<T>` with `Atomic*` types, replace `RefCell<T>` with `Mutex<T>` or `RwLock<T>`, or wrap in `Arc<Mutex<T>>` for shared mutable access.",
+            "codeBlock": "use std::sync::{Arc, Mutex};\n\nlet shared = Arc::new(Mutex::new(data));\nlet clone = Arc::clone(&shared);\nstd::thread::spawn(move || {\n    let mut guard = clone.lock().unwrap();\n    *guard = new_value;\n});",
+            "conditions": []
+          },
+          {
+            "code": "E0728",
+            "category": "async_concurrency",
+            "severity": "error",
+            "messagePattern": "`await` is only allowed inside `async` functions and blocks",
+            "match": "error\\[E0728\\]:.*`await` is only allowed inside `async`",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "wrap_async",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "function_body"
+            },
+            "coOccurrence": [],
+            "rootCause": "The `.await` keyword can only be used inside `async fn` or `async { }` blocks. It cannot be used in synchronous functions.",
+            "prescription": "1. Make the enclosing function async: `async fn my_function()`.\n2. Wrap the async call in a runtime block: `tokio::runtime::Runtime::new().block_on(async { ... })`.\n3. Use `.block_on()` from your async runtime for synchronous entry points.",
+            "codeBlock": "// Make function async:\nasync fn fetch_data() -> Result<Data, Error> {\n    let response = client.get(url).send().await?;\n    Ok(response.json().await?)\n}\n\n// Or block_on for sync entry:\nlet rt = tokio::runtime::Runtime::new()?;\nlet result = rt.block_on(async { fetch_data().await });",
+            "conditions": []
+          }
+        ]
+      },
+      {
+        "id": "misc_compiler",
+        "name": "Miscellaneous Compiler Errors",
+        "description": "Other compiler errors including const evaluation, unsafe, generics, and more",
+        "defaultTracingBehavior": "local_or_cross",
+        "errors": [
+          {
+            "code": "E0599_deref",
+            "actualCode": "E0599",
+            "category": "misc_compiler",
+            "severity": "error",
+            "messagePattern": "no method named `(?<method>[^`]+)` found for (?:struct|enum) `(?<typeName>[^`]+)` in the current scope",
+            "match": "error\\[E0599\\]:.*no method named `(?<method>[^`]+)` found for",
+            "captures": [
+              { "name": "method", "role": "property_name" },
+              { "name": "typeName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "heuristic",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "add_import",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "file_header"
+            },
+            "coOccurrence": [],
+            "rootCause": "No method `{method}` found for `{typeName}`. If the type implements `Deref`, the method might be on the target type but a trait providing it may not be in scope.",
+            "prescription": "Import the trait that provides the method. Check if the type derefs to another type and the method exists on that target type.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "E0310",
+            "category": "misc_compiler",
+            "severity": "error",
+            "messagePattern": "the parameter type `(?<typeName>[^`]+)` may not live long enough",
+            "match": "error\\[E0310\\]:.*the parameter type `(?<typeName>[^`]+)` may not live long enough",
+            "captures": [{ "name": "typeName", "role": "type_name" }],
+            "baseCrossFileProbability": 0.15,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "fix_generic_constraint",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "function_body"
+            },
+            "coOccurrence": [],
+            "rootCause": "The generic parameter `{typeName}` may contain references that do not live long enough. A `'static` bound or explicit lifetime bound is needed.",
+            "prescription": "Add a `'static` bound if the type must own all its data: `T: 'static`. Or add a lifetime bound: `T: 'a` to tie it to a specific lifetime.",
+            "codeBlock": "// Add 'static bound:\nfn spawn_task<T: Send + 'static>(task: T) { ... }\n\n// Or add lifetime bound:\nfn process<'a, T: 'a>(data: T) -> &'a T { ... }",
+            "conditions": []
+          },
+          {
+            "code": "E0309",
+            "category": "misc_compiler",
+            "severity": "error",
+            "messagePattern": "the parameter type `(?<typeName>[^`]+)` may not live long enough.*consider adding.*`(?<lifetime>[^`]+)`",
+            "match": "error\\[E0309\\]:.*the parameter type `(?<typeName>[^`]+)` may not live long enough",
+            "captures": [
+              { "name": "typeName", "role": "type_name" },
+              { "name": "lifetime", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.15,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "fix_generic_constraint",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "function_body"
+            },
+            "coOccurrence": [],
+            "rootCause": "The generic type parameter `{typeName}` may contain references that do not live long enough for the required lifetime.",
+            "prescription": "Add a lifetime bound to the generic parameter: `T: '{lifetime}`.",
+            "codeBlock": "// BEFORE:\nstruct Container<'a, T> {\n    data: &'a T, // E0309\n}\n\n// AFTER:\nstruct Container<'a, T: 'a> {\n    data: &'a T,\n}",
+            "conditions": []
+          },
+          {
+            "code": "E0515",
+            "category": "misc_compiler",
+            "severity": "error",
+            "messagePattern": "cannot return (?:reference to|value referencing) (?<kind>local variable|temporary value|function parameter) `?(?<name>[^`]*)`?",
+            "match": "error\\[E0515\\]:.*cannot return.*(?:local variable|temporary value)",
+            "captures": [
+              { "name": "kind", "role": "literal_value" },
+              { "name": "name", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "restructure_code",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "function_body"
+            },
+            "coOccurrence": [],
+            "rootCause": "Cannot return a reference to a {kind}. The {kind} is dropped when the function returns, so any reference to it would be dangling.",
+            "prescription": "1. Return an owned value instead of a reference (String instead of &str, Vec instead of &[T]).\n2. If the data needs to be shared, use Rc/Arc.\n3. Accept a reference parameter and return a reference tied to the input lifetime.",
+            "codeBlock": "// BEFORE:\nfn make_greeting(name: &str) -> &str {\n    let s = format!(\"Hello, {}\", name);\n    &s // E0515: cannot return reference to local\n}\n\n// AFTER:\nfn make_greeting(name: &str) -> String {\n    format!(\"Hello, {}\", name) // return owned String\n}",
+            "conditions": []
+          },
+          {
+            "code": "E0308_return",
+            "actualCode": "E0308",
+            "category": "misc_compiler",
+            "severity": "error",
+            "messagePattern": "mismatched types.*expected `\\(\\)`, found",
+            "match": "error\\[E0308\\]:.*expected `\\(\\)`",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "fix_syntax",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [],
+            "rootCause": "The function is expected to return `()` (unit type) but a value is being returned, OR the last expression has a semicolon turning it into a statement.",
+            "prescription": "1. Remove the trailing semicolon from the last expression to make it the return value.\n2. Add a return type annotation if the function should return a value.\n3. Add `return value;` explicitly if needed.",
+            "codeBlock": "// BEFORE:\nfn compute() -> i32 {\n    let result = 42;\n    result; // semicolon makes this return ()\n}\n\n// AFTER:\nfn compute() -> i32 {\n    let result = 42;\n    result // no semicolon = implicit return\n}",
+            "conditions": []
+          },
+          {
+            "code": "E0382_closure",
+            "actualCode": "E0382",
+            "category": "misc_compiler",
+            "severity": "error",
+            "messagePattern": "use of moved value: `(?<variable>[^`]+)`.*value used here after move",
+            "match": "error\\[E0382\\]:.*use of moved value.*value used here after move",
+            "captures": [{ "name": "variable", "role": "symbol_name" }],
+            "baseCrossFileProbability": 0.05,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "restructure_code",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "function_body"
+            },
+            "coOccurrence": [],
+            "rootCause": "The variable `{variable}` was moved into a closure and cannot be used again. `move` closures take ownership of captured variables.",
+            "prescription": "1. Clone the variable before creating the closure: `let clone = {variable}.clone();`.\n2. Use `Rc`/`Arc` for shared ownership across multiple closures.\n3. Borrow instead of moving by removing the `move` keyword if possible.",
+            "codeBlock": "// Clone before moving into closure:\nlet data = Arc::new(data);\nfor _ in 0..n {\n    let data = Arc::clone(&data);\n    thread::spawn(move || {\n        use_data(&data);\n    });\n}",
+            "conditions": []
+          },
+          {
+            "code": "E0277_iterator",
+            "actualCode": "E0277",
+            "category": "misc_compiler",
+            "severity": "error",
+            "messagePattern": "the trait bound `(?<typeName>[^`]+): Iterator` is not satisfied",
+            "match": "error\\[E0277\\]:.*`(?<typeName>[^`]+): Iterator` is not satisfied",
+            "captures": [{ "name": "typeName", "role": "type_name" }],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "implement_interface",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "type_definition"
+            },
+            "coOccurrence": [],
+            "rootCause": "The type `{typeName}` does not implement the `Iterator` trait, which is required for use in `for` loops and iterator methods.",
+            "prescription": "1. Implement the `Iterator` trait for your type.\n2. If the type is a collection, call `.iter()`, `.into_iter()`, or `.iter_mut()` to get an iterator.\n3. Implement `IntoIterator` for the type to enable direct use in `for` loops.",
+            "codeBlock": "impl Iterator for MyIter {\n    type Item = i32;\n    fn next(&mut self) -> Option<Self::Item> {\n        // implementation\n    }\n}\n\n// Or implement IntoIterator for a collection:\nimpl IntoIterator for MyCollection {\n    type Item = Element;\n    type IntoIter = std::vec::IntoIter<Element>;\n    fn into_iter(self) -> Self::IntoIter {\n        self.items.into_iter()\n    }\n}",
+            "conditions": []
+          }
+        ]
+      },
+      {
+        "id": "runtime_errors",
+        "name": "Runtime Panics and Errors",
+        "description": "Runtime panics including unwrap failures, index out of bounds, and stack overflows",
+        "defaultTracingBehavior": "local_only",
+        "errors": [
+          {
+            "code": "RUST_PANIC",
+            "category": "runtime_errors",
+            "severity": "error",
+            "messagePattern": "thread '(?<thread>[^']+)' panicked at '(?<message>[^']+)', (?<file>[\\w/\\\\.]+):(?<line>\\d+):(?<column>\\d+)",
+            "match": "thread '(?<thread>[^']+)' panicked at '(?<message>[^']+)'",
+            "captures": [
+              { "name": "thread", "role": "literal_value" },
+              { "name": "message", "role": "literal_value" },
+              { "name": "file", "role": "file_path" },
+              { "name": "line", "role": "literal_value" },
+              { "name": "column", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.2,
+            "confidence": "heuristic",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "restructure_code",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "function_body"
+            },
+            "coOccurrence": [
+              { "code": "RUST_UNWRAP", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+            "rootCause": "Thread '{thread}' panicked at {file}:{line} with message: {message}. A panic indicates an unrecoverable error condition.",
+            "prescription": "Replace panic-inducing operations with proper error handling using `Result` and `Option` combinators. Use `?` for error propagation.",
+            "codeBlock": "// Replace unwrap with proper handling:\nmatch value {\n    Some(v) => v,\n    None => return Err(\"value was None\".into()),\n}\n\n// Or use ? operator:\nlet v = value.ok_or(\"value was None\")?;",
+            "conditions": []
+          },
+          {
+            "code": "RUST_UNWRAP",
+            "category": "runtime_errors",
+            "severity": "error",
+            "messagePattern": "called `(?<method>Option::unwrap|Result::unwrap)\\(\\)` on a(?:n)? `(?<variant>None|Err)` value",
+            "match": "called `(?<method>Option::unwrap|Result::unwrap)\\(\\)` on a(?:n)? `(?<variant>None|Err)` value",
+            "captures": [
+              { "name": "method", "role": "literal_value" },
+              { "name": "variant", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.15,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "add_null_check",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [
+              { "code": "RUST_PANIC", "relationship": "caused_by_this", "sharedCapture": null, "resolution": "fix_this_first" }
+            ],
+            "rootCause": "Called `unwrap()` on a `{variant}` value, causing a panic. The `{method}` call assumes the value is always `Some`/`Ok`, but it was `{variant}`.",
+            "prescription": "Replace `unwrap()` with proper error handling: use `?`, `match`, `if let`, `unwrap_or`, `unwrap_or_else`, or `unwrap_or_default`.",
+            "codeBlock": "// Use ? for propagation:\nlet value = some_option.ok_or(\"missing value\")?;\n\n// Use unwrap_or for defaults:\nlet value = some_option.unwrap_or(default_value);\n\n// Use if let for conditional:\nif let Some(value) = some_option {\n    process(value);\n}",
+            "conditions": []
+          },
+          {
+            "code": "RUST_INDEX_OOB",
+            "category": "runtime_errors",
+            "severity": "error",
+            "messagePattern": "index out of bounds: the len is (?<length>\\d+) but the index is (?<index>\\d+)",
+            "match": "index out of bounds: the len is (?<length>\\d+) but the index is (?<index>\\d+)",
+            "captures": [
+              { "name": "length", "role": "literal_value" },
+              { "name": "index", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.1,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "add_null_check",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [],
+            "rootCause": "Index out of bounds: tried to access index {index} but the collection only has {length} elements.",
+            "prescription": "Use `.get(index)` for safe access that returns `Option`, or validate the index before accessing.",
+            "codeBlock": "// Safe access:\nif let Some(value) = collection.get(index) {\n    // use value\n}\n\n// Or with bounds check:\nif index < collection.len() {\n    let value = &collection[index];\n}",
+            "conditions": []
+          },
+          {
+            "code": "RUST_OVERFLOW",
+            "category": "runtime_errors",
+            "severity": "error",
+            "messagePattern": "attempt to (?<operation>add|subtract|multiply|divide|shift left|shift right|negate) with overflow",
+            "match": "attempt to (?<operation>add|subtract|multiply|divide|shift left|shift right|negate) with overflow",
+            "captures": [{ "name": "operation", "role": "literal_value" }],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "restructure_code",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [],
+            "rootCause": "An arithmetic {operation} overflowed. Rust panics on overflow in debug mode.",
+            "prescription": "Use checked, wrapping, or saturating arithmetic methods.",
+            "codeBlock": "// Checked (returns None):\nlet result = a.checked_add(b);\n\n// Saturating (clamps):\nlet result = a.saturating_add(b);\n\n// Wrapping (wraps around):\nlet result = a.wrapping_add(b);",
+            "conditions": []
+          },
+          {
+            "code": "RUST_STACK_OVERFLOW",
+            "category": "runtime_errors",
+            "severity": "error",
+            "messagePattern": "thread '(?<thread>[^']+)' has overflowed its stack",
+            "match": "thread '(?<thread>[^']+)' has overflowed its stack",
+            "captures": [{ "name": "thread", "role": "literal_value" }],
+            "baseCrossFileProbability": 0.05,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "restructure_code",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "function_body"
+            },
+            "coOccurrence": [],
+            "rootCause": "Thread '{thread}' overflowed its stack, likely due to unbounded recursion or very large stack allocations.",
+            "prescription": "1. Add or fix the base case in recursive functions.\n2. Convert recursion to iteration.\n3. Use `Box` to move large data to the heap.\n4. Increase the thread stack size with `std::thread::Builder`.",
+            "codeBlock": "// Convert recursion to iteration:\nfn factorial(n: u64) -> u64 {\n    (1..=n).product()\n}\n\n// Increase stack size:\nstd::thread::Builder::new()\n    .stack_size(8 * 1024 * 1024) // 8 MB\n    .spawn(|| { /* work */ })\n    .unwrap();",
+            "conditions": []
+          }
+        ]
+      },
+      {
+        "id": "cargo_errors",
+        "name": "Cargo Build System Errors",
+        "description": "Errors from Cargo related to dependencies, features, and workspace configuration",
+        "defaultTracingBehavior": "cross_file",
+        "errors": [
+          {
+            "code": "CARGO_NOT_FOUND",
+            "category": "cargo_errors",
+            "severity": "error",
+            "messagePattern": "no matching package named `(?<package>[^`]+)` found",
+            "match": "error.*no matching package named `(?<package>[^`]+)` found",
+            "captures": [{ "name": "package", "role": "package_name" }],
+            "baseCrossFileProbability": 1.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "install_package",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "entire_file"
+            },
+            "coOccurrence": [
+              { "code": "E0463", "relationship": "causes_this", "sharedCapture": "package", "resolution": "fix_this_first" }
+            ],
+            "rootCause": "The package `{package}` could not be found in the crate registry.",
+            "prescription": "1. Verify the crate name on crates.io.\n2. Check for typos in Cargo.toml.\n3. If using a private registry, ensure it is configured in .cargo/config.toml.",
+            "codeBlock": "# Search for the correct name:\ncargo search {package}\n\n# Or use a git dependency:\n[dependencies]\n{package} = { git = \"https://github.com/user/repo\" }",
+            "conditions": []
+          },
+          {
+            "code": "CARGO_FEATURE_NOT_FOUND",
+            "category": "cargo_errors",
+            "severity": "error",
+            "messagePattern": "feature `(?<feature>[^`]+)` not found in package `(?<package>[^`]+)`",
+            "match": "error.*feature `(?<feature>[^`]+)` not found in package `(?<package>[^`]+)`",
+            "captures": [
+              { "name": "feature", "role": "symbol_name" },
+              { "name": "package", "role": "package_name" }
+            ],
+            "baseCrossFileProbability": 1.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "update_config",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "entire_file"
+            },
+            "coOccurrence": [],
+            "rootCause": "The feature `{feature}` does not exist in the package `{package}`.",
+            "prescription": "Check the available features in the crate documentation or Cargo.toml. Remove the invalid feature or use the correct name.",
+            "codeBlock": "# In Cargo.toml:\n[dependencies]\n{package} = { version = \"1.0\", features = [\"correct-feature\"] }",
+            "conditions": []
+          },
+          {
+            "code": "CARGO_VERSION_CONFLICT",
+            "category": "cargo_errors",
+            "severity": "error",
+            "messagePattern": "failed to select a version for the requirement `(?<package>[^`]+).*`",
+            "match": "error.*failed to select a version for.*`(?<package>[^`]+)",
+            "captures": [{ "name": "package", "role": "package_name" }],
+            "baseCrossFileProbability": 1.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "update_package",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "entire_file"
+            },
+            "coOccurrence": [],
+            "rootCause": "Cargo could not find a version of `{package}` that satisfies all dependency constraints. Multiple dependencies require incompatible versions.",
+            "prescription": "1. Run `cargo tree -d` to find duplicate dependencies.\n2. Update version constraints in Cargo.toml.\n3. Use `cargo update` to resolve to latest compatible versions.\n4. Add a `[patch]` section to Cargo.toml if needed.",
+            "codeBlock": "# Find conflicts:\ncargo tree -d\n\n# Update specific dependency:\ncargo update -p {package}",
+            "conditions": []
+          },
+          {
+            "code": "CARGO_BUILD_SCRIPT",
+            "category": "cargo_errors",
+            "severity": "error",
+            "messagePattern": "failed to run custom build command for `(?<package>[^`]+)`",
+            "match": "error.*failed to run custom build command for `(?<package>[^`]+)`",
+            "captures": [{ "name": "package", "role": "package_name" }],
+            "baseCrossFileProbability": 1.0,
+            "confidence": "heuristic",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "update_config",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "entire_file"
+            },
+            "coOccurrence": [],
+            "rootCause": "The build script (build.rs) for package `{package}` failed. This often means a system library or tool is missing.",
+            "prescription": "1. Check the build output for the specific system dependency that is missing.\n2. Install required system libraries (e.g., `pkg-config`, `openssl-dev`, `cmake`).\n3. Set environment variables if the build script needs them (e.g., `OPENSSL_DIR`).",
+            "codeBlock": "# Common system dependencies:\n# Ubuntu/Debian:\nsudo apt install pkg-config libssl-dev cmake\n\n# macOS:\nbrew install openssl cmake",
+            "conditions": []
+          }
+        ]
+      }
+    ]
+  },
+
+  "importSystem": {
+    "importPatterns": [
+      {
+        "type": "use_simple",
+        "regex": "use\\s+(?<path>[\\w:]+(?:::\\w+)*)\\s*;",
+        "captures": [{ "name": "path", "index": 1, "isList": false }],
+        "example": "use std::collections::HashMap;",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "use_alias",
+        "regex": "use\\s+(?<path>[\\w:]+(?:::\\w+)*)\\s+as\\s+(?<alias>\\w+)\\s*;",
+        "captures": [
+          { "name": "path", "index": 1, "isList": false },
+          { "name": "alias", "index": 2, "isList": false }
+        ],
+        "example": "use std::io::Result as IoResult;",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "use_grouped",
+        "regex": "use\\s+(?<basePath>[\\w:]+(?:::\\w+)*)\\s*::\\s*\\{(?<items>[^}]+)\\}\\s*;",
+        "captures": [
+          { "name": "basePath", "index": 1, "isList": false },
+          { "name": "items", "index": 2, "isList": true, "listSeparator": "," }
+        ],
+        "example": "use std::collections::{HashMap, HashSet, BTreeMap};",
+        "isMultiLine": true,
+        "multiLineRegex": "use\\s+(?<basePath>[\\w:]+(?:::\\w+)*)\\s*::\\s*\\{[\\s\\S]*?\\}\\s*;"
+      },
+      {
+        "type": "use_glob",
+        "regex": "use\\s+(?<path>[\\w:]+(?:::\\w+)*)\\s*::\\s*\\*\\s*;",
+        "captures": [{ "name": "path", "index": 1, "isList": false }],
+        "example": "use std::io::prelude::*;",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "use_crate",
+        "regex": "use\\s+crate\\s*::\\s*(?<path>[\\w:]+(?:::\\w+)*)\\s*;",
+        "captures": [{ "name": "path", "index": 1, "isList": false }],
+        "example": "use crate::models::User;",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "use_super",
+        "regex": "use\\s+super\\s*::\\s*(?<path>[\\w:]+(?:::\\w+)*)\\s*;",
+        "captures": [{ "name": "path", "index": 1, "isList": false }],
+        "example": "use super::utils::helper;",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "use_self",
+        "regex": "use\\s+self\\s*::\\s*(?<path>[\\w:]+(?:::\\w+)*)\\s*;",
+        "captures": [{ "name": "path", "index": 1, "isList": false }],
+        "example": "use self::submodule::Config;",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "extern_crate",
+        "regex": "extern\\s+crate\\s+(?<name>\\w+)(?:\\s+as\\s+(?<alias>\\w+))?\\s*;",
+        "captures": [
+          { "name": "name", "index": 1, "isList": false },
+          { "name": "alias", "index": 2, "isList": false }
+        ],
+        "example": "extern crate serde;",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "mod_declaration",
+        "regex": "(?:pub(?:\\s*\\([^)]*\\))?\\s+)?mod\\s+(?<name>\\w+)\\s*;",
+        "captures": [{ "name": "name", "index": 1, "isList": false }],
+        "example": "pub mod models;",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "mod_inline",
+        "regex": "(?:pub(?:\\s*\\([^)]*\\))?\\s+)?mod\\s+(?<name>\\w+)\\s*\\{",
+        "captures": [{ "name": "name", "index": 1, "isList": false }],
+        "example": "mod tests {",
+        "isMultiLine": true,
+        "multiLineRegex": "(?:pub(?:\\s*\\([^)]*\\))?\\s+)?mod\\s+(?<name>\\w+)\\s*\\{[\\s\\S]*?\\}"
+      }
+    ],
+    "exportPatterns": [
+      {
+        "type": "pub_use",
+        "regex": "pub\\s+use\\s+(?<path>[\\w:]+(?:::\\w+)*)\\s*;",
+        "captures": [{ "name": "path", "index": 1, "isList": false }],
+        "isReExport": true,
+        "example": "pub use crate::models::User;"
+      },
+      {
+        "type": "pub_use_grouped",
+        "regex": "pub\\s+use\\s+(?<basePath>[\\w:]+(?:::\\w+)*)\\s*::\\s*\\{(?<items>[^}]+)\\}\\s*;",
+        "captures": [
+          { "name": "basePath", "index": 1, "isList": false },
+          { "name": "items", "index": 2, "isList": true, "listSeparator": "," }
+        ],
+        "isReExport": true,
+        "example": "pub use crate::models::{User, Post, Comment};"
+      },
+      {
+        "type": "pub_use_glob",
+        "regex": "pub\\s+use\\s+(?<path>[\\w:]+(?:::\\w+)*)\\s*::\\s*\\*\\s*;",
+        "captures": [{ "name": "path", "index": 1, "isList": false }],
+        "isReExport": true,
+        "example": "pub use crate::prelude::*;"
+      },
+      {
+        "type": "pub_item",
+        "regex": "pub(?:\\s*\\([^)]*\\))?\\s+(?:fn|struct|enum|trait|type|const|static|mod)\\s+(?<name>\\w+)",
+        "captures": [{ "name": "name", "index": 1, "isList": false }],
+        "isReExport": false,
+        "example": "pub fn process_data(input: &str) -> Result<Data, Error> { }"
+      },
+      {
+        "type": "pub_crate_item",
+        "regex": "pub\\(crate\\)\\s+(?:fn|struct|enum|trait|type|const|static|mod)\\s+(?<name>\\w+)",
+        "captures": [{ "name": "name", "index": 1, "isList": false }],
+        "isReExport": false,
+        "example": "pub(crate) fn internal_helper() { }"
+      }
+    ],
+    "moduleResolution": {
+      "strategy": "rust",
+      "extensions": [".rs"],
+      "indexFiles": ["mod.rs", "lib.rs", "main.rs"],
+      "aliasConfig": {
+        "file": "Cargo.toml",
+        "path": "[dependencies] / [patch] / [workspace.members]",
+        "format": "Crate names map to directory names. Path dependencies use `path = \"./relative/path\"`. Workspace members share dependencies via [workspace.dependencies]."
+      },
+      "packageEntryPoints": ["lib.rs", "main.rs"],
+      "relativeImportRules": "Modules are resolved based on file tree. `mod foo;` looks for `foo.rs` or `foo/mod.rs` adjacent to the declaring file. `use super::` refers to the parent module. `use self::` refers to the current module.",
+      "absoluteImportRules": "`use crate::` refers to the crate root (lib.rs or main.rs). External crate names resolve via Cargo.toml dependencies. `use std::` and `use core::` are always available."
+    }
+  },
+
+  "typeTracing": {
+    "definitionPatterns": [
+      {
+        "kind": "struct",
+        "regex": "(?:pub(?:\\s*\\([^)]*\\))?\\s+)?struct\\s+(?<name>\\w+)",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "pub struct Config { port: u16, host: String }"
+      },
+      {
+        "kind": "enum",
+        "regex": "(?:pub(?:\\s*\\([^)]*\\))?\\s+)?enum\\s+(?<name>\\w+)",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "pub enum Status { Active, Inactive, Pending }"
+      },
+      {
+        "kind": "trait",
+        "regex": "(?:pub(?:\\s*\\([^)]*\\))?\\s+)?(?:unsafe\\s+)?trait\\s+(?<name>\\w+)",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "pub trait Repository { fn find(&self, id: u64) -> Option<Entity>; }"
+      },
+      {
+        "kind": "type_alias",
+        "regex": "(?:pub(?:\\s*\\([^)]*\\))?\\s+)?type\\s+(?<name>\\w+)",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "pub type Result<T> = std::result::Result<T, MyError>;"
+      },
+      {
+        "kind": "function",
+        "regex": "(?:pub(?:\\s*\\([^)]*\\))?\\s+)?(?:async\\s+)?(?:unsafe\\s+)?(?:extern\\s+\"[^\"]+\"\\s+)?fn\\s+(?<name>\\w+)",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "pub async fn fetch_data(url: &str) -> Result<Response> { }"
+      },
+      {
+        "kind": "variable",
+        "regex": "(?:pub(?:\\s*\\([^)]*\\))?\\s+)?(?:static|const)\\s+(?<name>\\w+)",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "pub const MAX_RETRIES: u32 = 3;"
+      },
+      {
+        "kind": "macro",
+        "regex": "(?:#\\[macro_export\\]\\s*)?macro_rules!\\s+(?<name>\\w+)",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "#[macro_export]\nmacro_rules! my_macro { ... }"
+      }
+    ],
+    "inheritancePatterns": [
+      {
+        "kind": "trait_impl",
+        "regex": "impl(?:<[^>]*>)?\\s+(?<parents>[\\w:]+(?:<[^>]*>)?)\\s+for\\s+(?<child>\\w+(?:<[^>]*>)?)",
+        "captures": [
+          { "name": "child", "index": 2, "isList": false },
+          { "name": "parents", "index": 1, "isList": false }
+        ],
+        "traceConfidence": 0.90,
+        "example": "impl Display for MyStruct { ... }"
+      },
+      {
+        "kind": "supertrait",
+        "regex": "trait\\s+(?<child>\\w+)\\s*:\\s*(?<parents>[\\w\\s+:+<>]+)",
+        "captures": [
+          { "name": "child", "index": 1, "isList": false },
+          { "name": "parents", "index": 2, "isList": true, "listSeparator": "+" }
+        ],
+        "traceConfidence": 0.95,
+        "example": "trait Drawable: Display + Debug { }"
+      },
+      {
+        "kind": "derive",
+        "regex": "#\\[derive\\((?<parents>[^)]+)\\)\\]\\s*(?:pub(?:\\s*\\([^)]*\\))?\\s+)?(?:struct|enum)\\s+(?<child>\\w+)",
+        "captures": [
+          { "name": "child", "index": 2, "isList": false },
+          { "name": "parents", "index": 1, "isList": true, "listSeparator": "," }
+        ],
+        "traceConfidence": 0.95,
+        "example": "#[derive(Debug, Clone, Serialize, Deserialize)]\npub struct Config { ... }"
+      }
+    ],
+    "compositionPatterns": [
+      {
+        "kind": "generic_instantiation",
+        "regex": "(?<outer>\\w+)<(?<inner>[^>]+)>",
+        "captures": [
+          { "name": "outer", "index": 1, "isList": false },
+          { "name": "inner", "index": 2, "isList": true, "listSeparator": "," }
+        ],
+        "decomposable": true,
+        "traceConfidence": 0.80,
+        "example": "HashMap<String, Vec<User>>"
+      },
+      {
+        "kind": "trait_object",
+        "regex": "(?:Box<)?dyn\\s+(?<traits>[\\w\\s+:+<>']+)>?",
+        "captures": [
+          { "name": "traits", "index": 1, "isList": true, "listSeparator": "+" }
+        ],
+        "decomposable": true,
+        "traceConfidence": 0.70,
+        "example": "Box<dyn Error + Send + Sync>"
+      },
+      {
+        "kind": "impl_trait",
+        "regex": "impl\\s+(?<traits>[\\w\\s+:+<>']+)",
+        "captures": [
+          { "name": "traits", "index": 1, "isList": true, "listSeparator": "+" }
+        ],
+        "decomposable": true,
+        "traceConfidence": 0.60,
+        "example": "impl Iterator<Item = u32> + Send"
+      },
+      {
+        "kind": "tuple",
+        "regex": "\\((?<elements>[^)]+)\\)",
+        "captures": [
+          { "name": "elements", "index": 1, "isList": true, "listSeparator": "," }
+        ],
+        "decomposable": true,
+        "traceConfidence": 0.85,
+        "example": "(String, i32, Vec<u8>)"
+      },
+      {
+        "kind": "reference",
+        "regex": "&(?:'\\w+\\s+)?(?:mut\\s+)?(?<inner>\\w+(?:<[^>]*>)?)",
+        "captures": [
+          { "name": "inner", "index": 1, "isList": false }
+        ],
+        "decomposable": true,
+        "traceConfidence": 0.90,
+        "example": "&'a mut Vec<String>"
+      }
+    ],
+    "confidenceTiers": {
+      "direct_import": 0.95,
+      "re_export_one_hop": 0.85,
+      "re_export_multi_hop": 0.70,
+      "inheritance_direct": 0.90,
+      "inheritance_chain": 0.75,
+      "generic_resolution": 0.50,
+      "inferred_type": 0.30,
+      "dynamic_type": 0.15,
+      "trait_object": 0.55,
+      "deref_coercion": 0.40,
+      "macro_expansion": 0.25
+    }
+  },
+
+  "externalDependencies": {
+    "pathIndicators": ["target/", ".cargo/registry/", ".cargo/git/"],
+    "packageManifest": "Cargo.toml",
+    "lockFile": "Cargo.lock",
+    "typesPackagePattern": null,
+    "typeDeclarationLocations": [
+      {
+        "description": "Source code for registry dependencies",
+        "path": "~/.cargo/registry/src/*/",
+        "fallback": null,
+        "entryPointField": "lib.rs or main.rs in crate root"
+      },
+      {
+        "description": "Git dependencies",
+        "path": "~/.cargo/git/checkouts/*/",
+        "fallback": null,
+        "entryPointField": "lib.rs or main.rs in crate root"
+      },
+      {
+        "description": "Path dependencies (workspace or local)",
+        "path": "Relative path specified in Cargo.toml",
+        "fallback": null,
+        "entryPointField": "lib.rs in the dependency crate root"
+      }
+    ],
+    "detectionRules": [
+      {
+        "signal": "crate_not_in_cargo_toml",
+        "condition": "A use/extern crate statement references a crate not listed in [dependencies]",
+        "errorCodes": ["E0463", "E0433"],
+        "suggestedActions": ["Add the crate to [dependencies] in Cargo.toml", "Check crate name spelling on crates.io"],
+        "autoFixable": true,
+        "autoFixCommand": "cargo add {package}"
+      },
+      {
+        "signal": "feature_missing",
+        "condition": "A module or item from a dependency is gated behind a feature flag that is not enabled",
+        "errorCodes": ["E0432", "E0433", "E0412"],
+        "suggestedActions": ["Enable the required feature in Cargo.toml", "Check the crate's documentation for feature flags"],
+        "autoFixable": true,
+        "autoFixCommand": "cargo add {package} --features {feature}"
+      },
+      {
+        "signal": "version_incompatible",
+        "condition": "Multiple dependencies require incompatible versions of the same crate",
+        "errorCodes": ["CARGO_VERSION_CONFLICT"],
+        "suggestedActions": ["Run cargo tree -d to find duplicates", "Update version constraints", "Use [patch] section"],
+        "autoFixable": false,
+        "autoFixCommand": null
+      },
+      {
+        "signal": "missing_system_dep",
+        "condition": "A build script (build.rs) fails because a system library is not installed",
+        "errorCodes": ["CARGO_BUILD_SCRIPT"],
+        "suggestedActions": ["Install required system libraries", "Set environment variables for library paths"],
+        "autoFixable": false,
+        "autoFixCommand": null
+      }
+    ],
+    "commonBreakingPatterns": [
+      {
+        "description": "Major version bump removed or renamed public API items",
+        "errorCodes": ["E0432", "E0433", "E0599", "E0412"],
+        "resolution": "Check the crate's CHANGELOG.md or migration guide for renamed/removed APIs"
+      },
+      {
+        "description": "Crate switched from Rust 2018 to 2021 edition, changing import paths",
+        "errorCodes": ["E0432", "E0433"],
+        "resolution": "Update import paths; some prelude items changed between editions"
+      },
+      {
+        "description": "Feature flag was removed or renamed in new version",
+        "errorCodes": ["CARGO_FEATURE_NOT_FOUND"],
+        "resolution": "Check the crate's Cargo.toml for current feature names"
+      },
+      {
+        "description": "Minimum Supported Rust Version (MSRV) bump in dependency",
+        "errorCodes": ["E0658"],
+        "resolution": "Update your Rust toolchain with `rustup update` or pin the dependency to an older version"
+      }
+    ]
+  },
+
+  "quirks": [
+    {
+      "id": "trait_impl_different_file",
+      "name": "Trait Implementations in Different Files",
+      "description": "In Rust, trait implementations (`impl Trait for Type`) can be in a completely different file from both the trait definition and the type definition. The impl must be in the same crate as either the trait or the type (orphan rule). This means type errors involving trait methods may require tracing to the impl file, which is neither the type's file nor the trait's file.",
+      "affectsTracing": true,
+      "affectsResolution": true,
+      "workaround": "When an error involves a trait method or associated type, search for `impl TraitName for TypeName` across all .rs files in the crate. The implementation may be in a third file separate from both definitions.",
+      "example": "// types.rs\npub struct User { ... }\n\n// traits.rs\npub trait Validate { fn validate(&self) -> bool; }\n\n// impls.rs (different file!)\nimpl Validate for User { fn validate(&self) -> bool { ... } }",
+      "relatedErrorCodes": ["E0046", "E0053", "E0277", "E0599"]
+    },
+    {
+      "id": "orphan_rule",
+      "name": "Orphan Rule (Coherence)",
+      "description": "Rust enforces the orphan rule: you can only implement a trait for a type if at least one of them is defined in your crate. This prevents conflicting implementations across crates but forces the use of newtype wrappers when you need to implement a foreign trait for a foreign type.",
+      "affectsTracing": true,
+      "affectsResolution": false,
+      "workaround": "When E0117 occurs, trace both the trait and type origins. If both are from external crates, the fix requires a newtype wrapper, not a cross-file edit to the impl.",
+      "example": "// Cannot do this:\nimpl Display for Vec<i32> { } // E0117: both Display and Vec are foreign\n\n// Must use newtype:\nstruct MyVec(Vec<i32>);\nimpl Display for MyVec { ... }",
+      "relatedErrorCodes": ["E0117", "E0119"]
+    },
+    {
+      "id": "macro_expansion",
+      "name": "Macro Expansion Obscures Error Location",
+      "description": "When errors occur inside macro expansions, the reported file/line may point to the macro definition site rather than the call site, or to generated code that doesn't visibly exist in any source file. Proc macros (derive macros, attribute macros) generate code at compile time that can produce errors pointing to nonexistent locations.",
+      "affectsTracing": true,
+      "affectsResolution": true,
+      "workaround": "When an error points to a macro expansion, use `cargo expand` to see the generated code. Look for the macro invocation site rather than the expansion site. For derive macros, check that all fields satisfy the derived trait's requirements.",
+      "example": "#[derive(Debug)]\nstruct Wrapper(NonDebugType); // Error points to derive expansion, not the field",
+      "relatedErrorCodes": ["E0277", "E0599", "E0425"]
+    },
+    {
+      "id": "feature_flags",
+      "name": "Conditional Compilation with Feature Flags",
+      "description": "Cargo feature flags (`#[cfg(feature = \"...\")] `) conditionally include or exclude code. An item may exist in the source but be invisible to the compiler if the corresponding feature is not enabled. This can cause confusing 'not found' errors that appear only in certain build configurations.",
+      "affectsTracing": true,
+      "affectsResolution": true,
+      "workaround": "When tracing 'not found' errors, check for `#[cfg(feature = ...)]` attributes on the target item. Cross-reference with Cargo.toml to verify which features are enabled. The `--all-features` flag can help identify feature-gated items.",
+      "example": "#[cfg(feature = \"async\")]\npub async fn fetch() { ... } // Only exists when \"async\" feature is enabled\n\n// Cargo.toml:\n[features]\nasync = [\"tokio\"]",
+      "relatedErrorCodes": ["E0425", "E0432", "E0433", "E0412", "E0599"]
+    },
+    {
+      "id": "auto_traits",
+      "name": "Auto Traits (Send, Sync, Unpin)",
+      "description": "Send, Sync, and Unpin are automatically implemented for types when all their fields satisfy the trait. A single non-Send field (like Rc, raw pointer) makes the whole type non-Send. These traits are never explicitly `impl`-ed in normal code, so tracing them requires analyzing all fields transitively.",
+      "affectsTracing": true,
+      "affectsResolution": false,
+      "workaround": "When encountering Send/Sync errors, trace all fields of the type recursively. The offending field is the one that doesn't implement the auto trait. Common culprits: Rc (not Send/Sync), Cell/RefCell (not Sync), raw pointers (neither).",
+      "example": "struct MyState {\n    data: Rc<String>,  // Rc is not Send\n}\n// MyState is automatically not Send because of this field",
+      "relatedErrorCodes": ["E0277"]
+    },
+    {
+      "id": "deref_coercions",
+      "name": "Deref Coercions",
+      "description": "Rust automatically dereferences types through Deref implementations. `String` derefs to `&str`, `Vec<T>` to `&[T]`, `Box<T>` to `&T`, and smart pointers to their inner types. This makes method resolution complex because a method call on `Box<Vec<String>>` could resolve to methods on Box, Vec, [String], or String.",
+      "affectsTracing": true,
+      "affectsResolution": false,
+      "workaround": "When tracing method not found errors, follow the Deref chain: check the type itself, then its Deref target, then that target's Deref target, recursively. The method may be on any type in the chain.",
+      "example": "let s: Box<String> = Box::new(\"hello\".to_string());\ns.len(); // Calls &str::len() through Box -> String -> str deref chain",
+      "relatedErrorCodes": ["E0599", "E0609"]
+    },
+    {
+      "id": "module_file_mapping",
+      "name": "Module to File Mapping",
+      "description": "Rust has two conventions for mapping modules to files: `module_name.rs` (Rust 2018 style) or `module_name/mod.rs` (older style). Both can coexist in a project. The module tree is defined by `mod` declarations, not by the file system alone. A file that is not declared with `mod` in any parent module is invisible to the compiler.",
+      "affectsTracing": true,
+      "affectsResolution": true,
+      "workaround": "To resolve module paths, start from lib.rs/main.rs and follow the `mod` declarations. Check both `module.rs` and `module/mod.rs` for each declared module. Files without a corresponding `mod` declaration are not part of the crate.",
+      "example": "// lib.rs\nmod models;   // looks for models.rs or models/mod.rs\nmod routes;   // looks for routes.rs or routes/mod.rs\n\n// models/mod.rs (or models.rs)\npub mod user;   // looks for models/user.rs",
+      "relatedErrorCodes": ["E0433", "E0432"]
+    },
+    {
+      "id": "circular_dependencies",
+      "name": "Circular Module Dependencies",
+      "description": "Unlike some languages, Rust does not allow circular crate dependencies (Cargo will reject them). However, circular module references within a crate are allowed and common. When two modules reference each other, the order of `mod` declarations in the parent determines compilation order, which can cause 'not found' errors if declarations are ordered incorrectly.",
+      "affectsTracing": true,
+      "affectsResolution": true,
+      "workaround": "When seeing unexpected 'not found' errors between modules that reference each other, check the `mod` declaration order in the parent. Restructure to break the cycle, or move shared types to a common module that both can import.",
+      "example": "// lib.rs\nmod a;  // a uses b::Thing\nmod b;  // b uses a::Other\n// This works because both are children of the same crate root",
+      "relatedErrorCodes": ["E0412", "E0433"]
+    },
+    {
+      "id": "prelude_imports",
+      "name": "Prelude and Implicit Imports",
+      "description": "Rust automatically imports items from the standard library prelude (Option, Result, Vec, String, Box, etc.) and the edition-specific prelude. In Rust 2021, the prelude includes TryInto, TryFrom, and FromIterator. This means some types and traits are available without explicit `use` statements.",
+      "affectsTracing": false,
+      "affectsResolution": true,
+      "workaround": "When analyzing imports, account for prelude items that are automatically in scope. Do not report missing imports for prelude items. Check the Rust edition in Cargo.toml to know which prelude applies.",
+      "example": "// These work without any `use` statement:\nlet v: Vec<i32> = Vec::new();\nlet s: String = String::from(\"hello\");\nlet o: Option<i32> = Some(42);\nlet r: Result<i32, String> = Ok(42);",
+      "relatedErrorCodes": []
+    },
+    {
+      "id": "workspace_dependencies",
+      "name": "Cargo Workspace Shared Dependencies",
+      "description": "In Cargo workspaces, dependencies can be declared in the workspace Cargo.toml and inherited by member crates using `package.workspace = true`. This means the dependency version and features are defined in a different Cargo.toml than the one next to the source files.",
+      "affectsTracing": false,
+      "affectsResolution": true,
+      "workaround": "When resolving dependencies, check if the project is a workspace (look for [workspace] in the root Cargo.toml). If a member's Cargo.toml uses `dep.workspace = true`, look up the actual version and features in the workspace root Cargo.toml.",
+      "example": "# Workspace root Cargo.toml:\n[workspace.dependencies]\nserde = { version = \"1.0\", features = [\"derive\"] }\n\n# Member Cargo.toml:\n[dependencies]\nserde.workspace = true",
+      "relatedErrorCodes": ["CARGO_VERSION_CONFLICT", "CARGO_NOT_FOUND"]
+    },
+    {
+      "id": "build_rs_codegen",
+      "name": "Build Script Code Generation",
+      "description": "Rust build scripts (build.rs) can generate code at compile time that is included via `include!()` macro. The generated code is placed in the `OUT_DIR` and is invisible in the source tree. Errors in or caused by generated code may point to locations that don't exist in version control.",
+      "affectsTracing": true,
+      "affectsResolution": true,
+      "workaround": "When errors reference files in the `target/` or `OUT_DIR` directory, check for a build.rs that generates code. The root cause is likely in the build script or in the templates/data it uses to generate code.",
+      "example": "// build.rs\nfn main() {\n    let out_dir = std::env::var(\"OUT_DIR\").unwrap();\n    std::fs::write(format!(\"{}/generated.rs\", out_dir), code).unwrap();\n}\n\n// In lib.rs:\ninclude!(concat!(env!(\"OUT_DIR\"), \"/generated.rs\"));",
+      "relatedErrorCodes": ["CARGO_BUILD_SCRIPT", "E0425", "E0412"]
+    }
+  ],
+
+  "buildTools": [
+    {
+      "name": "cargo",
+      "detectFiles": ["Cargo.toml"],
+      "buildCommand": "cargo check 2>&1",
+      "watchCommand": "cargo watch -x check",
+      "errorStream": "stderr",
+      "supportsJsonOutput": true,
+      "jsonOutputFlag": "--message-format=json",
+      "commonConfigs": ["Cargo.toml", "Cargo.lock", ".cargo/config.toml", "rust-toolchain.toml"]
+    },
+    {
+      "name": "cargo-clippy",
+      "detectFiles": ["Cargo.toml"],
+      "buildCommand": "cargo clippy 2>&1",
+      "watchCommand": "cargo watch -x clippy",
+      "errorStream": "stderr",
+      "supportsJsonOutput": true,
+      "jsonOutputFlag": "--message-format=json",
+      "commonConfigs": ["Cargo.toml", "clippy.toml", ".clippy.toml"]
+    },
+    {
+      "name": "cargo-test",
+      "detectFiles": ["Cargo.toml"],
+      "buildCommand": "cargo test --no-run 2>&1",
+      "watchCommand": "cargo watch -x test",
+      "errorStream": "stderr",
+      "supportsJsonOutput": true,
+      "jsonOutputFlag": "--message-format=json",
+      "commonConfigs": ["Cargo.toml"]
+    },
+    {
+      "name": "rustfmt",
+      "detectFiles": ["rustfmt.toml", ".rustfmt.toml", "Cargo.toml"],
+      "buildCommand": "cargo fmt --check 2>&1",
+      "watchCommand": null,
+      "errorStream": "stdout",
+      "supportsJsonOutput": false,
+      "jsonOutputFlag": null,
+      "commonConfigs": ["rustfmt.toml", ".rustfmt.toml"]
+    }
+  ]
+}

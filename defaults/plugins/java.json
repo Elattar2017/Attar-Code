@@ -1,0 +1,2539 @@
+{
+  "metadata": {
+    "language": "Java / Kotlin",
+    "version": "1.0.0",
+    "description": "Error classification, dependency tracing, and fix ordering for Java 17+ / Kotlin 1.9+ projects with Gradle and Maven support",
+    "toolchains": [
+      {
+        "name": "javac",
+        "errorPrefix": null,
+        "errorFormat": "(?<file>[^:\\s]+\\.java):(?<line>\\d+):\\s*error:\\s*(?<message>.+)",
+        "errorFormatCaptures": ["file", "line", "message"],
+        "outputStream": "stderr",
+        "supportsJsonOutput": false,
+        "jsonOutputFlag": null
+      },
+      {
+        "name": "javac-warning",
+        "errorPrefix": null,
+        "errorFormat": "(?<file>[^:\\s]+\\.java):(?<line>\\d+):\\s*warning:\\s*(?<message>.+)",
+        "errorFormatCaptures": ["file", "line", "message"],
+        "outputStream": "stderr",
+        "supportsJsonOutput": false,
+        "jsonOutputFlag": null
+      },
+      {
+        "name": "kotlinc",
+        "errorPrefix": null,
+        "errorFormat": "e:\\s*(?<file>[^:\\s]+\\.kt):(?<line>\\d+):(?<column>\\d+):\\s*(?<message>.+)",
+        "errorFormatCaptures": ["file", "line", "column", "message"],
+        "outputStream": "stderr",
+        "supportsJsonOutput": false,
+        "jsonOutputFlag": null
+      },
+      {
+        "name": "kotlinc-warning",
+        "errorPrefix": null,
+        "errorFormat": "w:\\s*(?<file>[^:\\s]+\\.kt):(?<line>\\d+):(?<column>\\d+):\\s*(?<message>.+)",
+        "errorFormatCaptures": ["file", "line", "column", "message"],
+        "outputStream": "stderr",
+        "supportsJsonOutput": false,
+        "jsonOutputFlag": null
+      },
+      {
+        "name": "gradle",
+        "errorPrefix": null,
+        "errorFormat": "(?:FAILURE|ERROR):\\s*(?<message>.+)",
+        "errorFormatCaptures": ["message"],
+        "outputStream": "stderr",
+        "supportsJsonOutput": false,
+        "jsonOutputFlag": null
+      },
+      {
+        "name": "maven",
+        "errorPrefix": null,
+        "errorFormat": "\\[ERROR\\]\\s*(?<file>[^:\\s]+):(?:\\[(?<line>\\d+),(?<column>\\d+)\\])\\s*(?<message>.+)",
+        "errorFormatCaptures": ["file", "line", "column", "message"],
+        "outputStream": "stdout",
+        "supportsJsonOutput": false,
+        "jsonOutputFlag": null
+      }
+    ],
+    "fileExtensions": [".java", ".kt", ".kts", ".gradle", ".gradle.kts"],
+    "generatedBy": "plugin-generator-v1",
+    "generatedFor": "attar-code-smart-fix"
+  },
+
+  "errorCatalog": {
+    "categories": [
+      {
+        "id": "symbol_resolution",
+        "name": "Symbol Resolution Errors",
+        "description": "Errors about finding classes, methods, variables, and packages",
+        "defaultTracingBehavior": "trace_import_source",
+        "errors": [
+          {
+            "code": "JAVA_CANNOT_FIND_SYMBOL",
+            "category": "symbol_resolution",
+            "severity": "error",
+            "messagePattern": "cannot find symbol\\s*symbol:\\s*(?<symbolKind>class|method|variable)\\s+(?<symbolName>\\S+)",
+            "match": "error:.*cannot find symbol",
+            "captures": [
+              { "name": "symbolKind", "role": "symbol_name" },
+              { "name": "symbolName", "role": "symbol_name" }
+            ],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.7,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "symbolName" }, "adjustedProbability": 0.95, "traceDepth": "transitive", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "symbolName" }, "adjustedProbability": 0.05, "traceDepth": "none", "traceTarget": "same_file" },
+              { "check": { "type": "is_external", "target": "symbolName" }, "adjustedProbability": 0.98, "traceDepth": "none", "traceTarget": "external_package" },
+              { "check": { "type": "symbol_was_deleted", "target": "symbolName" }, "adjustedProbability": 1.0, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_inherited", "target": "symbolName" }, "adjustedProbability": 0.85, "traceDepth": "transitive", "traceTarget": "inherited_parent" }
+            ],
+            "fixHint": { "primaryStrategy": "add_import", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [
+              { "code": "JAVA_PACKAGE_NOT_EXIST", "relationship": "caused_by_this", "sharedCapture": null, "resolution": "fix_other_first" },
+              { "code": "JAVA_METHOD_NOT_FOUND", "relationship": "same_root_cause", "sharedCapture": "symbolName", "resolution": "fix_either" }
+            ],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The compiler cannot find {symbolKind} '{symbolName}'. This means the symbol is not imported, not declared in the current scope, or does not exist in the referenced type.",
+            "prescription": "1. Check if '{symbolName}' needs an import statement — add 'import package.{symbolName};' at the top of the file.\n2. If it is a local variable or method, check for typos in the name.\n3. If it is from a dependency, ensure the dependency is declared in build.gradle or pom.xml.\n4. If it was recently renamed or moved, update the reference.",
+            "codeBlock": "// BEFORE (error):\nMyClass obj = new MyClass(); // cannot find symbol: class MyClass\n\n// AFTER (fix — add import):\nimport com.example.MyClass;\n\nMyClass obj = new MyClass();",
+            "conditions": [
+              {
+                "when": "symbolKind equals class",
+                "rootCause": "Class '{symbolName}' is not imported or does not exist on the classpath. This usually means a missing import statement or a missing dependency.",
+                "prescription": "Add 'import <package>.{symbolName};' to the file. If the class is from an external library, add the library to your build.gradle or pom.xml dependencies.",
+                "codeBlock": "// BEFORE:\n{symbolName} obj = new {symbolName}();\n\n// AFTER:\nimport com.example.{symbolName};\n\n{symbolName} obj = new {symbolName}();"
+              },
+              {
+                "when": "symbolKind equals method",
+                "rootCause": "Method '{symbolName}' does not exist on the target type or is not accessible from the current context.",
+                "prescription": "1. Check the method name for typos.\n2. Verify the method exists in the class you are calling it on.\n3. If it is a static method, ensure you have a static import or use ClassName.{symbolName}().\n4. Check if the method was removed or renamed in a newer version of the library.",
+                "codeBlock": null
+              },
+              {
+                "when": "symbolKind equals variable",
+                "rootCause": "Variable '{symbolName}' is not declared in the current scope. It may be misspelled or not yet initialized.",
+                "prescription": "1. Check for typos in the variable name.\n2. Ensure the variable is declared before it is used.\n3. Check variable scope — it may be declared inside a block (if/for/try) and not accessible outside.",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "JAVA_PACKAGE_NOT_EXIST",
+            "category": "symbol_resolution",
+            "severity": "error",
+            "messagePattern": "package\\s+(?<packageName>[\\w.]+)\\s+does not exist",
+            "match": "error:.*package\\s+\\S+\\s+does not exist",
+            "captures": [
+              { "name": "packageName", "role": "package_name" }
+            ],
+            "baseCrossFileProbability": 0.95,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_external", "target": "packageName" }, "adjustedProbability": 1.0, "traceDepth": "none", "traceTarget": "external_package" },
+              { "check": { "type": "is_local", "target": "packageName" }, "adjustedProbability": 0.85, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "install_package", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [
+              { "code": "JAVA_CANNOT_FIND_SYMBOL", "relationship": "causes_this", "sharedCapture": null, "resolution": "fix_this_first" }
+            ],
+            "rootCause": "Package '{packageName}' does not exist on the classpath. The dependency providing this package is either missing from build configuration or the package name is incorrect.",
+            "prescription": "1. If '{packageName}' is from an external library, add the dependency to build.gradle or pom.xml.\n2. If it is a project module, ensure the module is included in settings.gradle and declared as a dependency.\n3. Check the package name for typos.\n4. Run 'gradle dependencies' or 'mvn dependency:tree' to verify the dependency is resolved.",
+            "codeBlock": "// build.gradle\ndependencies {\n    implementation 'com.example:library:1.0.0'\n}\n\n// pom.xml\n<dependency>\n    <groupId>com.example</groupId>\n    <artifactId>library</artifactId>\n    <version>1.0.0</version>\n</dependency>",
+            "conditions": [
+              {
+                "when": "packageName startsWith javax.",
+                "rootCause": "Package '{packageName}' was part of Java EE which was removed from the JDK in Java 11+. It must now be added as an explicit dependency.",
+                "prescription": "Add the Jakarta EE or javax dependency explicitly. For example, for javax.annotation, add 'implementation \"jakarta.annotation:jakarta.annotation-api:2.1.1\"' to build.gradle.",
+                "codeBlock": "// build.gradle\ndependencies {\n    implementation 'jakarta.annotation:jakarta.annotation-api:2.1.1'\n}"
+              },
+              {
+                "when": "packageName startsWith jakarta.",
+                "rootCause": "Package '{packageName}' is part of Jakarta EE. The Jakarta dependency is not on the classpath.",
+                "prescription": "Add the appropriate Jakarta EE dependency to your build configuration. Jakarta packages replaced javax packages starting with Jakarta EE 9.",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "JAVA_METHOD_NOT_FOUND",
+            "category": "symbol_resolution",
+            "severity": "error",
+            "messagePattern": "cannot find symbol\\s*symbol:\\s*method\\s+(?<methodName>\\w+)\\((?<paramTypes>[^)]*)\\)",
+            "match": "error:.*cannot find symbol.*method\\s+\\w+",
+            "captures": [
+              { "name": "methodName", "role": "symbol_name" },
+              { "name": "paramTypes", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.65,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_inherited", "target": "methodName" }, "adjustedProbability": 0.9, "traceDepth": "transitive", "traceTarget": "inherited_parent" },
+              { "check": { "type": "is_imported", "target": "methodName" }, "adjustedProbability": 0.85, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "methodName" }, "adjustedProbability": 0.1, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": { "primaryStrategy": "change_signature", "requiresCrossFileEdit": true, "typicalScope": "type_definition" },
+            "coOccurrence": [
+              { "code": "JAVA_CANNOT_FIND_SYMBOL", "relationship": "same_root_cause", "sharedCapture": "methodName", "resolution": "fix_either" }
+            ],
+            "rootCause": "Method '{methodName}({paramTypes})' does not exist on the target type. The method name may be misspelled, the parameter types may be wrong, or the method may not be defined.",
+            "prescription": "1. Check the method name '{methodName}' for typos.\n2. Verify the parameter types match — you may need to cast arguments or use a different overload.\n3. If the method should exist, add it to the target class.\n4. Check if the method was renamed or removed in a library update.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "JAVA_CONSTRUCTOR_NOT_FOUND",
+            "category": "symbol_resolution",
+            "severity": "error",
+            "messagePattern": "constructor\\s+(?<className>\\w+)\\s+in class\\s+(?<fullClass>[\\w.]+)\\s+cannot be applied to given types",
+            "match": "error:.*constructor\\s+\\w+\\s+in class.*cannot be applied",
+            "captures": [
+              { "name": "className", "role": "type_name" },
+              { "name": "fullClass", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.7,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "className" }, "adjustedProbability": 0.85, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "className" }, "adjustedProbability": 0.1, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": { "primaryStrategy": "change_signature", "requiresCrossFileEdit": true, "typicalScope": "type_definition" },
+            "coOccurrence": [
+              { "code": "JAVA_INCOMPATIBLE_TYPES", "relationship": "sometimes_together", "sharedCapture": "className", "resolution": "fix_either" }
+            ],
+            "rootCause": "No constructor in '{fullClass}' matches the given arguments. The class may not have a matching constructor, or the argument types are incorrect.",
+            "prescription": "1. Check the constructor parameters of '{className}' and ensure the argument types match.\n2. If no matching constructor exists, add one to the class or use a factory method.\n3. Check if a no-arg constructor is needed — if any constructor is defined, the default no-arg constructor is not auto-generated.",
+            "codeBlock": "// BEFORE (error):\nMyClass obj = new MyClass(\"hello\", 42); // no matching constructor\n\n// AFTER (add constructor):\npublic class MyClass {\n    public MyClass(String name, int value) { ... }\n}",
+            "conditions": []
+          },
+          {
+            "code": "JAVA_METHOD_NOT_APPLICABLE",
+            "category": "symbol_resolution",
+            "severity": "error",
+            "messagePattern": "method\\s+(?<methodName>\\w+)\\s+in class\\s+(?<className>[\\w.]+)\\s+cannot be applied to given types",
+            "match": "error:.*method\\s+\\w+\\s+in class.*cannot be applied",
+            "captures": [
+              { "name": "methodName", "role": "symbol_name" },
+              { "name": "className", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.6,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "className" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "className" }, "adjustedProbability": 0.15, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": { "primaryStrategy": "change_signature", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Method '{methodName}' in class '{className}' cannot be applied to the provided argument types. The method signature does not match the arguments passed.",
+            "prescription": "1. Check the expected parameter types for '{methodName}' in '{className}'.\n2. Cast or convert arguments to match the expected types.\n3. If using generics, ensure the type parameters are compatible.\n4. Check for a different overload that matches your arguments.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "JAVA_NO_SUITABLE_METHOD",
+            "category": "symbol_resolution",
+            "severity": "error",
+            "messagePattern": "no suitable method found for (?<methodName>\\w+)\\((?<argTypes>[^)]*)\\)",
+            "match": "error:.*no suitable method found for",
+            "captures": [
+              { "name": "methodName", "role": "symbol_name" },
+              { "name": "argTypes", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "methodName" }, "adjustedProbability": 0.75, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "cast_type", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "No overload of '{methodName}' accepts the argument types ({argTypes}). None of the available overloads match the provided arguments.",
+            "prescription": "1. Review all overloads of '{methodName}' and determine which one you intend to call.\n2. Cast arguments to the expected types.\n3. If no suitable overload exists, you may need to add one.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "JAVA_DOES_NOT_HAVE_MEMBER",
+            "category": "symbol_resolution",
+            "severity": "error",
+            "messagePattern": "cannot find symbol\\s*symbol:\\s*variable\\s+(?<memberName>\\w+)\\s*location:\\s*(?:class|variable of type)\\s+(?<typeName>[\\w.]+)",
+            "match": "error:.*cannot find symbol.*variable.*location:",
+            "captures": [
+              { "name": "memberName", "role": "property_name" },
+              { "name": "typeName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.75,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "typeName" }, "adjustedProbability": 0.9, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_inherited", "target": "memberName" }, "adjustedProbability": 0.85, "traceDepth": "transitive", "traceTarget": "inherited_parent" }
+            ],
+            "fixHint": { "primaryStrategy": "add_property", "requiresCrossFileEdit": true, "typicalScope": "type_definition" },
+            "coOccurrence": [],
+            "rootCause": "Field '{memberName}' does not exist on type '{typeName}'. The field may be misspelled, private, or not yet declared.",
+            "prescription": "1. Check the spelling of '{memberName}'.\n2. If the field is private, use a getter method instead.\n3. Add the field to '{typeName}' if it should exist.\n4. If accessing through inheritance, ensure the field is protected or public in the parent class.",
+            "codeBlock": null,
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "type_errors",
+        "name": "Type Compatibility Errors",
+        "description": "Errors about type mismatches, incompatible assignments, and type conversion failures",
+        "defaultTracingBehavior": "trace_type_definition",
+        "errors": [
+          {
+            "code": "JAVA_INCOMPATIBLE_TYPES",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "incompatible types:\\s*(?<actualType>[\\w.<>\\[\\]?]+)\\s+cannot be converted to\\s+(?<expectedType>[\\w.<>\\[\\]?]+)",
+            "match": "error:.*incompatible types:.*cannot be converted to",
+            "captures": [
+              { "name": "actualType", "role": "actual_type" },
+              { "name": "expectedType", "role": "expected_type" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "expectedType" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_generic_param", "target": "expectedType" }, "adjustedProbability": 0.6, "traceDepth": "transitive", "traceTarget": "composed_type" },
+              { "check": { "type": "is_local", "target": "expectedType" }, "adjustedProbability": 0.15, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": { "primaryStrategy": "cast_type", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "JAVA_UNCHECKED_CAST", "relationship": "sometimes_together", "sharedCapture": null, "resolution": "fix_either" },
+              { "code": "JAVA_LOSSY_CONVERSION", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+            "rootCause": "Type '{actualType}' cannot be converted to '{expectedType}'. These types are not assignment-compatible in Java's type system.",
+            "prescription": "1. If the conversion is valid at runtime, use an explicit cast: ({expectedType}) value.\n2. If the types are related by inheritance, check if you need to change the variable type or add an interface.\n3. If using generics, check that type parameters are compatible.\n4. Consider using a conversion method (e.g., toString(), intValue()).",
+            "codeBlock": "// BEFORE (error):\nString s = 42; // incompatible types: int cannot be converted to String\n\n// AFTER (fix):\nString s = String.valueOf(42);",
+            "conditions": [
+              {
+                "when": "actualType contains Optional",
+                "rootCause": "Optional<{expectedType}> cannot be directly assigned to {expectedType}. You must unwrap the Optional first.",
+                "prescription": "Use .get(), .orElse(default), .orElseThrow(), or .orElseGet(() -> default) to unwrap the Optional value.",
+                "codeBlock": "// BEFORE:\nString name = optionalName; // incompatible types\n\n// AFTER:\nString name = optionalName.orElse(\"default\");"
+              },
+              {
+                "when": "expectedType contains List",
+                "rootCause": "The collection type does not match. Java generics are invariant: List<Child> is not assignable to List<Parent>.",
+                "prescription": "Use wildcards: change the expected type to List<? extends {actualType}> if you only read, or List<? super {actualType}> if you only write.",
+                "codeBlock": "// BEFORE:\nList<Animal> animals = new ArrayList<Dog>(); // error\n\n// AFTER:\nList<? extends Animal> animals = new ArrayList<Dog>();"
+              }
+            ]
+          },
+          {
+            "code": "JAVA_LOSSY_CONVERSION",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "(?:incompatible types:\\s*)?possible lossy conversion from\\s+(?<fromType>\\w+)\\s+to\\s+(?<toType>\\w+)",
+            "match": "error:.*possible lossy conversion from",
+            "captures": [
+              { "name": "fromType", "role": "actual_type" },
+              { "name": "toType", "role": "expected_type" }
+            ],
+            "baseCrossFileProbability": 0.05,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "cast_type", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Converting from '{fromType}' to '{toType}' may lose information (e.g., double to int loses decimal precision, long to int may overflow).",
+            "prescription": "1. Add an explicit cast: ({toType}) value — this acknowledges the potential data loss.\n2. Use Math.toIntExact() for long-to-int if you want overflow protection.\n3. Consider if you should keep the wider type instead.",
+            "codeBlock": "// BEFORE:\nint x = 3.14; // possible lossy conversion from double to int\n\n// AFTER:\nint x = (int) 3.14; // explicit cast, truncates to 3",
+            "conditions": []
+          },
+          {
+            "code": "JAVA_REQUIRED_TYPE_FOUND",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "incompatible types:\\s*(?<expectedType>[\\w.<>\\[\\]]+)\\s+is required but\\s+(?<actualType>[\\w.<>\\[\\]]+)\\s+was found",
+            "match": "error:.*is required but.*was found",
+            "captures": [
+              { "name": "expectedType", "role": "expected_type" },
+              { "name": "actualType", "role": "actual_type" }
+            ],
+            "baseCrossFileProbability": 0.45,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "expectedType" }, "adjustedProbability": 0.75, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "update_type_annotation", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "JAVA_INCOMPATIBLE_TYPES", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+            "rootCause": "Expected type '{expectedType}' but found '{actualType}'. The expression produces a value of the wrong type.",
+            "prescription": "1. Cast the value to '{expectedType}' if appropriate.\n2. Change the return type or variable type.\n3. Use a conversion method.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "JAVA_UNCHECKED_CAST",
+            "category": "type_errors",
+            "severity": "warning",
+            "messagePattern": "(?:\\[unchecked\\]\\s*)?unchecked cast\\s*(?:from\\s+(?<fromType>[\\w.<>\\[\\]?]+)\\s+to\\s+(?<toType>[\\w.<>\\[\\]?]+))?",
+            "match": "warning:.*unchecked cast",
+            "captures": [
+              { "name": "fromType", "role": "actual_type" },
+              { "name": "toType", "role": "expected_type" }
+            ],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_generic_param", "target": "toType" }, "adjustedProbability": 0.5, "traceDepth": "direct", "traceTarget": "composed_type" }
+            ],
+            "fixHint": { "primaryStrategy": "add_type_assertion", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "JAVA_UNCHECKED_CONVERSION", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+            "rootCause": "Casting to a generic type cannot be verified at runtime due to type erasure. The cast from '{fromType}' to '{toType}' may fail at runtime with a ClassCastException.",
+            "prescription": "1. Add @SuppressWarnings(\"unchecked\") if you are certain the cast is safe.\n2. Restructure to avoid raw types — use properly parameterized generics.\n3. Use instanceof checks before casting where possible.",
+            "codeBlock": "// BEFORE:\nList<String> names = (List<String>) rawList; // unchecked cast\n\n// AFTER:\n@SuppressWarnings(\"unchecked\")\nList<String> names = (List<String>) rawList;",
+            "conditions": []
+          },
+          {
+            "code": "JAVA_UNCHECKED_CONVERSION",
+            "category": "type_errors",
+            "severity": "warning",
+            "messagePattern": "(?:\\[unchecked\\]\\s*)?unchecked conversion",
+            "match": "warning:.*unchecked conversion",
+            "captures": [],
+            "baseCrossFileProbability": 0.25,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_generic_constraint", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "JAVA_UNCHECKED_CAST", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+            "rootCause": "A raw type is being used where a parameterized type is expected. This is unsafe because it bypasses generic type checking.",
+            "prescription": "1. Add the missing type parameter: use List<String> instead of raw List.\n2. If interacting with legacy code, add @SuppressWarnings(\"unchecked\").",
+            "codeBlock": "// BEFORE:\nList names = new ArrayList(); // raw type\n\n// AFTER:\nList<String> names = new ArrayList<>(); // parameterized",
+            "conditions": []
+          },
+          {
+            "code": "JAVA_INCOMPATIBLE_BOUNDS",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "type argument\\s+(?<typeArg>[\\w.<>]+)\\s+is not within bounds of type-variable\\s+(?<typeVar>\\w+)",
+            "match": "error:.*not within bounds of type-variable",
+            "captures": [
+              { "name": "typeArg", "role": "actual_type" },
+              { "name": "typeVar", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.65,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "typeArg" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "fix_generic_constraint", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Type argument '{typeArg}' does not satisfy the bound declared on type variable '{typeVar}'. The type must extend or implement the required bound.",
+            "prescription": "1. Check the generic declaration to see the bound on '{typeVar}'.\n2. Make '{typeArg}' implement/extend the required interface or class.\n3. Use a different type argument that satisfies the bound.",
+            "codeBlock": "// BEFORE:\nclass Box<T extends Comparable<T>> { }\nBox<Object> box; // Object does not implement Comparable\n\n// AFTER:\nBox<String> box; // String implements Comparable<String>",
+            "conditions": []
+          },
+          {
+            "code": "JAVA_INFERENCE_FAILED",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "(?:cannot infer type arguments for|incompatible types: inference variable)\\s+(?<typeName>[\\w.<>]+)",
+            "match": "error:.*cannot infer type arguments|error:.*inference variable",
+            "captures": [
+              { "name": "typeName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.4,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "typeName" }, "adjustedProbability": 0.7, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "update_type_annotation", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The compiler cannot infer the type arguments for '{typeName}' from the context. The types involved are ambiguous or conflicting.",
+            "prescription": "1. Provide explicit type arguments: new ClassName<Type1, Type2>().\n2. Add a type annotation to the variable receiving the result.\n3. Check that the arguments passed resolve to compatible types.",
+            "codeBlock": "// BEFORE:\nvar result = Collections.emptyList(); // cannot infer\n\n// AFTER:\nList<String> result = Collections.emptyList(); // explicit target type",
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "access_control",
+        "name": "Access Control Errors",
+        "description": "Errors about private, protected, and package-private access violations",
+        "defaultTracingBehavior": "trace_type_definition",
+        "errors": [
+          {
+            "code": "JAVA_ACCESS_DENIED",
+            "category": "access_control",
+            "severity": "error",
+            "messagePattern": "(?<symbolName>\\w+)\\s+has\\s+(?<accessLevel>private|protected|package)\\s+access\\s+in\\s+(?<typeName>[\\w.]+)",
+            "match": "error:.*has\\s+(?:private|protected|package)\\s+access\\s+in",
+            "captures": [
+              { "name": "symbolName", "role": "symbol_name" },
+              { "name": "accessLevel", "role": "literal_value" },
+              { "name": "typeName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.85,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "typeName" }, "adjustedProbability": 0.9, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_inherited", "target": "symbolName" }, "adjustedProbability": 0.85, "traceDepth": "transitive", "traceTarget": "inherited_parent" }
+            ],
+            "fixHint": { "primaryStrategy": "fix_access_modifier", "requiresCrossFileEdit": true, "typicalScope": "type_definition" },
+            "coOccurrence": [],
+            "rootCause": "'{symbolName}' has {accessLevel} access in '{typeName}' and cannot be accessed from the current context.",
+            "prescription": "1. If you own '{typeName}', change the access modifier of '{symbolName}' to public (or protected if accessing from a subclass).\n2. Use a public getter/setter method instead of accessing the field directly.\n3. If in the same package, package-private access should work — check your package declarations.",
+            "codeBlock": "// BEFORE (in AnotherClass.java):\nobj.privateField = value; // private access\n\n// AFTER (in MyClass.java — change access):\npublic int privateField; // or add getter:\npublic int getField() { return privateField; }",
+            "conditions": [
+              {
+                "when": "accessLevel equals private",
+                "rootCause": "'{symbolName}' is private in '{typeName}' and can only be accessed within '{typeName}' itself.",
+                "prescription": "Use a public getter/setter method, or change the access modifier to protected/public. If this is a design issue, consider the encapsulation implications.",
+                "codeBlock": null
+              },
+              {
+                "when": "accessLevel equals protected",
+                "rootCause": "'{symbolName}' is protected in '{typeName}' and can only be accessed from subclasses or within the same package.",
+                "prescription": "Extend '{typeName}' to access the protected member, move your code to the same package, or change the modifier to public.",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "JAVA_NOT_VISIBLE",
+            "category": "access_control",
+            "severity": "error",
+            "messagePattern": "(?<symbolName>[\\w.]+)\\s+is not visible",
+            "match": "error:.*is not visible",
+            "captures": [
+              { "name": "symbolName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.8,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "symbolName" }, "adjustedProbability": 0.9, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "fix_access_modifier", "requiresCrossFileEdit": true, "typicalScope": "type_definition" },
+            "coOccurrence": [
+              { "code": "JAVA_ACCESS_DENIED", "relationship": "same_root_cause", "sharedCapture": "symbolName", "resolution": "fix_either" }
+            ],
+            "rootCause": "'{symbolName}' is not visible from the current compilation unit. It has restricted access (private, package-private, or protected).",
+            "prescription": "1. Check the access modifier of '{symbolName}' and widen it if appropriate.\n2. Move your code to the same package if package-private access is intended.\n3. Use a public API method instead of accessing the symbol directly.",
+            "codeBlock": null,
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "class_structure",
+        "name": "Class Structure Errors",
+        "description": "Errors about class hierarchy, abstract methods, overriding, and duplicate definitions",
+        "defaultTracingBehavior": "trace_type_definition",
+        "errors": [
+          {
+            "code": "JAVA_ABSTRACT_NOT_IMPL",
+            "category": "class_structure",
+            "severity": "error",
+            "messagePattern": "(?<className>\\w+)\\s+is not abstract and does not override abstract method\\s+(?<methodName>\\w+)\\((?<paramTypes>[^)]*)\\)\\s+in\\s+(?<parentClass>[\\w.]+)",
+            "match": "error:.*is not abstract and does not override abstract method",
+            "captures": [
+              { "name": "className", "role": "type_name" },
+              { "name": "methodName", "role": "symbol_name" },
+              { "name": "paramTypes", "role": "type_name" },
+              { "name": "parentClass", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.85,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "parentClass" }, "adjustedProbability": 0.95, "traceDepth": "transitive", "traceTarget": "inherited_parent" },
+              { "check": { "type": "is_interface_member", "target": "methodName" }, "adjustedProbability": 0.9, "traceDepth": "direct", "traceTarget": "inherited_parent" }
+            ],
+            "fixHint": { "primaryStrategy": "implement_interface", "requiresCrossFileEdit": false, "typicalScope": "type_definition" },
+            "coOccurrence": [],
+            "rootCause": "Class '{className}' extends/implements '{parentClass}' but does not implement the abstract method '{methodName}({paramTypes})'.",
+            "prescription": "1. Implement the method '{methodName}({paramTypes})' in '{className}' with an @Override annotation.\n2. Alternatively, declare '{className}' as abstract if it should not provide an implementation.\n3. Use your IDE's 'Implement methods' feature to auto-generate stubs.",
+            "codeBlock": "// BEFORE (error):\npublic class MyService implements Service {\n    // missing: void process(Request req)\n}\n\n// AFTER (fix):\npublic class MyService implements Service {\n    @Override\n    public void process(Request req) {\n        // implementation\n    }\n}",
+            "conditions": []
+          },
+          {
+            "code": "JAVA_DUPLICATE_CLASS",
+            "category": "class_structure",
+            "severity": "error",
+            "messagePattern": "duplicate class:\\s*(?<className>[\\w.]+)",
+            "match": "error:.*duplicate class:",
+            "captures": [
+              { "name": "className", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.9,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "exists_in_file", "target": "className" }, "adjustedProbability": 0.95, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "remove_duplicate", "requiresCrossFileEdit": true, "typicalScope": "entire_file" },
+            "coOccurrence": [],
+            "rootCause": "Class '{className}' is defined in multiple files. Java requires each public class to be in exactly one file matching its name.",
+            "prescription": "1. Remove the duplicate class definition from one of the files.\n2. If both definitions are intentional, rename one or move them to different packages.\n3. Check that you don't have the same file in multiple source sets (main + test).",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "JAVA_MISSING_RETURN",
+            "category": "class_structure",
+            "severity": "error",
+            "messagePattern": "missing return statement",
+            "match": "error:.*missing return statement",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "add_missing_return", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "A non-void method does not return a value on all code paths. Every branch (if/else, switch, try/catch) must end with a return statement.",
+            "prescription": "1. Add a return statement at the end of the method.\n2. Ensure all branches (if/else, switch cases, catch blocks) return a value.\n3. If the method should not return a value, change the return type to void.",
+            "codeBlock": "// BEFORE (error):\npublic String getName() {\n    if (name != null) {\n        return name;\n    }\n    // missing return for else case\n}\n\n// AFTER (fix):\npublic String getName() {\n    if (name != null) {\n        return name;\n    }\n    return \"default\";\n}",
+            "conditions": []
+          },
+          {
+            "code": "JAVA_UNREACHABLE",
+            "category": "class_structure",
+            "severity": "error",
+            "messagePattern": "unreachable statement",
+            "match": "error:.*unreachable statement",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "Code appears after a return, throw, break, or continue statement and will never be executed.",
+            "prescription": "1. Remove the unreachable code.\n2. If the code should execute, move it before the return/throw/break/continue statement.\n3. Check if the preceding return or throw is in the wrong place.",
+            "codeBlock": "// BEFORE (error):\npublic void process() {\n    return;\n    System.out.println(\"done\"); // unreachable\n}\n\n// AFTER (fix):\npublic void process() {\n    System.out.println(\"done\");\n    return;\n}",
+            "conditions": []
+          },
+          {
+            "code": "JAVA_MISSING_OVERRIDE",
+            "category": "class_structure",
+            "severity": "error",
+            "messagePattern": "method does not override or implement a method from a supertype",
+            "match": "error:.*method does not override or implement a method from a supertype",
+            "captures": [],
+            "baseCrossFileProbability": 0.7,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_inherited", "target": "symbolName" }, "adjustedProbability": 0.9, "traceDepth": "transitive", "traceTarget": "inherited_parent" }
+            ],
+            "fixHint": { "primaryStrategy": "add_override", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "A method annotated with @Override does not actually override any method in a superclass or interface. The method signature may be wrong, or the parent class may have changed.",
+            "prescription": "1. Check the method signature matches the parent exactly — name, parameters, and return type.\n2. If the parent method was renamed or removed, update this method accordingly.\n3. Remove the @Override annotation if this method is not intended to override anything.",
+            "codeBlock": "// BEFORE (error — wrong parameter type):\n@Override\npublic void process(String data) { } // parent has process(Object data)\n\n// AFTER (fix):\n@Override\npublic void process(Object data) { }",
+            "conditions": []
+          },
+          {
+            "code": "JAVA_FINAL_OVERRIDE",
+            "category": "class_structure",
+            "severity": "error",
+            "messagePattern": "(?<methodName>\\w+)\\((?<paramTypes>[^)]*)\\)\\s+in\\s+(?<childClass>[\\w.]+)\\s+cannot override\\s+(?<parentMethod>\\w+)\\(.*\\)\\s+in\\s+(?<parentClass>[\\w.]+).*overridden method is final",
+            "match": "error:.*cannot override.*overridden method is final",
+            "captures": [
+              { "name": "methodName", "role": "symbol_name" },
+              { "name": "childClass", "role": "type_name" },
+              { "name": "parentClass", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.9,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "parentClass" }, "adjustedProbability": 0.95, "traceDepth": "direct", "traceTarget": "inherited_parent" }
+            ],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": true, "typicalScope": "type_definition" },
+            "coOccurrence": [],
+            "rootCause": "Method '{methodName}' in '{parentClass}' is declared final and cannot be overridden in '{childClass}'.",
+            "prescription": "1. Do not override the final method — use composition instead of inheritance.\n2. If you control the parent class, remove the 'final' modifier.\n3. Use a different method name and call the parent method from within it.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "JAVA_FINAL_CLASS_EXTEND",
+            "category": "class_structure",
+            "severity": "error",
+            "messagePattern": "cannot inherit from final\\s+(?<className>[\\w.]+)",
+            "match": "error:.*cannot inherit from final",
+            "captures": [
+              { "name": "className", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.9,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "className" }, "adjustedProbability": 0.95, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "type_definition" },
+            "coOccurrence": [],
+            "rootCause": "Class '{className}' is declared final and cannot be extended. Final classes are sealed against inheritance.",
+            "prescription": "1. Use composition instead of inheritance — hold an instance of '{className}' as a field.\n2. If you control '{className}', remove the 'final' modifier.\n3. If '{className}' implements an interface, program against the interface instead.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "JAVA_ABSTRACT_INSTANTIATION",
+            "category": "class_structure",
+            "severity": "error",
+            "messagePattern": "(?<className>[\\w.]+)\\s+is abstract;\\s+cannot be instantiated",
+            "match": "error:.*is abstract.*cannot be instantiated",
+            "captures": [
+              { "name": "className", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.7,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "className" }, "adjustedProbability": 0.85, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "'{className}' is an abstract class and cannot be instantiated directly with 'new'.",
+            "prescription": "1. Instantiate a concrete subclass of '{className}' instead.\n2. Use an anonymous class: new {className}() { /* implement abstract methods */ }.\n3. Use a factory method if one is provided.",
+            "codeBlock": "// BEFORE:\nShape shape = new Shape(); // abstract, cannot instantiate\n\n// AFTER:\nShape shape = new Circle(); // concrete subclass",
+            "conditions": []
+          },
+          {
+            "code": "JAVA_INTERFACE_INSTANTIATION",
+            "category": "class_structure",
+            "severity": "error",
+            "messagePattern": "(?<interfaceName>[\\w.]+)\\s+is abstract;\\s+cannot be instantiated",
+            "match": "error:.*interface.*cannot be instantiated",
+            "captures": [
+              { "name": "interfaceName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.7,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "interfaceName" }, "adjustedProbability": 0.85, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "'{interfaceName}' is an interface and cannot be instantiated directly.",
+            "prescription": "1. Use a concrete class that implements '{interfaceName}'.\n2. For functional interfaces, use a lambda: () -> { /* impl */ }.\n3. Use an anonymous class implementation.",
+            "codeBlock": "// BEFORE:\nList<String> list = new List<>(); // interface\n\n// AFTER:\nList<String> list = new ArrayList<>(); // concrete class",
+            "conditions": []
+          },
+          {
+            "code": "JAVA_SEALED_NOT_PERMITTED",
+            "category": "class_structure",
+            "severity": "error",
+            "messagePattern": "class is not allowed to extend sealed class:\\s*(?<sealedClass>[\\w.]+)",
+            "match": "error:.*not allowed to extend sealed class",
+            "captures": [
+              { "name": "sealedClass", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.9,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "sealedClass" }, "adjustedProbability": 0.95, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": true, "typicalScope": "type_definition" },
+            "coOccurrence": [],
+            "rootCause": "The sealed class '{sealedClass}' does not permit this class in its 'permits' clause. Only explicitly listed classes can extend a sealed class.",
+            "prescription": "1. Add your class to the 'permits' clause of '{sealedClass}'.\n2. If you do not control '{sealedClass}', use composition instead.\n3. Ensure your subclass is in the same package or module as the sealed class.",
+            "codeBlock": "// In the sealed class:\npublic sealed class Shape permits Circle, Rectangle { }",
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "syntax",
+        "name": "Syntax and Parse Errors",
+        "description": "Errors in code structure, missing tokens, unexpected tokens",
+        "defaultTracingBehavior": "local_only",
+        "errors": [
+          {
+            "code": "JAVA_SEMICOLON_EXPECTED",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "';' expected",
+            "match": "error:.*';' expected",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "add_semicolon", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "JAVA_CANNOT_FIND_SYMBOL", "relationship": "causes_this", "sharedCapture": null, "resolution": "fix_this_first" }
+            ],
+            "rootCause": "A semicolon is missing at the end of a statement.",
+            "prescription": "Add a semicolon at the indicated position. Check for multi-line statements that may need a semicolon on the previous line.",
+            "codeBlock": "// BEFORE:\nint x = 5\n\n// AFTER:\nint x = 5;",
+            "conditions": []
+          },
+          {
+            "code": "JAVA_BRACKET_EXPECTED",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "'(?<bracket>[{}()\\[\\]])' expected",
+            "match": "error:.*'[{}()\\[\\]]' expected",
+            "captures": [
+              { "name": "bracket", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "close_bracket", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [
+              { "code": "JAVA_SEMICOLON_EXPECTED", "relationship": "sometimes_together", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+            "rootCause": "A '{bracket}' bracket is expected but missing. The code has an unmatched opening or closing bracket.",
+            "prescription": "1. Check for unmatched brackets in the surrounding code.\n2. Use your editor's bracket matching feature to find the mismatch.\n3. The error may be caused by a missing bracket several lines above.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "JAVA_ILLEGAL_START_OF_EXPR",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "illegal start of expression",
+            "match": "error:.*illegal start of expression",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "JAVA_SEMICOLON_EXPECTED", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" },
+              { "code": "JAVA_BRACKET_EXPECTED", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+            "rootCause": "The compiler encountered an unexpected token where an expression was expected. Common causes: access modifier in wrong place, missing operator, or stray characters.",
+            "prescription": "1. Check for access modifiers (public/private) inside a method — they are only valid at class level.\n2. Look for missing operators or stray characters.\n3. Ensure the previous line is complete (no missing semicolons).",
+            "codeBlock": "// BEFORE (error — modifier inside method):\npublic void run() {\n    public int x = 5; // illegal start of expression\n}\n\n// AFTER:\npublic void run() {\n    int x = 5;\n}",
+            "conditions": []
+          },
+          {
+            "code": "JAVA_ILLEGAL_START_OF_TYPE",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "illegal start of type",
+            "match": "error:.*illegal start of type",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The compiler expected a type declaration but found something unexpected. This often happens when code appears outside a class body.",
+            "prescription": "1. Ensure all code is inside a class, interface, or enum.\n2. Check for extra closing braces that end the class prematurely.\n3. Verify the class/method structure is well-formed.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "JAVA_CLASS_INTERFACE_ENUM_EXPECTED",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "class, interface, enum, or record expected",
+            "match": "error:.*class, interface, enum, or record expected",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "entire_file" },
+            "coOccurrence": [],
+            "rootCause": "Code appears at the top level outside any class, interface, enum, or record. In Java, all code must be inside a type declaration (except package and import statements).",
+            "prescription": "1. Ensure the file has a proper class/interface declaration wrapping the code.\n2. Check for an extra closing brace '}' that prematurely closes the class.\n3. Count braces to find the mismatch.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "JAVA_IDENTIFIER_EXPECTED",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "<identifier> expected",
+            "match": "error:.*<identifier> expected",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "A name (identifier) is expected at this position but something else was found. Common cause: using a Java keyword as a variable/method name.",
+            "prescription": "1. Check if you used a reserved keyword (class, int, return, etc.) as a variable name.\n2. Add the missing identifier.\n3. Check for syntax errors on the preceding line.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "JAVA_UNCLOSED_STRING",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "unclosed string literal",
+            "match": "error:.*unclosed string literal",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "A string literal was opened with a double quote but not closed on the same line.",
+            "prescription": "1. Add the closing double quote.\n2. For multi-line strings in Java 17+, use text blocks: \"\"\"multi-line text\"\"\".\n3. Escape any internal double quotes with backslash.",
+            "codeBlock": "// BEFORE:\nString s = \"hello world\n\n// AFTER:\nString s = \"hello world\";",
+            "conditions": []
+          },
+          {
+            "code": "JAVA_ELSE_WITHOUT_IF",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "'else' without 'if'",
+            "match": "error:.*'else' without 'if'",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "An 'else' clause appears without a preceding 'if'. This usually happens when a semicolon is placed after the if-block or braces are mismatched.",
+            "prescription": "1. Remove any semicolon after the if statement's closing parenthesis.\n2. Ensure the if-block's closing brace immediately precedes the 'else'.\n3. Check brace matching.",
+            "codeBlock": "// BEFORE (error — semicolon after if):\nif (x > 0); { // stray semicolon\n    doSomething();\n} else { // 'else' without 'if'\n    doOther();\n}\n\n// AFTER:\nif (x > 0) {\n    doSomething();\n} else {\n    doOther();\n}",
+            "conditions": []
+          },
+          {
+            "code": "JAVA_VARIABLE_ALREADY_DEFINED",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "variable\\s+(?<varName>\\w+)\\s+is already defined in method\\s+(?<methodName>\\w+)",
+            "match": "error:.*variable.*is already defined",
+            "captures": [
+              { "name": "varName", "role": "symbol_name" },
+              { "name": "methodName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "rename_symbol", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "Variable '{varName}' is declared twice in method '{methodName}'. Java does not allow duplicate variable names in the same scope.",
+            "prescription": "1. Rename one of the declarations.\n2. If you want to reassign, remove the type declaration and just assign: {varName} = newValue.\n3. Check if the variable should be in a different scope (inside a nested block).",
+            "codeBlock": null,
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "null_safety",
+        "name": "Null Safety and Resource Errors",
+        "description": "Errors about null pointers, resource leaks, and static analysis warnings",
+        "defaultTracingBehavior": "local_only",
+        "errors": [
+          {
+            "code": "JAVA_NULL_POINTER",
+            "category": "null_safety",
+            "severity": "warning",
+            "messagePattern": "(?:possible\\s+)?(?:null|Null)(?:Pointer)?\\s*(?:dereference|access|exception)",
+            "match": "warning:.*(?:null|Null).*(?:dereference|access|pointer)",
+            "captures": [],
+            "baseCrossFileProbability": 0.2,
+            "confidence": "heuristic",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "symbolName" }, "adjustedProbability": 0.5, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "add_null_check", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "A value that may be null is being used without a null check. This can cause a NullPointerException at runtime.",
+            "prescription": "1. Add a null check before accessing the value: if (value != null) { ... }\n2. Use Optional<T> to make nullability explicit.\n3. Use Objects.requireNonNull() at method entry for fail-fast behavior.\n4. Consider using @Nullable and @NonNull annotations.",
+            "codeBlock": "// BEFORE:\nString name = user.getName(); // user might be null\nint len = name.length(); // NPE if name is null\n\n// AFTER:\nif (user != null) {\n    String name = user.getName();\n    if (name != null) {\n        int len = name.length();\n    }\n}\n\n// Or with Optional:\nOptional.ofNullable(user)\n    .map(User::getName)\n    .map(String::length)\n    .orElse(0);",
+            "conditions": []
+          },
+          {
+            "code": "JAVA_RESOURCE_LEAK",
+            "category": "null_safety",
+            "severity": "warning",
+            "messagePattern": "(?<resourceType>[\\w.]+)\\s+(?:is never closed|should be managed by try-with-resources)",
+            "match": "warning:.*(?:is never closed|try-with-resources)",
+            "captures": [
+              { "name": "resourceType", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.1,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "A resource of type '{resourceType}' that implements AutoCloseable is opened but never properly closed. This can leak file handles, connections, or memory.",
+            "prescription": "1. Use try-with-resources: try ({resourceType} res = ...) { ... }\n2. If you cannot use try-with-resources, add a finally block to close the resource.\n3. This is especially important for streams, connections, and readers/writers.",
+            "codeBlock": "// BEFORE (leak):\nInputStream is = new FileInputStream(\"file.txt\");\nbyte[] data = is.readAllBytes(); // never closed\n\n// AFTER (fix):\ntry (InputStream is = new FileInputStream(\"file.txt\")) {\n    byte[] data = is.readAllBytes();\n}",
+            "conditions": []
+          },
+          {
+            "code": "JAVA_DEPRECATED",
+            "category": "null_safety",
+            "severity": "warning",
+            "messagePattern": "(?<symbolName>[\\w.]+)\\s+(?:in\\s+(?<className>[\\w.]+)\\s+)?has been deprecated",
+            "match": "warning:.*has been deprecated",
+            "captures": [
+              { "name": "symbolName", "role": "symbol_name" },
+              { "name": "className", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.6,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_external", "target": "className" }, "adjustedProbability": 0.8, "traceDepth": "none", "traceTarget": "external_package" },
+              { "check": { "type": "is_imported", "target": "className" }, "adjustedProbability": 0.7, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "rename_symbol", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "'{symbolName}' in '{className}' has been deprecated and may be removed in a future version.",
+            "prescription": "1. Check the @Deprecated annotation's javadoc for a recommended replacement.\n2. Look for @deprecated tag in the javadoc explaining what to use instead.\n3. If no replacement exists, add @SuppressWarnings(\"deprecation\") to suppress the warning.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "JAVA_NOT_INITIALIZED",
+            "category": "null_safety",
+            "severity": "error",
+            "messagePattern": "variable\\s+(?<varName>\\w+)\\s+might not have been initialized",
+            "match": "error:.*might not have been initialized",
+            "captures": [
+              { "name": "varName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "initialize_variable", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "Variable '{varName}' may be used before it is assigned a value. Not all code paths guarantee initialization.",
+            "prescription": "1. Initialize '{varName}' at declaration: Type {varName} = defaultValue;\n2. Ensure all code paths (if/else, try/catch) assign a value before use.\n3. Restructure code to avoid conditional initialization.",
+            "codeBlock": "// BEFORE:\nint result;\nif (condition) { result = 42; }\n// else path doesn't assign result\nSystem.out.println(result); // might not be initialized\n\n// AFTER:\nint result = 0; // default value\nif (condition) { result = 42; }\nSystem.out.println(result);",
+            "conditions": []
+          },
+          {
+            "code": "JAVA_EXCEPTION_NOT_THROWN",
+            "category": "null_safety",
+            "severity": "error",
+            "messagePattern": "exception\\s+(?<exceptionType>[\\w.]+)\\s+is never thrown in body of corresponding try statement",
+            "match": "error:.*exception.*is never thrown in body",
+            "captures": [
+              { "name": "exceptionType", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "The catch clause for '{exceptionType}' is unreachable because no code in the try block throws this checked exception.",
+            "prescription": "1. Remove the unnecessary catch clause for '{exceptionType}'.\n2. If the code was recently changed, the exception may no longer be thrown.\n3. If you need the catch for future use, catch a broader exception type.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "JAVA_UNHANDLED_EXCEPTION",
+            "category": "null_safety",
+            "severity": "error",
+            "messagePattern": "unreported exception\\s+(?<exceptionType>[\\w.]+);\\s+must be caught or declared to be thrown",
+            "match": "error:.*unreported exception.*must be caught",
+            "captures": [
+              { "name": "exceptionType", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.4,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "exceptionType" }, "adjustedProbability": 0.6, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "The checked exception '{exceptionType}' is thrown but not handled. Java requires checked exceptions to be either caught or declared in the method signature.",
+            "prescription": "1. Wrap the throwing code in a try-catch block.\n2. Add 'throws {exceptionType}' to the method signature.\n3. Convert to an unchecked exception: throw new RuntimeException(e).",
+            "codeBlock": "// BEFORE:\npublic void readFile() {\n    new FileReader(\"file.txt\"); // unreported IOException\n}\n\n// AFTER (option 1 — catch):\npublic void readFile() {\n    try {\n        new FileReader(\"file.txt\");\n    } catch (IOException e) {\n        throw new RuntimeException(e);\n    }\n}\n\n// AFTER (option 2 — declare):\npublic void readFile() throws IOException {\n    new FileReader(\"file.txt\");\n}",
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "kotlin_errors",
+        "name": "Kotlin-Specific Errors",
+        "description": "Errors specific to the Kotlin compiler",
+        "defaultTracingBehavior": "trace_import_source",
+        "errors": [
+          {
+            "code": "KOTLIN_UNRESOLVED_REFERENCE",
+            "category": "kotlin_errors",
+            "severity": "error",
+            "messagePattern": "[Uu]nresolved reference:?\\s*(?<symbolName>\\S+)",
+            "match": "e:.*[Uu]nresolved reference",
+            "captures": [
+              { "name": "symbolName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.75,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "symbolName" }, "adjustedProbability": 0.95, "traceDepth": "transitive", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "symbolName" }, "adjustedProbability": 0.05, "traceDepth": "none", "traceTarget": "same_file" },
+              { "check": { "type": "is_external", "target": "symbolName" }, "adjustedProbability": 0.98, "traceDepth": "none", "traceTarget": "external_package" },
+              { "check": { "type": "comes_from_package", "target": "symbolName" }, "adjustedProbability": 0.9, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "add_import", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [
+              { "code": "KOTLIN_TYPE_MISMATCH", "relationship": "causes_this", "sharedCapture": null, "resolution": "fix_this_first" },
+              { "code": "JAVA_PACKAGE_NOT_EXIST", "relationship": "caused_by_this", "sharedCapture": null, "resolution": "fix_other_first" }
+            ],
+            "rootCause": "Symbol '{symbolName}' cannot be resolved. It is not imported, not declared in the current scope, or does not exist.",
+            "prescription": "1. Add an import for '{symbolName}': import package.{symbolName}\n2. Check the symbol name for typos.\n3. If it is from a library, ensure the dependency is in build.gradle.kts.\n4. For Java interop, ensure the Java class is public and on the classpath.",
+            "codeBlock": "// BEFORE:\nval user = User() // Unresolved reference: User\n\n// AFTER:\nimport com.example.model.User\n\nval user = User()",
+            "conditions": [
+              {
+                "when": "symbolName equals R",
+                "rootCause": "Android resource class 'R' is unresolved. This usually means the project has not been built, or there are errors in XML resource files.",
+                "prescription": "1. Build the project to regenerate the R class.\n2. Check for errors in XML layout, values, or manifest files.\n3. Ensure the correct package is imported for R.",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "KOTLIN_TYPE_MISMATCH",
+            "category": "kotlin_errors",
+            "severity": "error",
+            "messagePattern": "[Tt]ype mismatch:?\\s*(?:inferred type is\\s+(?<actualType>[\\w.<>?*,\\s]+)\\s+but\\s+(?<expectedType>[\\w.<>?*,\\s]+)\\s+was expected)?",
+            "match": "e:.*[Tt]ype mismatch",
+            "captures": [
+              { "name": "actualType", "role": "actual_type" },
+              { "name": "expectedType", "role": "expected_type" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "expectedType" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_generic_param", "target": "expectedType" }, "adjustedProbability": 0.6, "traceDepth": "transitive", "traceTarget": "composed_type" },
+              { "check": { "type": "is_local", "target": "expectedType" }, "adjustedProbability": 0.15, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": { "primaryStrategy": "update_type_annotation", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "KOTLIN_NULL_SAFETY", "relationship": "sometimes_together", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+            "rootCause": "The inferred type is '{actualType}' but '{expectedType}' was expected. The types are not compatible in Kotlin's type system.",
+            "prescription": "1. Check if the value needs a type conversion (e.g., .toString(), .toInt()).\n2. If the types are related by inheritance, use an explicit cast: value as {expectedType}.\n3. For nullable vs non-nullable, use !! (assert non-null) or safe call (?.).\n4. Check generic type parameters for variance issues.",
+            "codeBlock": "// BEFORE:\nval name: String = null // Type mismatch: null cannot be String\n\n// AFTER:\nval name: String? = null // nullable type",
+            "conditions": [
+              {
+                "when": "actualType contains ?",
+                "rootCause": "A nullable type '{actualType}' is being used where a non-nullable '{expectedType}' is required.",
+                "prescription": "1. Use the safe call operator: value?.method()\n2. Use the Elvis operator: value ?: defaultValue\n3. Use the non-null assertion: value!! (only if you are certain it is not null)\n4. Add a null check: if (value != null) { ... }",
+                "codeBlock": "// BEFORE:\nval name: String = nullableName // nullable -> non-null\n\n// AFTER:\nval name: String = nullableName ?: \"default\" // Elvis operator"
+              }
+            ]
+          },
+          {
+            "code": "KOTLIN_NULL_SAFETY",
+            "category": "kotlin_errors",
+            "severity": "error",
+            "messagePattern": "[Oo]nly safe \\(\\.\\?\\) or non-null asserted \\(!!\\) calls are allowed on a nullable receiver of type\\s+(?<nullableType>[\\w.<>?]+)",
+            "match": "e:.*[Oo]nly safe.*or non-null asserted.*calls are allowed",
+            "captures": [
+              { "name": "nullableType", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "nullableType" }, "adjustedProbability": 0.6, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "add_null_check", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "KOTLIN_TYPE_MISMATCH", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+            "rootCause": "A method or property is being called on a nullable receiver of type '{nullableType}'. Kotlin's null safety system requires explicit handling of nullable values.",
+            "prescription": "1. Use safe call operator: value?.method()\n2. Use safe call with let: value?.let { it.method() }\n3. Use non-null assertion: value!!.method() (throws if null)\n4. Use Elvis operator for default: value?.method() ?: defaultValue\n5. Add a null check: if (value != null) { value.method() }",
+            "codeBlock": "// BEFORE:\nval user: User? = getUser()\nval name = user.name // error: nullable receiver\n\n// AFTER (option 1 — safe call):\nval name = user?.name\n\n// AFTER (option 2 — smart cast):\nif (user != null) {\n    val name = user.name // smart-casted to non-null\n}\n\n// AFTER (option 3 — Elvis):\nval name = user?.name ?: \"unknown\"",
+            "conditions": []
+          },
+          {
+            "code": "KOTLIN_SMART_CAST_IMPOSSIBLE",
+            "category": "kotlin_errors",
+            "severity": "error",
+            "messagePattern": "[Ss]mart cast to '(?<targetType>[\\w.<>]+)' is impossible,? because '(?<varName>[\\w.]+)' is a (?<reason>mutable property|var|property that has open or custom getter)",
+            "match": "e:.*[Ss]mart cast.*is impossible",
+            "captures": [
+              { "name": "targetType", "role": "type_name" },
+              { "name": "varName", "role": "symbol_name" },
+              { "name": "reason", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "targetType" }, "adjustedProbability": 0.6, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "cast_type", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "Smart cast to '{targetType}' is impossible because '{varName}' is a {reason}. The value could change between the null check and the usage, so the compiler cannot guarantee safety.",
+            "prescription": "1. Capture the value in a local val: val local = {varName}; then check and use local.\n2. Use an explicit cast: ({varName} as {targetType}).method()\n3. Use safe cast: ({varName} as? {targetType})?.method()\n4. Use let: {varName}?.let { it.method() }",
+            "codeBlock": "// BEFORE:\nclass Foo {\n    var name: String? = null\n    fun test() {\n        if (name != null) {\n            name.length // smart cast impossible — var can change\n        }\n    }\n}\n\n// AFTER:\nclass Foo {\n    var name: String? = null\n    fun test() {\n        val localName = name // capture in local val\n        if (localName != null) {\n            localName.length // smart cast works\n        }\n    }\n}",
+            "conditions": []
+          },
+          {
+            "code": "KOTLIN_OVERRIDES_NOTHING",
+            "category": "kotlin_errors",
+            "severity": "error",
+            "messagePattern": "'(?<methodName>[\\w]+)' overrides nothing",
+            "match": "e:.*overrides nothing",
+            "captures": [
+              { "name": "methodName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.7,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_inherited", "target": "methodName" }, "adjustedProbability": 0.9, "traceDepth": "transitive", "traceTarget": "inherited_parent" }
+            ],
+            "fixHint": { "primaryStrategy": "change_signature", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "Function '{methodName}' is marked with 'override' but does not override any function in a superclass or interface. The signature may not match, or the parent method may have been removed.",
+            "prescription": "1. Check the method name and parameter types match the parent exactly.\n2. If the parent method was removed or renamed, update this override accordingly.\n3. Remove the 'override' keyword if this is a new method.\n4. Ensure the superclass is correctly specified in the class declaration.",
+            "codeBlock": "// BEFORE:\nclass MyService : Service {\n    override fun proccess(req: Request) { } // typo in name\n}\n\n// AFTER:\nclass MyService : Service {\n    override fun process(req: Request) { } // correct name\n}",
+            "conditions": []
+          },
+          {
+            "code": "KOTLIN_VAL_REASSIGNMENT",
+            "category": "kotlin_errors",
+            "severity": "error",
+            "messagePattern": "[Vv]al cannot be reassigned",
+            "match": "e:.*[Vv]al cannot be reassigned",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "A 'val' (read-only) property or variable is being reassigned. In Kotlin, 'val' is immutable after initialization.",
+            "prescription": "1. Change 'val' to 'var' if the variable needs to be mutable.\n2. If immutability is desired, restructure the code to not reassign.\n3. Use a new variable for the new value.",
+            "codeBlock": "// BEFORE:\nval count = 0\ncount = count + 1 // val cannot be reassigned\n\n// AFTER (option 1 — use var):\nvar count = 0\ncount = count + 1\n\n// AFTER (option 2 — new val):\nval count = 0\nval newCount = count + 1",
+            "conditions": []
+          },
+          {
+            "code": "KOTLIN_ABSTRACT_MEMBER_NOT_IMPL",
+            "category": "kotlin_errors",
+            "severity": "error",
+            "messagePattern": "Class '(?<className>\\w+)' is not abstract and does not implement abstract member\\s+(?<memberDesc>.+)",
+            "match": "e:.*is not abstract and does not implement abstract member",
+            "captures": [
+              { "name": "className", "role": "type_name" },
+              { "name": "memberDesc", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.8,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_interface_member", "target": "memberDesc" }, "adjustedProbability": 0.9, "traceDepth": "direct", "traceTarget": "inherited_parent" }
+            ],
+            "fixHint": { "primaryStrategy": "implement_interface", "requiresCrossFileEdit": false, "typicalScope": "type_definition" },
+            "coOccurrence": [],
+            "rootCause": "Class '{className}' must implement all abstract members from its superclass/interface, but '{memberDesc}' is missing.",
+            "prescription": "1. Implement the missing member in '{className}'.\n2. Or mark '{className}' as abstract: abstract class {className}.\n3. Use your IDE's 'Implement members' feature to auto-generate stubs.",
+            "codeBlock": "// BEFORE:\nclass MyRepo : Repository {\n    // missing: override fun findById(id: Long): Entity?\n}\n\n// AFTER:\nclass MyRepo : Repository {\n    override fun findById(id: Long): Entity? {\n        TODO(\"implement\")\n    }\n}",
+            "conditions": []
+          },
+          {
+            "code": "KOTLIN_NO_CONSTRUCTOR",
+            "category": "kotlin_errors",
+            "severity": "error",
+            "messagePattern": "[Nn]o value passed for parameter '(?<paramName>\\w+)'",
+            "match": "e:.*[Nn]o value passed for parameter",
+            "captures": [
+              { "name": "paramName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "paramName" }, "adjustedProbability": 0.7, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "change_signature", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Required parameter '{paramName}' was not provided when calling a function or constructor.",
+            "prescription": "1. Pass a value for '{paramName}' in the call.\n2. If the parameter should be optional, add a default value in the function definition: paramName: Type = defaultValue.\n3. Use named arguments for clarity: functionCall(paramName = value).",
+            "codeBlock": "// BEFORE:\nval user = User(\"Alice\") // missing 'age' parameter\n\n// AFTER:\nval user = User(\"Alice\", age = 30)",
+            "conditions": []
+          },
+          {
+            "code": "KOTLIN_RETURN_TYPE_MISMATCH",
+            "category": "kotlin_errors",
+            "severity": "error",
+            "messagePattern": "[Rr]eturn type is '(?<actualType>[\\w.<>?]+)', which is not a subtype of overridden.*'(?<expectedType>[\\w.<>?]+)'",
+            "match": "e:.*[Rr]eturn type is.*not a subtype of overridden",
+            "captures": [
+              { "name": "actualType", "role": "actual_type" },
+              { "name": "expectedType", "role": "expected_type" }
+            ],
+            "baseCrossFileProbability": 0.7,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_inherited", "target": "expectedType" }, "adjustedProbability": 0.9, "traceDepth": "transitive", "traceTarget": "inherited_parent" }
+            ],
+            "fixHint": { "primaryStrategy": "update_type_annotation", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [
+              { "code": "KOTLIN_OVERRIDES_NOTHING", "relationship": "sometimes_together", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+            "rootCause": "The return type '{actualType}' of the overriding function is not compatible with the expected return type '{expectedType}' declared in the parent.",
+            "prescription": "1. Change the return type to match the parent: '{expectedType}'.\n2. If you need a more specific return type, ensure it is a subtype of '{expectedType}'.\n3. Check if the parent method's return type was changed recently.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "KOTLIN_VISIBILITY_MISMATCH",
+            "category": "kotlin_errors",
+            "severity": "error",
+            "messagePattern": "Cannot weaken access privilege '(?<parentVisibility>\\w+)' for '(?<memberName>\\w+)'",
+            "match": "e:.*[Cc]annot weaken access privilege",
+            "captures": [
+              { "name": "parentVisibility", "role": "literal_value" },
+              { "name": "memberName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.7,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_inherited", "target": "memberName" }, "adjustedProbability": 0.9, "traceDepth": "direct", "traceTarget": "inherited_parent" }
+            ],
+            "fixHint": { "primaryStrategy": "fix_access_modifier", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The overriding member '{memberName}' has a more restrictive visibility than the parent's '{parentVisibility}'. Kotlin does not allow narrowing visibility on overrides.",
+            "prescription": "1. Change the override's visibility to match or widen the parent's '{parentVisibility}'.\n2. If the parent is 'public', the override must also be 'public'.",
+            "codeBlock": "// BEFORE:\nopen class Base {\n    open fun process() { }\n}\nclass Child : Base() {\n    private override fun process() { } // cannot weaken to private\n}\n\n// AFTER:\nclass Child : Base() {\n    override fun process() { } // public (same as parent)\n}",
+            "conditions": []
+          },
+          {
+            "code": "KOTLIN_DATA_CLASS_NO_PARAM",
+            "category": "kotlin_errors",
+            "severity": "error",
+            "messagePattern": "[Dd]ata class must have at least one primary constructor parameter",
+            "match": "e:.*[Dd]ata class must have at least one primary constructor parameter",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "change_signature", "requiresCrossFileEdit": false, "typicalScope": "type_definition" },
+            "coOccurrence": [],
+            "rootCause": "A data class must have at least one property in its primary constructor. Empty data classes are not allowed in Kotlin.",
+            "prescription": "1. Add at least one 'val' or 'var' parameter to the primary constructor.\n2. If the class truly has no properties, use a regular class instead of a data class.",
+            "codeBlock": "// BEFORE:\ndata class Empty() // error\n\n// AFTER:\ndata class Config(val name: String)",
+            "conditions": []
+          },
+          {
+            "code": "KOTLIN_SEALED_SUBCLASS",
+            "category": "kotlin_errors",
+            "severity": "error",
+            "messagePattern": "[Ss]ealed types cannot be instantiated",
+            "match": "e:.*[Ss]ealed types cannot be instantiated",
+            "captures": [],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "A sealed class or sealed interface cannot be directly instantiated. Only its subclasses can be instantiated.",
+            "prescription": "1. Instantiate one of the sealed class's subclasses instead.\n2. If no subclass exists yet, create one.\n3. Sealed classes are used for restricted class hierarchies — each variant is a subclass.",
+            "codeBlock": "// BEFORE:\nsealed class Result\nval r = Result() // error\n\n// AFTER:\nsealed class Result {\n    data class Success(val data: String) : Result()\n    data class Error(val message: String) : Result()\n}\nval r: Result = Result.Success(\"ok\")",
+            "conditions": []
+          },
+          {
+            "code": "KOTLIN_EXTENSION_SHADOWED",
+            "category": "kotlin_errors",
+            "severity": "warning",
+            "messagePattern": "Extension is shadowed by a member",
+            "match": "w:.*[Ee]xtension is shadowed by a member",
+            "captures": [],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "rename_symbol", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "An extension function has the same name and signature as a member function. The member function always takes priority over the extension.",
+            "prescription": "1. Rename the extension function to avoid the conflict.\n2. Remove the extension if the member function provides the same behavior.\n3. Be aware that the member function will always be called — the extension is effectively dead code.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "KOTLIN_PLATFORM_TYPE_NULLABILITY",
+            "category": "kotlin_errors",
+            "severity": "warning",
+            "messagePattern": "(?:Type mismatch|Condition .* is always .*).*platform type",
+            "match": "w:.*platform type",
+            "captures": [],
+            "baseCrossFileProbability": 0.6,
+            "confidence": "heuristic",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "symbolName" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "update_type_annotation", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "KOTLIN_NULL_SAFETY", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+            "rootCause": "A Java type is being used as a platform type (T!). Kotlin cannot determine nullability for Java types without @Nullable/@NonNull annotations.",
+            "prescription": "1. Add explicit type annotations to clarify nullability: val x: String? = javaMethod().\n2. Add @Nullable or @NonNull annotations to the Java code.\n3. Use safe calls when accessing platform types: javaObj?.method().",
+            "codeBlock": "// Java code without annotations:\npublic String getName() { return name; } // returns String! in Kotlin\n\n// Kotlin — be explicit:\nval name: String? = javaObj.getName() // treat as nullable for safety",
+            "conditions": []
+          },
+          {
+            "code": "KOTLIN_SUSPEND_OUTSIDE_COROUTINE",
+            "category": "kotlin_errors",
+            "severity": "error",
+            "messagePattern": "[Ss]uspend function '(?<funcName>\\w+)' should be called only from a coroutine or another suspend function",
+            "match": "e:.*[Ss]uspend function.*should be called only from a coroutine",
+            "captures": [
+              { "name": "funcName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "wrap_async", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "Suspend function '{funcName}' is being called from a non-suspend context. Suspend functions can only be called from coroutines or other suspend functions.",
+            "prescription": "1. Mark the calling function as 'suspend'.\n2. Launch a coroutine: launch { {funcName}() } or runBlocking { {funcName}() }.\n3. Use a coroutine scope: viewModelScope.launch { {funcName}() }.",
+            "codeBlock": "// BEFORE:\nfun loadData() {\n    fetchFromNetwork() // error: suspend function\n}\n\n// AFTER (option 1):\nsuspend fun loadData() {\n    fetchFromNetwork()\n}\n\n// AFTER (option 2):\nfun loadData() {\n    viewModelScope.launch {\n        fetchFromNetwork()\n    }\n}",
+            "conditions": []
+          },
+          {
+            "code": "KOTLIN_COMPANION_OBJECT_ACCESS",
+            "category": "kotlin_errors",
+            "severity": "error",
+            "messagePattern": "[Uu]nresolved reference.*\\.Companion",
+            "match": "e:.*[Uu]nresolved reference.*Companion",
+            "captures": [],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "heuristic",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "symbolName" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "rename_symbol", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "KOTLIN_UNRESOLVED_REFERENCE", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+            "rootCause": "Attempting to access a companion object member incorrectly. In Kotlin, companion object members are accessed directly through the class name, not through '.Companion'.",
+            "prescription": "1. Access the member directly: ClassName.memberName (not ClassName.Companion.memberName).\n2. From Java code, use ClassName.Companion.getMember() or add @JvmStatic to the Kotlin companion member.",
+            "codeBlock": "// Kotlin class:\nclass Config {\n    companion object {\n        val DEFAULT = Config()\n    }\n}\n\n// Correct Kotlin usage:\nval c = Config.DEFAULT\n\n// From Java — needs @JvmStatic or explicit Companion:\nConfig config = Config.Companion.getDEFAULT();\n// Or with @JvmStatic:\nConfig config = Config.getDEFAULT();",
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "build_tool_errors",
+        "name": "Build Tool Errors (Gradle / Maven)",
+        "description": "Errors from Gradle and Maven build systems",
+        "defaultTracingBehavior": "trace_import_source",
+        "errors": [
+          {
+            "code": "GRADLE_DEPENDENCY_NOT_FOUND",
+            "category": "build_tool_errors",
+            "severity": "error",
+            "messagePattern": "Could not (?:find|resolve)\\s+(?<dependency>[\\w.:/-]+)",
+            "match": "Could not (?:find|resolve)\\s+",
+            "captures": [
+              { "name": "dependency", "role": "package_name" }
+            ],
+            "baseCrossFileProbability": 1.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "install_package", "requiresCrossFileEdit": false, "typicalScope": "entire_file" },
+            "coOccurrence": [
+              { "code": "JAVA_PACKAGE_NOT_EXIST", "relationship": "causes_this", "sharedCapture": null, "resolution": "fix_this_first" },
+              { "code": "JAVA_CANNOT_FIND_SYMBOL", "relationship": "causes_this", "sharedCapture": null, "resolution": "fix_this_first" }
+            ],
+            "rootCause": "Gradle cannot resolve dependency '{dependency}'. The artifact may not exist in the configured repositories, or the version may be wrong.",
+            "prescription": "1. Check the group:artifact:version string for typos in build.gradle.\n2. Ensure the repository containing '{dependency}' is declared (mavenCentral(), google(), etc.).\n3. Check if the version exists on Maven Central or the appropriate repository.\n4. Run 'gradle --refresh-dependencies' to clear the cache.",
+            "codeBlock": "// build.gradle.kts\nrepositories {\n    mavenCentral()\n    google() // for Android dependencies\n}\n\ndependencies {\n    implementation(\"com.example:library:1.0.0\")\n}",
+            "conditions": [
+              {
+                "when": "dependency contains SNAPSHOT",
+                "rootCause": "SNAPSHOT dependency '{dependency}' cannot be resolved. SNAPSHOT artifacts require a repository that hosts snapshots.",
+                "prescription": "1. Add a snapshot repository: maven { url = uri(\"https://oss.sonatype.org/content/repositories/snapshots\") }\n2. Ensure the snapshot is published.\n3. Run with --refresh-dependencies to fetch the latest snapshot.",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "GRADLE_CONFIGURATION_FAILED",
+            "category": "build_tool_errors",
+            "severity": "error",
+            "messagePattern": "Could not determine the dependencies of task '(?<taskName>[^']+)'",
+            "match": "Could not determine the dependencies of task",
+            "captures": [
+              { "name": "taskName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.9,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "update_config", "requiresCrossFileEdit": false, "typicalScope": "entire_file" },
+            "coOccurrence": [
+              { "code": "GRADLE_DEPENDENCY_NOT_FOUND", "relationship": "caused_by_this", "sharedCapture": null, "resolution": "fix_other_first" }
+            ],
+            "rootCause": "Gradle configuration failed for task '{taskName}'. This usually means a dependency could not be resolved during the configuration phase.",
+            "prescription": "1. Check the full error output for the underlying cause (usually a missing dependency).\n2. Run 'gradle dependencies' to identify resolution failures.\n3. Check build.gradle for syntax errors or invalid dependency declarations.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "GRADLE_SCRIPT_ERROR",
+            "category": "build_tool_errors",
+            "severity": "error",
+            "messagePattern": "Script compilation error[s]?.*Line:\\s*(?<line>\\d+)",
+            "match": "Script compilation error",
+            "captures": [
+              { "name": "line", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The Gradle build script has a syntax error at line {line}. The Groovy/Kotlin DSL cannot be compiled.",
+            "prescription": "1. Check the build.gradle(.kts) file at line {line} for syntax errors.\n2. For Kotlin DSL, ensure proper Kotlin syntax (parentheses, string templates).\n3. For Groovy DSL, check for missing quotes or incorrect closures.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "GRADLE_API_VS_IMPL",
+            "category": "build_tool_errors",
+            "severity": "error",
+            "messagePattern": "(?:Cannot access class|does not have access to).*from module.*dependency",
+            "match": "(?:Cannot access class|does not have access to).*module",
+            "captures": [],
+            "baseCrossFileProbability": 1.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "update_config", "requiresCrossFileEdit": true, "typicalScope": "entire_file" },
+            "coOccurrence": [],
+            "rootCause": "A class from a transitive dependency is not accessible because it was declared with 'implementation' scope in a dependency module. 'implementation' dependencies are not exposed to consumers.",
+            "prescription": "1. In the module that declares the dependency, change 'implementation' to 'api' to expose it to consumers.\n2. Or add the dependency directly to the consuming module's build.gradle.\n3. Use 'api' only when the dependency is part of your module's public API.",
+            "codeBlock": "// In module-A/build.gradle.kts:\n// BEFORE:\nimplementation(\"com.example:shared-lib:1.0.0\") // not visible to consumers\n\n// AFTER:\napi(\"com.example:shared-lib:1.0.0\") // visible to consumers",
+            "conditions": []
+          },
+          {
+            "code": "MAVEN_DEPENDENCY_NOT_FOUND",
+            "category": "build_tool_errors",
+            "severity": "error",
+            "messagePattern": "Could not find artifact\\s+(?<groupId>[\\w.-]+):(?<artifactId>[\\w.-]+):(?:(?:jar|pom):)?(?<version>[\\w.\\-]+)",
+            "match": "\\[ERROR\\].*Could not find artifact",
+            "captures": [
+              { "name": "groupId", "role": "package_name" },
+              { "name": "artifactId", "role": "package_name" },
+              { "name": "version", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 1.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "install_package", "requiresCrossFileEdit": false, "typicalScope": "entire_file" },
+            "coOccurrence": [
+              { "code": "JAVA_PACKAGE_NOT_EXIST", "relationship": "causes_this", "sharedCapture": null, "resolution": "fix_this_first" }
+            ],
+            "rootCause": "Maven cannot find artifact {groupId}:{artifactId}:{version} in any configured repository.",
+            "prescription": "1. Check the groupId, artifactId, and version for typos in pom.xml.\n2. Search for the correct coordinates on https://search.maven.org.\n3. Add the repository that hosts the artifact if it is not on Maven Central.\n4. Run 'mvn dependency:resolve' to diagnose.",
+            "codeBlock": "<!-- pom.xml -->\n<dependency>\n    <groupId>{groupId}</groupId>\n    <artifactId>{artifactId}</artifactId>\n    <version>{version}</version>\n</dependency>",
+            "conditions": []
+          },
+          {
+            "code": "MAVEN_PLUGIN_NOT_FOUND",
+            "category": "build_tool_errors",
+            "severity": "error",
+            "messagePattern": "Plugin\\s+(?<pluginId>[\\w.:/-]+)\\s+not found",
+            "match": "\\[ERROR\\].*Plugin.*not found",
+            "captures": [
+              { "name": "pluginId", "role": "package_name" }
+            ],
+            "baseCrossFileProbability": 1.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "install_package", "requiresCrossFileEdit": false, "typicalScope": "entire_file" },
+            "coOccurrence": [],
+            "rootCause": "Maven plugin '{pluginId}' cannot be found in the configured repositories.",
+            "prescription": "1. Check the plugin groupId, artifactId, and version in pom.xml.\n2. Ensure the plugin exists on Maven Central or add the correct plugin repository.\n3. For Spring Boot, use 'org.springframework.boot:spring-boot-maven-plugin'.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "MAVEN_COMPILATION_FAILURE",
+            "category": "build_tool_errors",
+            "severity": "error",
+            "messagePattern": "Compilation failure",
+            "match": "\\[ERROR\\].*Compilation failure",
+            "captures": [],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "entire_file" },
+            "coOccurrence": [
+              { "code": "JAVA_CANNOT_FIND_SYMBOL", "relationship": "caused_by_this", "sharedCapture": null, "resolution": "fix_other_first" },
+              { "code": "JAVA_INCOMPATIBLE_TYPES", "relationship": "caused_by_this", "sharedCapture": null, "resolution": "fix_other_first" }
+            ],
+            "rootCause": "The Maven compilation phase failed. Check the detailed error messages above this line for the specific Java/Kotlin compilation errors.",
+            "prescription": "1. Look for the actual compiler errors in the output above this message.\n2. Fix the compiler errors (missing imports, type mismatches, etc.).\n3. The 'Compilation failure' message is a summary — the root cause is in the preceding compiler output.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "GRADLE_VERSION_CONFLICT",
+            "category": "build_tool_errors",
+            "severity": "error",
+            "messagePattern": "Conflict(?:ing)?\\s+(?:dependency|dependencies).*between\\s+(?<dep1>[\\w.:/-]+)\\s+and\\s+(?<dep2>[\\w.:/-]+)",
+            "match": "Conflict.*dependenc",
+            "captures": [
+              { "name": "dep1", "role": "package_name" },
+              { "name": "dep2", "role": "package_name" }
+            ],
+            "baseCrossFileProbability": 1.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "update_package", "requiresCrossFileEdit": false, "typicalScope": "entire_file" },
+            "coOccurrence": [],
+            "rootCause": "Gradle found conflicting versions of a dependency between '{dep1}' and '{dep2}'. Multiple modules require different versions of the same library.",
+            "prescription": "1. Use a resolution strategy in build.gradle to force a specific version.\n2. Use a BOM (Bill of Materials) to align versions.\n3. Run 'gradle dependencies' to see the full dependency tree and identify conflicts.",
+            "codeBlock": "// build.gradle.kts — force version:\nconfigurations.all {\n    resolutionStrategy {\n        force(\"com.example:library:2.0.0\")\n    }\n}",
+            "conditions": []
+          },
+          {
+            "code": "GRADLE_JAVA_VERSION_MISMATCH",
+            "category": "build_tool_errors",
+            "severity": "error",
+            "messagePattern": "(?:Could not target platform|Unsupported class file major version)\\s*(?<version>\\d+)?",
+            "match": "(?:Could not target platform|Unsupported class file major version)",
+            "captures": [
+              { "name": "version", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "update_config", "requiresCrossFileEdit": false, "typicalScope": "entire_file" },
+            "coOccurrence": [],
+            "rootCause": "The project's target Java version does not match the JDK being used to compile. Class file version {version} is not supported by the current JDK.",
+            "prescription": "1. Set sourceCompatibility and targetCompatibility in build.gradle to match your JDK.\n2. Install the correct JDK version.\n3. Set JAVA_HOME to point to the correct JDK.\n4. In Gradle, use toolchains: java { toolchain { languageVersion.set(JavaLanguageVersion.of(17)) } }",
+            "codeBlock": "// build.gradle.kts\njava {\n    toolchain {\n        languageVersion.set(JavaLanguageVersion.of(17))\n    }\n}",
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "generics_and_annotations",
+        "name": "Generics and Annotation Errors",
+        "description": "Errors related to generic types, wildcards, and annotation processing",
+        "defaultTracingBehavior": "trace_type_definition",
+        "errors": [
+          {
+            "code": "JAVA_GENERIC_ARRAY_CREATION",
+            "category": "generics_and_annotations",
+            "severity": "error",
+            "messagePattern": "generic array creation",
+            "match": "error:.*generic array creation",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Java does not allow creating arrays of parameterized types due to type erasure. 'new T[size]' or 'new List<String>[size]' are illegal.",
+            "prescription": "1. Use a Collection instead of an array: List<T> instead of T[].\n2. Use Array.newInstance() with a cast: (T[]) Array.newInstance(clazz, size).\n3. Use an Object[] with @SuppressWarnings(\"unchecked\").",
+            "codeBlock": "// BEFORE:\nList<String>[] arr = new List<String>[10]; // generic array creation\n\n// AFTER:\n@SuppressWarnings(\"unchecked\")\nList<String>[] arr = (List<String>[]) new List<?>[10];\n\n// Or better — use List of Lists:\nList<List<String>> arr = new ArrayList<>();",
+            "conditions": []
+          },
+          {
+            "code": "JAVA_RAW_TYPE",
+            "category": "generics_and_annotations",
+            "severity": "warning",
+            "messagePattern": "(?:\\[rawtypes\\]\\s*)?found raw type:\\s*(?<typeName>\\w+)",
+            "match": "warning:.*raw type:",
+            "captures": [
+              { "name": "typeName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.2,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_generic_constraint", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "JAVA_UNCHECKED_CONVERSION", "relationship": "always_together", "sharedCapture": null, "resolution": "fix_this_first" }
+            ],
+            "rootCause": "Raw type '{typeName}' is used without type parameters. This bypasses generic type safety and can cause ClassCastException at runtime.",
+            "prescription": "1. Add the appropriate type parameter: {typeName}<Type> instead of raw {typeName}.\n2. Use diamond inference: new {typeName}<>() in Java 7+.\n3. If the type parameter is unknown, use {typeName}<?>.",
+            "codeBlock": "// BEFORE:\nList names = new ArrayList(); // raw type\n\n// AFTER:\nList<String> names = new ArrayList<>();",
+            "conditions": []
+          },
+          {
+            "code": "JAVA_ANNOTATION_NOT_APPLICABLE",
+            "category": "generics_and_annotations",
+            "severity": "error",
+            "messagePattern": "annotation (?:type )?(?<annotName>[\\w.@]+)\\s+(?:is )?not applicable to this kind of declaration",
+            "match": "error:.*annotation.*not applicable",
+            "captures": [
+              { "name": "annotName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "annotName" }, "adjustedProbability": 0.7, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Annotation '{annotName}' is being applied to a declaration type it does not support. Annotations have @Target restrictions.",
+            "prescription": "1. Check the @Target of '{annotName}' to see where it can be applied (TYPE, METHOD, FIELD, PARAMETER, etc.).\n2. Move the annotation to a valid location.\n3. If you need this behavior, look for an alternative annotation that targets the correct element type.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "JAVA_ANNOTATION_MISSING_VALUE",
+            "category": "generics_and_annotations",
+            "severity": "error",
+            "messagePattern": "annotation\\s+(?<annotName>[\\w.@]+)\\s+is missing (?:a default value for )?(?:the element|element) '(?<element>\\w+)'",
+            "match": "error:.*annotation.*missing.*element",
+            "captures": [
+              { "name": "annotName", "role": "symbol_name" },
+              { "name": "element", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "annotName" }, "adjustedProbability": 0.7, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "change_signature", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Annotation '{annotName}' requires element '{element}' which has no default value and was not provided.",
+            "prescription": "1. Provide the required element: @{annotName}({element} = value).\n2. If the annotation has only one required element named 'value', you can use the shorthand: @{annotName}(value).",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "JAVA_ANNOTATION_PROCESSING_ERROR",
+            "category": "generics_and_annotations",
+            "severity": "error",
+            "messagePattern": "(?:error during annotation processing|java\\.lang\\.(?:NullPointerException|IllegalStateException).*at.*Processor)",
+            "match": "(?:annotation processing|Processor)",
+            "captures": [],
+            "baseCrossFileProbability": 0.6,
+            "confidence": "heuristic",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "update_config", "requiresCrossFileEdit": false, "typicalScope": "entire_file" },
+            "coOccurrence": [],
+            "rootCause": "An annotation processor crashed or produced an error during compilation. This is common with Lombok, Dagger, MapStruct, and similar code-generation tools.",
+            "prescription": "1. Check that the annotation processor dependency is correctly declared (annotationProcessor or kapt).\n2. Clean and rebuild: 'gradle clean build'.\n3. Check if the processor version is compatible with your Java version.\n4. Look at the full stack trace for the specific processor that failed.",
+            "codeBlock": "// build.gradle.kts\ndependencies {\n    // For Java annotation processors:\n    annotationProcessor(\"org.projectlombok:lombok:1.18.30\")\n    compileOnly(\"org.projectlombok:lombok:1.18.30\")\n    \n    // For Kotlin (use kapt instead):\n    kapt(\"com.google.dagger:dagger-compiler:2.48\")\n}",
+            "conditions": []
+          },
+          {
+            "code": "JAVA_VARARGS_GENERIC",
+            "category": "generics_and_annotations",
+            "severity": "warning",
+            "messagePattern": "(?:Possible heap pollution from parameterized vararg|unchecked generic array creation for varargs)",
+            "match": "(?:heap pollution|varargs.*generic array)",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "Using a generic type as a varargs parameter can cause heap pollution. The varargs argument is implemented as an array, and generic arrays are unsafe in Java.",
+            "prescription": "1. Add @SafeVarargs annotation if the method does not store into the varargs array.\n2. Add @SuppressWarnings(\"unchecked\") if you are confident in safety.\n3. Accept a List<T> instead of T... to avoid the issue entirely.",
+            "codeBlock": "// BEFORE:\npublic static <T> List<T> asList(T... items) { ... } // warning\n\n// AFTER:\n@SafeVarargs\npublic static <T> List<T> asList(T... items) { ... }",
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "java_records_sealed",
+        "name": "Records, Sealed Types, and Modern Java Errors",
+        "description": "Errors specific to Java 16+ records and Java 17+ sealed types",
+        "defaultTracingBehavior": "local_only",
+        "errors": [
+          {
+            "code": "JAVA_RECORD_ACCESSOR",
+            "category": "java_records_sealed",
+            "severity": "error",
+            "messagePattern": "record component accessor method '(?<methodName>\\w+)' must return '(?<expectedType>[\\w.<>]+)'",
+            "match": "error:.*record component accessor method",
+            "captures": [
+              { "name": "methodName", "role": "symbol_name" },
+              { "name": "expectedType", "role": "expected_type" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "change_signature", "requiresCrossFileEdit": false, "typicalScope": "type_definition" },
+            "coOccurrence": [],
+            "rootCause": "The record component accessor method '{methodName}' must return type '{expectedType}' matching the component declaration.",
+            "prescription": "1. Change the return type of '{methodName}' to '{expectedType}'.\n2. Records auto-generate accessor methods — only override them if you need custom behavior.\n3. Ensure the method name matches the component name exactly.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "JAVA_RECORD_NO_EXTEND",
+            "category": "java_records_sealed",
+            "severity": "error",
+            "messagePattern": "records cannot extend other classes",
+            "match": "error:.*records cannot extend",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "type_definition" },
+            "coOccurrence": [],
+            "rootCause": "Java records implicitly extend java.lang.Record and cannot extend other classes. Records are designed to be simple data carriers.",
+            "prescription": "1. Use an interface instead of a class for shared behavior: record MyRecord(...) implements MyInterface.\n2. Convert to a regular class if you need class inheritance.\n3. Use composition: include the parent class as a component of the record.",
+            "codeBlock": "// BEFORE:\nrecord Employee() extends Person { } // error\n\n// AFTER (interface):\nrecord Employee(String name, int age) implements HasName { }",
+            "conditions": []
+          },
+          {
+            "code": "JAVA_PATTERN_MATCH_EXHAUSTIVE",
+            "category": "java_records_sealed",
+            "severity": "error",
+            "messagePattern": "the switch expression does not cover all possible input values",
+            "match": "error:.*does not cover all possible input values",
+            "captures": [],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "typeName" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "A switch expression must be exhaustive — it must cover all possible values of the input type. For sealed classes, all permitted subclasses must be handled.",
+            "prescription": "1. Add cases for all missing variants.\n2. Add a 'default' case to handle any remaining values.\n3. For sealed types, ensure all permitted subtypes have a case.",
+            "codeBlock": "// For a sealed interface:\nsealed interface Shape permits Circle, Rectangle {}\n\n// Switch must cover all:\nString desc = switch (shape) {\n    case Circle c -> \"circle\";\n    case Rectangle r -> \"rectangle\";\n    // no default needed — exhaustive\n};",
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "misc_java",
+        "name": "Miscellaneous Java Errors",
+        "description": "Other common Java compilation warnings and errors",
+        "defaultTracingBehavior": "local_only",
+        "errors": [
+          {
+            "code": "JAVA_STATIC_FROM_INSTANCE",
+            "category": "misc_java",
+            "severity": "warning",
+            "messagePattern": "static (?:method|field)\\s+(?<memberName>[\\w.]+)\\s+(?:in|of)\\s+(?<className>[\\w.]+)\\s+(?:should|accessed).*instance",
+            "match": "warning:.*static.*(?:should|accessed).*instance",
+            "captures": [
+              { "name": "memberName", "role": "symbol_name" },
+              { "name": "className", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "rename_symbol", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Static member '{memberName}' in '{className}' is being accessed through an instance reference. While this works, it is misleading and should use the class name.",
+            "prescription": "Use the class name to access static members: {className}.{memberName} instead of instance.{memberName}.",
+            "codeBlock": "// BEFORE:\nThread t = new Thread();\nt.sleep(1000); // accessing static through instance\n\n// AFTER:\nThread.sleep(1000);",
+            "conditions": []
+          },
+          {
+            "code": "JAVA_DIVISION_BY_ZERO",
+            "category": "misc_java",
+            "severity": "warning",
+            "messagePattern": "division by zero",
+            "match": "warning:.*division by zero",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "add_null_check", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Integer division by zero will throw ArithmeticException at runtime.",
+            "prescription": "1. Add a check for zero before dividing.\n2. Use a default value when the divisor is zero.\n3. Consider if the divisor can legitimately be zero in your business logic.",
+            "codeBlock": "// BEFORE:\nint result = total / count; // division by zero if count == 0\n\n// AFTER:\nint result = count != 0 ? total / count : 0;",
+            "conditions": []
+          },
+          {
+            "code": "JAVA_REDUNDANT_CAST",
+            "category": "misc_java",
+            "severity": "warning",
+            "messagePattern": "redundant cast to\\s+(?<targetType>[\\w.<>]+)",
+            "match": "warning:.*redundant cast",
+            "captures": [
+              { "name": "targetType", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The cast to '{targetType}' is unnecessary — the expression already has this type.",
+            "prescription": "Remove the redundant cast. The value is already of type '{targetType}'.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "JAVA_FINALLY_RETURN",
+            "category": "misc_java",
+            "severity": "warning",
+            "messagePattern": "finally clause cannot complete normally",
+            "match": "warning:.*finally clause cannot complete normally",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "The finally block contains a return or throw statement, which will silently swallow any exception thrown in the try block. This is almost always a bug.",
+            "prescription": "1. Remove the return/throw from the finally block.\n2. Move the return to outside the try-finally structure.\n3. The finally block should only contain cleanup code (closing resources).",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "JAVA_FALL_THROUGH",
+            "category": "misc_java",
+            "severity": "warning",
+            "messagePattern": "(?:possible )?fall-through into case",
+            "match": "warning:.*fall-through",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "A switch case is missing a break statement and will fall through to the next case. In most situations this is unintentional.",
+            "prescription": "1. Add a 'break;' at the end of the case.\n2. Use switch expressions (Java 14+) which do not fall through.\n3. If fall-through is intentional, add a comment: // fall through.",
+            "codeBlock": "// BEFORE:\nswitch (day) {\n    case MON:\n        work();\n        // missing break — falls through\n    case TUE:\n        meeting();\n        break;\n}\n\n// AFTER:\nswitch (day) {\n    case MON:\n        work();\n        break;\n    case TUE:\n        meeting();\n        break;\n}",
+            "conditions": []
+          },
+          {
+            "code": "JAVA_SERIALIZABLE_NO_SERIALVERSIONUID",
+            "category": "misc_java",
+            "severity": "warning",
+            "messagePattern": "(?<className>[\\w.]+)\\s+is Serializable.*no serialVersionUID",
+            "match": "warning:.*Serializable.*serialVersionUID",
+            "captures": [
+              { "name": "className", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "add_property", "requiresCrossFileEdit": false, "typicalScope": "type_definition" },
+            "coOccurrence": [],
+            "rootCause": "Class '{className}' implements Serializable but does not declare a serialVersionUID field. This can cause deserialization failures when the class changes.",
+            "prescription": "Add a serialVersionUID field: private static final long serialVersionUID = 1L;",
+            "codeBlock": "public class {className} implements Serializable {\n    private static final long serialVersionUID = 1L;\n    // ...\n}",
+            "conditions": []
+          }
+        ]
+      }
+    ]
+  },
+
+  "importSystem": {
+    "importPatterns": [
+      {
+        "type": "java_single",
+        "regex": "import\\s+(?<package>[\\w.]+)\\.(?<className>\\w+)\\s*;",
+        "captures": [
+          { "name": "package", "index": 1, "isList": false },
+          { "name": "className", "index": 2, "isList": false }
+        ],
+        "example": "import java.util.List;",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "java_wildcard",
+        "regex": "import\\s+(?<package>[\\w.]+)\\.\\*\\s*;",
+        "captures": [
+          { "name": "package", "index": 1, "isList": false }
+        ],
+        "example": "import java.util.*;",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "java_static_single",
+        "regex": "import\\s+static\\s+(?<package>[\\w.]+)\\.(?<className>\\w+)\\.(?<memberName>\\w+)\\s*;",
+        "captures": [
+          { "name": "package", "index": 1, "isList": false },
+          { "name": "className", "index": 2, "isList": false },
+          { "name": "memberName", "index": 3, "isList": false }
+        ],
+        "example": "import static java.util.Collections.emptyList;",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "java_static_wildcard",
+        "regex": "import\\s+static\\s+(?<package>[\\w.]+)\\.(?<className>\\w+)\\.\\*\\s*;",
+        "captures": [
+          { "name": "package", "index": 1, "isList": false },
+          { "name": "className", "index": 2, "isList": false }
+        ],
+        "example": "import static org.junit.Assert.*;",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "kotlin_single",
+        "regex": "import\\s+(?<fullPath>[\\w.]+\\.(?<symbolName>\\w+))(?:\\s+as\\s+(?<alias>\\w+))?",
+        "captures": [
+          { "name": "fullPath", "index": 1, "isList": false },
+          { "name": "symbolName", "index": 2, "isList": false },
+          { "name": "alias", "index": 3, "isList": false }
+        ],
+        "example": "import com.example.model.User",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "kotlin_alias",
+        "regex": "import\\s+(?<fullPath>[\\w.]+)\\s+as\\s+(?<alias>\\w+)",
+        "captures": [
+          { "name": "fullPath", "index": 1, "isList": false },
+          { "name": "alias", "index": 2, "isList": false }
+        ],
+        "example": "import com.example.model.User as ExternalUser",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "kotlin_wildcard",
+        "regex": "import\\s+(?<package>[\\w.]+)\\.\\*",
+        "captures": [
+          { "name": "package", "index": 1, "isList": false }
+        ],
+        "example": "import com.example.model.*",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      }
+    ],
+    "exportPatterns": [
+      {
+        "type": "java_public_class",
+        "regex": "(?:public\\s+)?(?:abstract\\s+|final\\s+|sealed\\s+)?(?:class|interface|enum|record|@interface)\\s+(?<symbolName>\\w+)",
+        "captures": [
+          { "name": "symbolName", "index": 1, "isList": false }
+        ],
+        "isReExport": false,
+        "example": "public class UserService {"
+      },
+      {
+        "type": "kotlin_class",
+        "regex": "(?:public\\s+|internal\\s+|open\\s+|abstract\\s+|sealed\\s+|data\\s+|value\\s+|inline\\s+)*(?:class|interface|object|enum\\s+class)\\s+(?<symbolName>\\w+)",
+        "captures": [
+          { "name": "symbolName", "index": 1, "isList": false }
+        ],
+        "isReExport": false,
+        "example": "data class User(val name: String)"
+      },
+      {
+        "type": "kotlin_top_level_function",
+        "regex": "(?:public\\s+|internal\\s+)?(?:suspend\\s+)?fun\\s+(?<symbolName>\\w+)",
+        "captures": [
+          { "name": "symbolName", "index": 1, "isList": false }
+        ],
+        "isReExport": false,
+        "example": "fun processData(input: String): Result"
+      },
+      {
+        "type": "kotlin_top_level_val",
+        "regex": "(?:public\\s+|internal\\s+)?(?:const\\s+)?val\\s+(?<symbolName>\\w+)",
+        "captures": [
+          { "name": "symbolName", "index": 1, "isList": false }
+        ],
+        "isReExport": false,
+        "example": "const val MAX_RETRIES = 3"
+      },
+      {
+        "type": "kotlin_typealias",
+        "regex": "(?:public\\s+|internal\\s+)?typealias\\s+(?<symbolName>\\w+)",
+        "captures": [
+          { "name": "symbolName", "index": 1, "isList": false }
+        ],
+        "isReExport": false,
+        "example": "typealias UserMap = Map<String, User>"
+      }
+    ],
+    "moduleResolution": {
+      "strategy": "java",
+      "extensions": [".java", ".kt", ".kts"],
+      "indexFiles": [],
+      "aliasConfig": {
+        "file": "build.gradle.kts",
+        "path": "sourceSets.main.java.srcDirs",
+        "format": "Source directories define the root for package-to-directory resolution. A class 'com.example.Foo' maps to 'src/main/java/com/example/Foo.java'."
+      },
+      "packageEntryPoints": [],
+      "relativeImportRules": "Java and Kotlin do not support relative imports. All imports are fully qualified package paths. The file's package declaration determines its location in the source tree.",
+      "absoluteImportRules": "Imports are resolved by mapping the fully-qualified class name to a file path: com.example.Foo maps to com/example/Foo.java relative to a source root. Source roots are defined in build.gradle (sourceSets) or pom.xml (build.sourceDirectory). The compiler also searches the classpath (dependencies) and the JDK standard library."
+    }
+  },
+
+  "typeTracing": {
+    "definitionPatterns": [
+      {
+        "kind": "class",
+        "regex": "(?:public\\s+|protected\\s+|private\\s+)?(?:abstract\\s+|final\\s+|sealed\\s+)?(?:static\\s+)?class\\s+(?<name>\\w+)(?:<[^>]+>)?",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "public class UserService<T extends User> {"
+      },
+      {
+        "kind": "interface",
+        "regex": "(?:public\\s+|protected\\s+|private\\s+)?(?:sealed\\s+)?interface\\s+(?<name>\\w+)(?:<[^>]+>)?",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "public sealed interface Shape permits Circle, Rectangle {"
+      },
+      {
+        "kind": "enum",
+        "regex": "(?:public\\s+|protected\\s+|private\\s+)?enum\\s+(?<name>\\w+)",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "public enum UserRole { ADMIN, USER, GUEST }"
+      },
+      {
+        "kind": "record",
+        "regex": "(?:public\\s+|protected\\s+|private\\s+)?record\\s+(?<name>\\w+)(?:<[^>]+>)?\\s*\\(",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "public record Point(int x, int y) {"
+      },
+      {
+        "kind": "annotation",
+        "regex": "(?:public\\s+|protected\\s+|private\\s+)?@interface\\s+(?<name>\\w+)",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "@Retention(RUNTIME) public @interface MyAnnotation {"
+      },
+      {
+        "kind": "kotlin_class",
+        "regex": "(?:public\\s+|internal\\s+|private\\s+|protected\\s+)?(?:open\\s+|abstract\\s+|sealed\\s+|data\\s+|value\\s+|inline\\s+|inner\\s+)*class\\s+(?<name>\\w+)(?:<[^>]+>)?",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "data class User(val name: String, val age: Int)"
+      },
+      {
+        "kind": "kotlin_interface",
+        "regex": "(?:public\\s+|internal\\s+|private\\s+|protected\\s+)?(?:sealed\\s+|fun\\s+)?interface\\s+(?<name>\\w+)(?:<[^>]+>)?",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "sealed interface Result<out T>"
+      },
+      {
+        "kind": "kotlin_object",
+        "regex": "(?:public\\s+|internal\\s+|private\\s+)?(?:companion\\s+)?object\\s+(?<name>\\w+)?",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "object Singleton { val instance = \"single\" }"
+      },
+      {
+        "kind": "kotlin_typealias",
+        "regex": "(?:public\\s+|internal\\s+|private\\s+)?typealias\\s+(?<name>\\w+)(?:<[^>]+>)?\\s*=",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "typealias StringMap = Map<String, String>"
+      },
+      {
+        "kind": "function",
+        "regex": "(?:public\\s+|protected\\s+|private\\s+)?(?:static\\s+)?(?:abstract\\s+|final\\s+|default\\s+|synchronized\\s+)?(?:<[^>]+>\\s+)?(?<returnType>[\\w.<>\\[\\]]+)\\s+(?<name>\\w+)\\s*\\(",
+        "captures": [
+          { "name": "returnType", "index": 1 },
+          { "name": "name", "index": 2 }
+        ],
+        "canBeExported": true,
+        "example": "public static <T> List<T> findAll(Class<T> type) {"
+      },
+      {
+        "kind": "kotlin_function",
+        "regex": "(?:public\\s+|internal\\s+|private\\s+|protected\\s+)?(?:override\\s+|open\\s+|abstract\\s+|inline\\s+|suspend\\s+)*fun\\s+(?:<[^>]+>\\s+)?(?:(?<receiverType>[\\w.]+)\\.)?(?<name>\\w+)\\s*\\(",
+        "captures": [
+          { "name": "receiverType", "index": 1 },
+          { "name": "name", "index": 2 }
+        ],
+        "canBeExported": true,
+        "example": "suspend fun <T> Repository<T>.findById(id: Long): T?"
+      },
+      {
+        "kind": "variable",
+        "regex": "(?:public\\s+|protected\\s+|private\\s+)?(?:static\\s+)?(?:final\\s+)?(?<type>[\\w.<>\\[\\]]+)\\s+(?<name>\\w+)\\s*[=;]",
+        "captures": [
+          { "name": "type", "index": 1 },
+          { "name": "name", "index": 2 }
+        ],
+        "canBeExported": true,
+        "example": "private static final String API_KEY = \"...\";"
+      }
+    ],
+    "inheritancePatterns": [
+      {
+        "kind": "extends",
+        "regex": "class\\s+(?<child>\\w+)(?:<[^>]+>)?\\s+extends\\s+(?<parents>[\\w.]+)(?:<[^>]+>)?",
+        "captures": [
+          { "name": "child", "index": 1, "isList": false },
+          { "name": "parents", "index": 2, "isList": false }
+        ],
+        "traceConfidence": 0.95,
+        "example": "class AdminUser extends User {"
+      },
+      {
+        "kind": "implements",
+        "regex": "class\\s+(?<child>\\w+)(?:<[^>]+>)?(?:\\s+extends\\s+[\\w.]+(?:<[^>]+>)?)?\\s+implements\\s+(?<parents>[\\w.,\\s<>]+?)\\s*\\{",
+        "captures": [
+          { "name": "child", "index": 1, "isList": false },
+          { "name": "parents", "index": 2, "isList": true, "listSeparator": "," }
+        ],
+        "traceConfidence": 0.90,
+        "example": "class UserService implements Service, Serializable {"
+      },
+      {
+        "kind": "interface_extends",
+        "regex": "interface\\s+(?<child>\\w+)(?:<[^>]+>)?\\s+extends\\s+(?<parents>[\\w.,\\s<>]+?)\\s*\\{",
+        "captures": [
+          { "name": "child", "index": 1, "isList": false },
+          { "name": "parents", "index": 2, "isList": true, "listSeparator": "," }
+        ],
+        "traceConfidence": 0.95,
+        "example": "interface AdminService extends UserService, AuditService {"
+      },
+      {
+        "kind": "sealed_permits",
+        "regex": "sealed\\s+(?:class|interface)\\s+(?<child>\\w+)(?:<[^>]+>)?(?:\\s+extends\\s+[\\w.]+)?(?:\\s+implements\\s+[\\w.,\\s]+)?\\s+permits\\s+(?<parents>[\\w.,\\s]+?)\\s*\\{",
+        "captures": [
+          { "name": "child", "index": 1, "isList": false },
+          { "name": "parents", "index": 2, "isList": true, "listSeparator": "," }
+        ],
+        "traceConfidence": 0.95,
+        "example": "sealed interface Shape permits Circle, Rectangle, Triangle {"
+      },
+      {
+        "kind": "kotlin_extends",
+        "regex": "(?:class|object)\\s+(?<child>\\w+)(?:<[^>]+>)?(?:\\([^)]*\\))?\\s*:\\s*(?<parents>[\\w.,\\s<>()]+?)\\s*[{]",
+        "captures": [
+          { "name": "child", "index": 1, "isList": false },
+          { "name": "parents", "index": 2, "isList": true, "listSeparator": "," }
+        ],
+        "traceConfidence": 0.90,
+        "example": "class UserServiceImpl(private val repo: UserRepo) : UserService, Loggable {"
+      },
+      {
+        "kind": "kotlin_sealed_subclass",
+        "regex": "(?:data\\s+)?class\\s+(?<child>\\w+)(?:<[^>]+>)?(?:\\([^)]*\\))?\\s*:\\s*(?<parents>\\w+)\\s*\\(",
+        "captures": [
+          { "name": "child", "index": 1, "isList": false },
+          { "name": "parents", "index": 2, "isList": false }
+        ],
+        "traceConfidence": 0.95,
+        "example": "data class Success(val data: String) : Result()"
+      }
+    ],
+    "compositionPatterns": [
+      {
+        "kind": "generic_instantiation",
+        "regex": "(?<name>\\w+)<(?<typeParams>[\\w.,\\s<>?]+)>",
+        "captures": [
+          { "name": "name", "index": 1 },
+          { "name": "typeParams", "index": 2 }
+        ],
+        "decomposable": true,
+        "traceConfidence": 0.80,
+        "example": "Map<String, List<User>>"
+      },
+      {
+        "kind": "wildcard_extends",
+        "regex": "\\?\\s+extends\\s+(?<bound>[\\w.]+)",
+        "captures": [
+          { "name": "bound", "index": 1 }
+        ],
+        "decomposable": false,
+        "traceConfidence": 0.70,
+        "example": "List<? extends Comparable<T>>"
+      },
+      {
+        "kind": "wildcard_super",
+        "regex": "\\?\\s+super\\s+(?<bound>[\\w.]+)",
+        "captures": [
+          { "name": "bound", "index": 1 }
+        ],
+        "decomposable": false,
+        "traceConfidence": 0.70,
+        "example": "Consumer<? super String>"
+      },
+      {
+        "kind": "kotlin_nullable",
+        "regex": "(?<baseType>[\\w.<>]+)\\?",
+        "captures": [
+          { "name": "baseType", "index": 1 }
+        ],
+        "decomposable": true,
+        "traceConfidence": 0.85,
+        "example": "User?"
+      },
+      {
+        "kind": "kotlin_function_type",
+        "regex": "\\((?<paramTypes>[\\w.,\\s<>?]*)\\)\\s*->\\s*(?<returnType>[\\w.<>?]+)",
+        "captures": [
+          { "name": "paramTypes", "index": 1 },
+          { "name": "returnType", "index": 2 }
+        ],
+        "decomposable": true,
+        "traceConfidence": 0.75,
+        "example": "(String, Int) -> Boolean"
+      },
+      {
+        "kind": "kotlin_star_projection",
+        "regex": "(?<name>\\w+)<\\*>",
+        "captures": [
+          { "name": "name", "index": 1 }
+        ],
+        "decomposable": false,
+        "traceConfidence": 0.50,
+        "example": "List<*>"
+      }
+    ],
+    "confidenceTiers": {
+      "direct_import": 0.95,
+      "re_export_one_hop": 0.80,
+      "re_export_multi_hop": 0.65,
+      "inheritance_direct": 0.90,
+      "inheritance_chain": 0.75,
+      "generic_resolution": 0.50,
+      "inferred_type": 0.35,
+      "dynamic_type": 0.15,
+      "annotation_processor_generated": 0.40,
+      "kotlin_extension_function": 0.60,
+      "companion_object": 0.70,
+      "platform_type": 0.30
+    }
+  },
+
+  "externalDependencies": {
+    "pathIndicators": [".gradle/", ".m2/", "build/", "target/", "lib/"],
+    "packageManifest": "build.gradle.kts",
+    "lockFiles": ["gradle.lockfile", "buildscript-gradle.lockfile"],
+    "typesPackagePattern": null,
+    "typeDeclarationLocations": [
+      {
+        "description": "Gradle cached dependency artifacts",
+        "path": "~/.gradle/caches/modules-2/files-2.1/{group}/{artifact}/{version}",
+        "fallback": null,
+        "entryPointField": "JAR manifest, package-info.java"
+      },
+      {
+        "description": "Maven local repository",
+        "path": "~/.m2/repository/{group/path}/{artifact}/{version}/{artifact}-{version}.jar",
+        "fallback": null,
+        "entryPointField": "POM groupId + artifactId"
+      },
+      {
+        "description": "Gradle build output for project modules",
+        "path": "build/classes/java/main/",
+        "fallback": "build/classes/kotlin/main/",
+        "entryPointField": "Source directory mapping"
+      }
+    ],
+    "detectionRules": [
+      {
+        "signal": "dependency_not_in_build_file",
+        "condition": "Import references a package that is not provided by any declared dependency or the JDK",
+        "errorCodes": ["JAVA_PACKAGE_NOT_EXIST", "KOTLIN_UNRESOLVED_REFERENCE"],
+        "suggestedActions": ["Add the dependency to build.gradle or pom.xml", "Search Maven Central for the package"],
+        "autoFixable": false,
+        "autoFixCommand": null
+      },
+      {
+        "signal": "wrong_dependency_version",
+        "condition": "Package exists but a specific class or method is not found — likely a version mismatch",
+        "errorCodes": ["JAVA_CANNOT_FIND_SYMBOL", "JAVA_METHOD_NOT_FOUND", "KOTLIN_UNRESOLVED_REFERENCE"],
+        "suggestedActions": ["Check the dependency version", "Review the library's changelog for API changes", "Update to the correct version"],
+        "autoFixable": false,
+        "autoFixCommand": null
+      },
+      {
+        "signal": "missing_annotation_processor",
+        "condition": "Generated code (from Lombok, Dagger, MapStruct) is not found",
+        "errorCodes": ["JAVA_CANNOT_FIND_SYMBOL", "KOTLIN_UNRESOLVED_REFERENCE"],
+        "suggestedActions": ["Add annotationProcessor dependency", "For Kotlin, use kapt or ksp instead", "Clean and rebuild"],
+        "autoFixable": false,
+        "autoFixCommand": null
+      },
+      {
+        "signal": "missing_module_dependency",
+        "condition": "Class from a sibling module in a multi-module project is not found",
+        "errorCodes": ["JAVA_PACKAGE_NOT_EXIST", "JAVA_CANNOT_FIND_SYMBOL"],
+        "suggestedActions": ["Add implementation(project(':module-name')) to build.gradle", "Ensure module is in settings.gradle"],
+        "autoFixable": false,
+        "autoFixCommand": null
+      },
+      {
+        "signal": "jdk_api_removed",
+        "condition": "Package starting with javax.* or sun.* not found — removed from JDK 11+",
+        "errorCodes": ["JAVA_PACKAGE_NOT_EXIST"],
+        "suggestedActions": ["Add the Jakarta EE dependency explicitly", "Migrate from javax.* to jakarta.* for Jakarta EE 9+"],
+        "autoFixable": false,
+        "autoFixCommand": null
+      }
+    ],
+    "commonBreakingPatterns": [
+      {
+        "description": "javax to jakarta namespace migration (Jakarta EE 9+)",
+        "errorCodes": ["JAVA_PACKAGE_NOT_EXIST", "JAVA_CANNOT_FIND_SYMBOL"],
+        "resolution": "Replace javax.* imports with jakarta.* equivalents and update dependencies to Jakarta EE 9+ artifacts"
+      },
+      {
+        "description": "Gradle api vs implementation scope — transitive dependency not exposed",
+        "errorCodes": ["JAVA_PACKAGE_NOT_EXIST", "JAVA_CANNOT_FIND_SYMBOL"],
+        "resolution": "Change 'implementation' to 'api' in the module that declares the dependency, or add the dependency directly to the consuming module"
+      },
+      {
+        "description": "Kotlin version mismatch between plugin and stdlib",
+        "errorCodes": ["KOTLIN_UNRESOLVED_REFERENCE", "KOTLIN_TYPE_MISMATCH"],
+        "resolution": "Align kotlin-stdlib version with the Kotlin Gradle plugin version in build.gradle.kts"
+      },
+      {
+        "description": "Annotation processor not running — generated code missing",
+        "errorCodes": ["JAVA_CANNOT_FIND_SYMBOL", "KOTLIN_UNRESOLVED_REFERENCE"],
+        "resolution": "Add annotationProcessor (Java) or kapt/ksp (Kotlin) dependency. Clean and rebuild."
+      },
+      {
+        "description": "Spring Boot auto-configuration class not found after version upgrade",
+        "errorCodes": ["JAVA_CANNOT_FIND_SYMBOL", "JAVA_PACKAGE_NOT_EXIST"],
+        "resolution": "Check Spring Boot migration guide for relocated or renamed auto-configuration classes"
+      }
+    ]
+  },
+
+  "quirks": [
+    {
+      "id": "annotation_processing",
+      "name": "Annotation Processing Code Generation",
+      "description": "Annotation processors (Lombok, Dagger, MapStruct, JPA Metamodel) generate source code during compilation. The generated classes do not exist in the source tree but are referenced by user code. Build tools place generated sources in build/generated/sources/annotationProcessor/.",
+      "affectsTracing": true,
+      "affectsResolution": true,
+      "workaround": "Check build/generated/ directories for generated source files. If a 'cannot find symbol' error references a class with a pattern like *_Generated, *Impl, *Builder, *Mapper, or *_, it is likely annotation-processor generated. Ensure the annotation processor dependency is correctly declared.",
+      "example": "// Lombok generates:\n@Data\npublic class User { private String name; }\n// Generated: getName(), setName(), equals(), hashCode(), toString()\n// These methods exist at compile time but not in source.\n\n// Dagger generates: DaggerAppComponent from @Component interface AppComponent",
+      "relatedErrorCodes": ["JAVA_CANNOT_FIND_SYMBOL", "JAVA_ANNOTATION_PROCESSING_ERROR", "KOTLIN_UNRESOLVED_REFERENCE"]
+    },
+    {
+      "id": "spring_auto_config",
+      "name": "Spring Boot Auto-Configuration",
+      "description": "Spring Boot auto-configuration creates beans at runtime based on classpath scanning and @ConditionalOn* annotations. Dependencies between beans are invisible at compile time. Spring also uses proxy classes generated at runtime.",
+      "affectsTracing": false,
+      "affectsResolution": true,
+      "workaround": "When errors involve @Autowired fields, @Bean methods, or @Component classes, check that the Spring context is configured correctly. Missing beans are runtime errors, not compile errors. However, missing Spring Boot starters can cause compile errors when their auto-configured APIs are referenced.",
+      "example": "// This works only if spring-boot-starter-web is on classpath:\n@RestController\npublic class MyController {\n    @Autowired\n    private RestTemplate template; // auto-configured bean\n}",
+      "relatedErrorCodes": ["JAVA_CANNOT_FIND_SYMBOL", "JAVA_PACKAGE_NOT_EXIST"]
+    },
+    {
+      "id": "kotlin_java_interop",
+      "name": "Kotlin/Java Interop",
+      "description": "Kotlin and Java can call each other, but there are friction points: Kotlin's null safety vs Java's nullable-by-default, companion objects, default parameter values, extension functions, and property accessors. Java sees Kotlin companion members through a Companion static field. Kotlin sees Java types as platform types (T!) with unknown nullability.",
+      "affectsTracing": true,
+      "affectsResolution": true,
+      "workaround": "When tracing between .kt and .java files: (1) Add @JvmStatic, @JvmField, @JvmOverloads annotations for better Java interop. (2) Add @Nullable/@NonNull annotations to Java code for Kotlin null safety. (3) Kotlin extension functions appear as static methods with the receiver as the first parameter in Java.",
+      "example": "// Kotlin:\nclass Config {\n    companion object {\n        @JvmStatic val DEFAULT = Config()\n    }\n}\n\n// Java access without @JvmStatic:\nConfig c = Config.Companion.getDEFAULT();\n// Java access with @JvmStatic:\nConfig c = Config.getDEFAULT();",
+      "relatedErrorCodes": ["KOTLIN_PLATFORM_TYPE_NULLABILITY", "KOTLIN_UNRESOLVED_REFERENCE", "JAVA_CANNOT_FIND_SYMBOL"]
+    },
+    {
+      "id": "multi_module_gradle",
+      "name": "Multi-Module Gradle Projects",
+      "description": "Gradle multi-module projects use settings.gradle to include modules and build.gradle in each module to declare dependencies. The 'api' vs 'implementation' scope controls whether transitive dependencies are visible to consumer modules. This is the most common source of 'cannot find symbol' errors in multi-module projects.",
+      "affectsTracing": true,
+      "affectsResolution": true,
+      "workaround": "Parse settings.gradle(.kts) to find all included modules. For each module's build.gradle(.kts), extract implementation() and api() dependencies. Only api() dependencies are transitively visible. When a class is not found, check if it comes from a transitive implementation() dependency.",
+      "example": "// settings.gradle.kts\ninclude(\":app\", \":core\", \":data\")\n\n// core/build.gradle.kts\ndependencies {\n    api(\"com.example:shared:1.0\") // visible to :app\n    implementation(\"com.example:internal:1.0\") // NOT visible to :app\n}\n\n// app/build.gradle.kts\ndependencies {\n    implementation(project(\":core\"))\n    // Can see shared (api) but NOT internal (implementation)\n}",
+      "relatedErrorCodes": ["JAVA_PACKAGE_NOT_EXIST", "JAVA_CANNOT_FIND_SYMBOL", "GRADLE_API_VS_IMPL"]
+    },
+    {
+      "id": "source_sets",
+      "name": "Source Sets (main, test, integration)",
+      "description": "Gradle source sets separate main code, test code, and other categories. Test source sets can see main classes but not vice versa. Custom source sets (e.g., integrationTest) need explicit dependency configuration.",
+      "affectsTracing": true,
+      "affectsResolution": true,
+      "workaround": "When a class is not found, check which source set the referencing file is in. Test files are in src/test/java and can access src/main/java. Integration test files may need additional source set configuration to access main or test classes.",
+      "example": "// build.gradle.kts\nsourceSets {\n    create(\"integrationTest\") {\n        compileClasspath += sourceSets.main.get().output\n        runtimeClasspath += sourceSets.main.get().output\n    }\n}",
+      "relatedErrorCodes": ["JAVA_PACKAGE_NOT_EXIST", "JAVA_CANNOT_FIND_SYMBOL"]
+    },
+    {
+      "id": "circular_dependency",
+      "name": "Circular Module Dependencies",
+      "description": "Gradle modules cannot have circular dependencies (A depends on B, B depends on A). This is a hard error. Within a single module, circular class dependencies are allowed but can cause initialization issues.",
+      "affectsTracing": true,
+      "affectsResolution": true,
+      "workaround": "If a circular dependency is detected, extract the shared interface or model into a third module that both A and B depend on. Within a module, circular class references are resolved at compile time but may cause problems with annotation processors.",
+      "example": "// ERROR: Circular dependency between modules\n// :module-a depends on :module-b\n// :module-b depends on :module-a\n\n// FIX: Extract shared types to :module-common\n// :module-a depends on :module-common\n// :module-b depends on :module-common",
+      "relatedErrorCodes": ["GRADLE_CONFIGURATION_FAILED"]
+    },
+    {
+      "id": "kotlin_multiplatform",
+      "name": "Kotlin Multiplatform Expect/Actual",
+      "description": "Kotlin Multiplatform uses 'expect' declarations in common code and 'actual' implementations in platform-specific source sets. Missing 'actual' declarations cause compilation errors.",
+      "affectsTracing": true,
+      "affectsResolution": true,
+      "workaround": "For 'expect' without 'actual' errors, find the expect declaration in commonMain and add actual implementations in each platform source set (jvmMain, androidMain, iosMain, etc.).",
+      "example": "// commonMain:\nexpect class Platform() {\n    val name: String\n}\n\n// jvmMain:\nactual class Platform actual constructor() {\n    actual val name: String = \"JVM\"\n}",
+      "relatedErrorCodes": ["KOTLIN_UNRESOLVED_REFERENCE", "KOTLIN_ABSTRACT_MEMBER_NOT_IMPL"]
+    },
+    {
+      "id": "kapt_vs_ksp",
+      "name": "Kapt vs KSP for Kotlin Annotation Processing",
+      "description": "Kotlin has two annotation processing systems: kapt (legacy, wraps Java APT) and KSP (Kotlin Symbol Processing, newer and faster). Some processors only support one. Using the wrong one causes missing generated code.",
+      "affectsTracing": true,
+      "affectsResolution": true,
+      "workaround": "Check whether the annotation processor supports KSP. If so, use ksp() instead of kapt(). If generated code is missing, ensure the correct processor plugin (id 'com.google.devtools.ksp' or id 'org.jetbrains.kotlin.kapt') is applied in build.gradle.kts.",
+      "example": "// build.gradle.kts for KSP:\nplugins {\n    id(\"com.google.devtools.ksp\") version \"1.9.0-1.0.13\"\n}\ndependencies {\n    ksp(\"com.google.dagger:dagger-compiler:2.48\")\n}\n\n// For kapt (legacy):\nplugins {\n    kotlin(\"kapt\")\n}\ndependencies {\n    kapt(\"com.google.dagger:dagger-compiler:2.48\")\n}",
+      "relatedErrorCodes": ["JAVA_CANNOT_FIND_SYMBOL", "KOTLIN_UNRESOLVED_REFERENCE", "JAVA_ANNOTATION_PROCESSING_ERROR"]
+    },
+    {
+      "id": "gradle_build_cache",
+      "name": "Gradle Build Cache Staleness",
+      "description": "Gradle's build cache can become stale after changing dependencies, annotation processor versions, or Kotlin/Java versions. Stale cache causes phantom compilation errors where generated code or compiled classes are outdated.",
+      "affectsTracing": false,
+      "affectsResolution": true,
+      "workaround": "If errors seem inconsistent or appear after dependency changes, run 'gradle clean build --no-build-cache' to force a fresh compilation. For persistent issues, delete the .gradle/ and build/ directories.",
+      "example": "# Clean everything and rebuild\ngradle clean build --no-build-cache\n\n# Nuclear option — delete all caches\nrm -rf .gradle/ build/ */build/",
+      "relatedErrorCodes": ["JAVA_CANNOT_FIND_SYMBOL", "KOTLIN_UNRESOLVED_REFERENCE", "GRADLE_CONFIGURATION_FAILED"]
+    }
+  ],
+
+  "buildTools": [
+    {
+      "name": "gradle",
+      "detectFiles": ["build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts", "gradlew"],
+      "buildCommand": "./gradlew build 2>&1",
+      "watchCommand": "./gradlew build --continuous",
+      "errorStream": "stderr",
+      "supportsJsonOutput": false,
+      "jsonOutputFlag": null,
+      "commonConfigs": ["build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts", "gradle.properties", "gradle/libs.versions.toml"]
+    },
+    {
+      "name": "gradle-compile-only",
+      "detectFiles": ["build.gradle", "build.gradle.kts"],
+      "buildCommand": "./gradlew compileJava compileKotlin 2>&1",
+      "watchCommand": null,
+      "errorStream": "stderr",
+      "supportsJsonOutput": false,
+      "jsonOutputFlag": null,
+      "commonConfigs": ["build.gradle", "build.gradle.kts"]
+    },
+    {
+      "name": "maven",
+      "detectFiles": ["pom.xml", "mvnw"],
+      "buildCommand": "./mvnw compile 2>&1",
+      "watchCommand": null,
+      "errorStream": "stdout",
+      "supportsJsonOutput": false,
+      "jsonOutputFlag": null,
+      "commonConfigs": ["pom.xml", "settings.xml"]
+    },
+    {
+      "name": "javac",
+      "detectFiles": [],
+      "buildCommand": "javac -d out src/**/*.java 2>&1",
+      "watchCommand": null,
+      "errorStream": "stderr",
+      "supportsJsonOutput": false,
+      "jsonOutputFlag": null,
+      "commonConfigs": []
+    },
+    {
+      "name": "kotlinc",
+      "detectFiles": [],
+      "buildCommand": "kotlinc src/**/*.kt -d out 2>&1",
+      "watchCommand": null,
+      "errorStream": "stderr",
+      "supportsJsonOutput": false,
+      "jsonOutputFlag": null,
+      "commonConfigs": []
+    }
+  ]
+}

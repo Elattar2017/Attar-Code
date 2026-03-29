@@ -1,0 +1,2613 @@
+{
+  "metadata": {
+    "language": "Go",
+    "version": "1.0.0",
+    "description": "Error classification, dependency tracing, and fix ordering for Go 1.21+ projects using go build, go vet, golangci-lint, and staticcheck",
+    "toolchains": [
+      {
+        "name": "go-build",
+        "errorPrefix": null,
+        "errorFormat": "(?<file>[^:\\s]+\\.go):(?<line>\\d+):(?<column>\\d+):\\s*(?<message>.+)",
+        "errorFormatCaptures": ["file", "line", "column", "message"],
+        "outputStream": "stderr",
+        "supportsJsonOutput": true,
+        "jsonOutputFlag": "-json"
+      },
+      {
+        "name": "go-build-no-column",
+        "errorPrefix": null,
+        "errorFormat": "(?<file>[^:\\s]+\\.go):(?<line>\\d+):\\s*(?<message>.+)",
+        "errorFormatCaptures": ["file", "line", "message"],
+        "outputStream": "stderr",
+        "supportsJsonOutput": true,
+        "jsonOutputFlag": "-json"
+      },
+      {
+        "name": "go-vet",
+        "errorPrefix": null,
+        "errorFormat": "(?<file>[^:\\s]+\\.go):(?<line>\\d+):(?<column>\\d+):\\s*(?<message>.+)",
+        "errorFormatCaptures": ["file", "line", "column", "message"],
+        "outputStream": "stderr",
+        "supportsJsonOutput": true,
+        "jsonOutputFlag": "-json"
+      },
+      {
+        "name": "golangci-lint",
+        "errorPrefix": null,
+        "errorFormat": "(?<file>[^:\\s]+\\.go):(?<line>\\d+):(?<column>\\d+):\\s*(?<message>.+?)\\s*\\((?<code>[^)]+)\\)",
+        "errorFormatCaptures": ["file", "line", "column", "message", "code"],
+        "outputStream": "stdout",
+        "supportsJsonOutput": true,
+        "jsonOutputFlag": "--out-format json"
+      },
+      {
+        "name": "staticcheck",
+        "errorPrefix": "SA",
+        "errorFormat": "(?<file>[^:\\s]+\\.go):(?<line>\\d+):(?<column>\\d+):\\s*(?<code>(?:SA|S|ST|QF)\\d+)\\s*(?<message>.+)",
+        "errorFormatCaptures": ["file", "line", "column", "code", "message"],
+        "outputStream": "stdout",
+        "supportsJsonOutput": true,
+        "jsonOutputFlag": "-f json"
+      }
+    ],
+    "fileExtensions": [".go"],
+    "generatedBy": "plugin-generator-v1",
+    "generatedFor": "attar-code-smart-fix"
+  },
+
+  "errorCatalog": {
+    "categories": [
+      {
+        "id": "syntax",
+        "name": "Syntax and Parse Errors",
+        "description": "Errors in code structure, missing tokens, unexpected tokens, invalid declarations",
+        "defaultTracingBehavior": "local_only",
+        "errors": [
+          {
+            "code": "GO_SYNTAX_UNEXPECTED",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "syntax error: unexpected (?<token>.+?)(?:,\\s*expecting (?<expected>.+))?",
+            "match": "syntax error: unexpected (?<token>.+?)(?:,\\s*expecting (?<expected>.+))?",
+            "captures": [
+              { "name": "token", "role": "literal_value" },
+              { "name": "expected", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "GO_UNDEFINED", "relationship": "causes_this", "sharedCapture": null, "resolution": "fix_this_first" },
+              { "code": "GO_UNUSED_IMPORT", "relationship": "causes_this", "sharedCapture": null, "resolution": "fix_this_first" }
+            ],
+            "rootCause": "The Go parser encountered an unexpected token '{token}' where it expected '{expected}'. This is typically caused by a typo, missing delimiter, or malformed expression.",
+            "prescription": "1. Look at the line indicated and check for missing or extra brackets, parentheses, commas, or semicolons.\n2. If the parser expected '{expected}', add that token at the indicated position.\n3. Check that all braces, parentheses, and brackets are properly matched.\n4. Verify the statement syntax matches Go's grammar rules.",
+            "codeBlock": "// BEFORE (wrong):\nfunc main() {\n    x := 5 +\n}\n\n// AFTER (correct):\nfunc main() {\n    x := 5 + 3\n}",
+            "conditions": [
+              {
+                "when": "token contains newline",
+                "rootCause": "A newline was inserted where the Go parser expected the expression to continue. Go inserts automatic semicolons at end of lines, which may break multi-line expressions.",
+                "prescription": "Move the operator or continuation token to the end of the previous line, or use a trailing comma in multi-line composite literals.",
+                "codeBlock": "// BEFORE (wrong):\nresult := a\n    + b\n\n// AFTER (correct):\nresult := a +\n    b"
+              },
+              {
+                "when": "expected contains }",
+                "rootCause": "A closing brace is missing. The parser reached an unexpected token '{token}' before finding the matching closing brace.",
+                "prescription": "Add the missing closing brace at the appropriate nesting level. Check that all { have matching }.",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "GO_MISSING_SEMICOLON",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "missing ',' before newline in (?<context>.+)",
+            "match": "missing ',' before newline in (?<context>.+)",
+            "captures": [
+              { "name": "context", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Go requires trailing commas after the last element in multi-line composite literals ({context}). The newline before the closing brace/bracket triggers automatic semicolon insertion, which causes a parse error.",
+            "prescription": "Add a trailing comma after the last element in the multi-line {context}.",
+            "codeBlock": "// BEFORE (wrong):\ns := []string{\n    \"a\",\n    \"b\"\n}\n\n// AFTER (correct):\ns := []string{\n    \"a\",\n    \"b\",\n}",
+            "conditions": []
+          },
+          {
+            "code": "GO_MISSING_FUNC_BODY",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "missing function body",
+            "match": "missing function body",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "A function declaration was found without a body. In Go, all non-external functions must have a body enclosed in braces.",
+            "prescription": "Add a function body with braces. If this is intended to be an external/assembly function, use the appropriate build constraints or cgo directives.",
+            "codeBlock": "// BEFORE (wrong):\nfunc Calculate(x int) int\n\n// AFTER (correct):\nfunc Calculate(x int) int {\n    return x * 2\n}",
+            "conditions": []
+          },
+          {
+            "code": "GO_NON_DECLARATION",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "non-declaration statement outside function body",
+            "match": "non-declaration statement outside function body",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "An executable statement (like a function call, assignment, or control flow) was placed at the package level. In Go, only declarations (var, const, type, func) are allowed outside functions.",
+            "prescription": "Move the statement inside a function body. If this is initialization code, move it to an init() function or main().",
+            "codeBlock": "// BEFORE (wrong):\npackage main\n\nfmt.Println(\"hello\")\n\n// AFTER (correct):\npackage main\n\nfunc init() {\n    fmt.Println(\"hello\")\n}",
+            "conditions": []
+          },
+          {
+            "code": "GO_EXPECTED_DECLARATION",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "expected declaration, found (?<found>.+)",
+            "match": "expected declaration, found (?<found>.+)",
+            "captures": [
+              { "name": "found", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The parser expected a top-level declaration (var, const, type, func, import) but found '{found}' instead. This often happens when a closing brace is misplaced or code is at the wrong indentation level.",
+            "prescription": "Check that all braces are properly matched. Ensure the code at this position is a valid top-level declaration or is inside a function body.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "GO_MISSING_PACKAGE",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "expected 'package', found (?<found>.+)",
+            "match": "expected 'package', found (?<found>.+)",
+            "captures": [
+              { "name": "found", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [],
+            "rootCause": "Every Go source file must begin with a package declaration. The parser found '{found}' instead of the required 'package' keyword.",
+            "prescription": "Add a package declaration as the first statement in the file: package <name>",
+            "codeBlock": "// BEFORE (wrong):\nimport \"fmt\"\n\nfunc main() {}\n\n// AFTER (correct):\npackage main\n\nimport \"fmt\"\n\nfunc main() {}",
+            "conditions": []
+          }
+        ]
+      },
+      {
+        "id": "name_resolution",
+        "name": "Name Resolution and Scope Errors",
+        "description": "Undefined symbols, unused declarations, redeclarations, and scope issues",
+        "defaultTracingBehavior": "check_imports",
+        "errors": [
+          {
+            "code": "GO_UNDEFINED",
+            "category": "name_resolution",
+            "severity": "error",
+            "messagePattern": "undefined: (?<symbolName>[\\w.]+)",
+            "match": "undefined: (?<symbolName>[\\w.]+)",
+            "captures": [
+              { "name": "symbolName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.55,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "symbolName" }, "adjustedProbability": 0.9, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "symbolName" }, "adjustedProbability": 0.1, "traceDepth": "none", "traceTarget": "same_file" },
+              { "check": { "type": "comes_from_package", "target": "symbolName" }, "adjustedProbability": 0.85, "traceDepth": "direct", "traceTarget": "external_package" }
+            ],
+            "fixHint": { "primaryStrategy": "add_import", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [
+              { "code": "GO_UNUSED_IMPORT", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" },
+              { "code": "GO_SYNTAX_UNEXPECTED", "relationship": "caused_by_this", "sharedCapture": null, "resolution": "fix_other_first" }
+            ],
+            "rootCause": "The symbol '{symbolName}' is referenced but not defined in the current scope. This can mean: (1) a missing import statement, (2) a typo in the symbol name, (3) the symbol was deleted or renamed in another file, or (4) the symbol is unexported (lowercase) in another package.",
+            "prescription": "1. Check if '{symbolName}' requires an import — add the appropriate import statement.\n2. If '{symbolName}' contains a dot (e.g., pkg.Func), verify the package alias matches the import.\n3. Check for typos in the symbol name.\n4. If the symbol is in another package, ensure it is exported (starts with uppercase).\n5. If recently renamed, update all references.",
+            "codeBlock": "// BEFORE (wrong):\npackage main\n\nfunc main() {\n    fmt.Println(\"hello\")\n}\n\n// AFTER (correct):\npackage main\n\nimport \"fmt\"\n\nfunc main() {\n    fmt.Println(\"hello\")\n}",
+            "conditions": [
+              {
+                "when": "symbolName contains .",
+                "rootCause": "The qualified name '{symbolName}' references a symbol from a package. The package may not be imported, or the symbol may not exist in that package.",
+                "prescription": "1. Verify the package is imported.\n2. Check that the symbol after the dot is exported (capitalized) in the target package.\n3. Verify the import path is correct.",
+                "codeBlock": null
+              },
+              {
+                "when": "symbolName startsWith err",
+                "rootCause": "The variable '{symbolName}' (likely an error variable) is referenced but not defined. This commonly happens when an error return value was not captured.",
+                "prescription": "Capture the error return value from the function call: result, {symbolName} := someFunc()",
+                "codeBlock": "// BEFORE (wrong):\nresult := someFunc()\nif err != nil { return err }\n\n// AFTER (correct):\nresult, err := someFunc()\nif err != nil { return err }"
+              }
+            ]
+          },
+          {
+            "code": "GO_UNUSED_IMPORT",
+            "category": "name_resolution",
+            "severity": "error",
+            "messagePattern": "\"(?<packagePath>[^\"]+)\" imported and not used",
+            "match": "\"(?<packagePath>[^\"]+)\" imported and not used",
+            "captures": [
+              { "name": "packagePath", "role": "package_name" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "remove_import", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [
+              { "code": "GO_UNDEFINED", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+            "rootCause": "The package '{packagePath}' is imported but none of its exported symbols are used in this file. Go does not allow unused imports.",
+            "prescription": "1. Remove the import if it is truly unused.\n2. If you intend to use the package for side effects only (e.g., database drivers), use a blank import: import _ \"{packagePath}\"\n3. If you removed code that used this package, also remove the import.\n4. Use goimports or your IDE's organize imports feature.",
+            "codeBlock": "// BEFORE (wrong):\nimport (\n    \"fmt\"\n    \"os\"  // not used\n)\n\nfunc main() {\n    fmt.Println(\"hello\")\n}\n\n// AFTER (correct):\nimport \"fmt\"\n\nfunc main() {\n    fmt.Println(\"hello\")\n}",
+            "conditions": [
+              {
+                "when": "packagePath contains database",
+                "rootCause": "The database driver package '{packagePath}' is imported but not directly used. Database drivers in Go are typically imported for their side effects (registering the driver via init()).",
+                "prescription": "Use a blank import for the database driver: import _ \"{packagePath}\"",
+                "codeBlock": "import (\n    \"database/sql\"\n    _ \"github.com/lib/pq\"  // PostgreSQL driver\n)"
+              }
+            ]
+          },
+          {
+            "code": "GO_UNUSED_IMPORT_AS",
+            "category": "name_resolution",
+            "severity": "error",
+            "messagePattern": "\"(?<packagePath>[^\"]+)\" imported as (?<alias>\\w+) and not used",
+            "match": "\"(?<packagePath>[^\"]+)\" imported as (?<alias>\\w+) and not used",
+            "captures": [
+              { "name": "packagePath", "role": "package_name" },
+              { "name": "alias", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "remove_import", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [],
+            "rootCause": "The package '{packagePath}' imported as '{alias}' is not used in this file. Go does not allow unused imports, even aliased ones.",
+            "prescription": "Remove the unused aliased import, or use the alias '{alias}' to reference symbols from the package.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "GO_UNUSED_VAR",
+            "category": "name_resolution",
+            "severity": "error",
+            "messagePattern": "(?<varName>[\\w]+) declared (?:and|but) not used",
+            "match": "(?<varName>[\\w]+) declared (?:and|but) not used",
+            "captures": [
+              { "name": "varName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "rename_symbol", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The variable '{varName}' is declared but never read. Go does not allow unused local variables (though unused function parameters and package-level variables are allowed).",
+            "prescription": "1. Use the variable '{varName}' in subsequent code.\n2. If the value is intentionally discarded, use the blank identifier: _ = expr\n3. If this is a return value you don't need, use _ in the assignment: _, {varName}2 := twoReturnFunc()\n4. Remove the declaration entirely if unneeded.",
+            "codeBlock": "// BEFORE (wrong):\nfunc process() error {\n    result, err := doWork()\n    return err\n}\n\n// AFTER (correct):\nfunc process() error {\n    _, err := doWork()\n    return err\n}",
+            "conditions": [
+              {
+                "when": "varName equals err",
+                "rootCause": "The error variable 'err' is declared but not checked. This often indicates a missing error handling block.",
+                "prescription": "Add error handling: if err != nil { return err } — or use _ if you intentionally want to ignore the error (not recommended).",
+                "codeBlock": "// BEFORE (wrong):\nerr := doSomething()\nfmt.Println(\"done\")\n\n// AFTER (correct):\nif err := doSomething(); err != nil {\n    return fmt.Errorf(\"failed: %w\", err)\n}\nfmt.Println(\"done\")"
+              }
+            ]
+          },
+          {
+            "code": "GO_REDECLARED",
+            "category": "name_resolution",
+            "severity": "error",
+            "messagePattern": "(?<symbolName>[\\w]+) redeclared in this block",
+            "match": "(?<symbolName>[\\w]+) redeclared in this block",
+            "captures": [
+              { "name": "symbolName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.2,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "exists_in_file", "target": "symbolName" }, "adjustedProbability": 0.1, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": { "primaryStrategy": "rename_symbol", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "GO_MULTIPLE_DECL", "relationship": "same_root_cause", "sharedCapture": "symbolName", "resolution": "fix_either" }
+            ],
+            "rootCause": "The name '{symbolName}' is declared more than once in the same block scope. In Go, each name can only be declared once in a given scope (though short variable declarations := can shadow outer scopes).",
+            "prescription": "1. Rename one of the declarations to a unique name.\n2. If using :=, switch to = if the variable already exists in the current scope.\n3. If both declarations are in different files in the same package, note that package-level names share a single namespace across all files in the package.",
+            "codeBlock": "// BEFORE (wrong):\nx := 5\nx := 10  // redeclared\n\n// AFTER (correct):\nx := 5\nx = 10  // assignment, not declaration",
+            "conditions": []
+          },
+          {
+            "code": "GO_MULTIPLE_DECL",
+            "category": "name_resolution",
+            "severity": "error",
+            "messagePattern": "(?<symbolName>[\\w]+) already declared at (?<prevFile>[^:]+):(?<prevLine>\\d+)",
+            "match": "(?<symbolName>[\\w]+) already declared at (?<prevFile>[^:]+):(?<prevLine>\\d+)",
+            "captures": [
+              { "name": "symbolName", "role": "symbol_name" },
+              { "name": "prevFile", "role": "file_path" },
+              { "name": "prevLine", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.7,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "exists_in_file", "target": "symbolName" }, "adjustedProbability": 0.0, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": { "primaryStrategy": "rename_symbol", "requiresCrossFileEdit": true, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "GO_REDECLARED", "relationship": "same_root_cause", "sharedCapture": "symbolName", "resolution": "fix_either" }
+            ],
+            "rootCause": "The symbol '{symbolName}' was already declared at {prevFile}:{prevLine}. In Go, all files in the same package share a single top-level namespace, so two files cannot define the same package-level name.",
+            "prescription": "1. Rename one of the declarations to avoid the conflict.\n2. Check if one of the declarations was intended for a different package.\n3. If using build tags, ensure the conflicting files are not both included in the same build.",
+            "codeBlock": null,
+            "conditions": [
+              {
+                "when": "symbolName equals init",
+                "rootCause": "Multiple init() functions are allowed in Go — each file can have one or more. If this error appears for init, it is likely a different symbol named 'init' being redeclared as a variable or constant, not the init function.",
+                "prescription": "The init() function is special in Go and multiple init() functions are allowed per file and per package. If this is a variable named 'init', rename it to avoid conflicting with the special function name.",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "GO_NOT_EXPORTED",
+            "category": "name_resolution",
+            "severity": "error",
+            "messagePattern": "cannot refer to unexported name (?<packageName>[\\w]+)\\.(?<symbolName>[\\w]+)",
+            "match": "cannot refer to unexported name (?<packageName>[\\w]+)\\.(?<symbolName>[\\w]+)",
+            "captures": [
+              { "name": "packageName", "role": "package_name" },
+              { "name": "symbolName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.9,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "packageName" }, "adjustedProbability": 0.95, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "fix_access_modifier", "requiresCrossFileEdit": true, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The symbol '{symbolName}' in package '{packageName}' is unexported (starts with a lowercase letter). In Go, only identifiers starting with an uppercase letter are accessible from other packages.",
+            "prescription": "1. If you own the package '{packageName}', rename '{symbolName}' to start with an uppercase letter to export it.\n2. If you don't own the package, use an exported alternative if one exists.\n3. Consider if you should be accessing this internal implementation detail at all.",
+            "codeBlock": "// In package {packageName}:\n// BEFORE (unexported):\nfunc {symbolName}() {}\n\n// AFTER (exported):\nfunc {symbolName}() {}  // Capitalize first letter",
+            "conditions": []
+          },
+          {
+            "code": "GO_UNEXPORTED_FIELD",
+            "category": "name_resolution",
+            "severity": "error",
+            "messagePattern": "(?<typeName>[\\w.]+) (?:value|literal) .*has unexported field[s]?",
+            "match": "(?:cannot use .+ as .+ value|.+ literal) .* has unexported field",
+            "captures": [
+              { "name": "typeName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.85,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "Attempting to use a struct literal or copy a struct that contains unexported (lowercase) fields from another package. Go prevents direct access to unexported fields from outside the defining package.",
+            "prescription": "1. Use constructor functions or exported setter methods provided by the package.\n2. If comparing structs, use a custom comparison function instead of ==.\n3. If copying, implement a Clone() method in the defining package.",
+            "codeBlock": "// BEFORE (wrong):\nimport \"time\"\nt1 := time.Time{}\nt2 := t1  // may fail if struct has unexported fields\n\n// AFTER (correct):\nimport \"time\"\nt1 := time.Now()  // use constructor\nt2 := t1          // copy is ok for time.Time",
+            "conditions": []
+          },
+          {
+            "code": "GO_NO_NEW_VARS",
+            "category": "name_resolution",
+            "severity": "error",
+            "messagePattern": "no new variables on left side of :=",
+            "match": "no new variables on left side of :=",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The short variable declaration ':=' requires at least one new variable on the left side. All variables on the left already exist in the current scope.",
+            "prescription": "Use regular assignment '=' instead of ':=' when all variables already exist, or introduce a new variable name on the left side.",
+            "codeBlock": "// BEFORE (wrong):\nx := 5\nx := 10  // no new variables\n\n// AFTER (correct):\nx := 5\nx = 10  // regular assignment",
+            "conditions": []
+          },
+          {
+            "code": "GO_UNDERSCORE_USED",
+            "category": "name_resolution",
+            "severity": "error",
+            "messagePattern": "cannot use _ as value",
+            "match": "cannot use _ as value",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "rename_symbol", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The blank identifier '_' can only be used to discard values. It cannot be read or used as a value in expressions.",
+            "prescription": "Replace '_' with a named variable if you need to use the value.",
+            "codeBlock": "// BEFORE (wrong):\n_, err := doWork()\nfmt.Println(_)  // cannot use _ as value\n\n// AFTER (correct):\nresult, err := doWork()\nfmt.Println(result)",
+            "conditions": []
+          }
+        ]
+      },
+      {
+        "id": "type_errors",
+        "name": "Type System Errors",
+        "description": "Type mismatches, invalid conversions, interface satisfaction, and generic constraint errors",
+        "defaultTracingBehavior": "check_definitions",
+        "errors": [
+          {
+            "code": "GO_TYPE_MISMATCH",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "cannot use (?<expr>.+?) \\((?:untyped )?(?:(?<valueKind>\\w+) )?(?:constant (?<constVal>[^,)]+)|(?:variable of )?type (?<actualType>[^)]+))\\) as (?:type )?(?<expectedType>[\\w.*[\\]]+) in (?<context>.+)",
+            "match": "cannot use .+ \\(.+\\) as (?:type )?.+ in .+",
+            "captures": [
+              { "name": "expr", "role": "symbol_name" },
+              { "name": "actualType", "role": "actual_type" },
+              { "name": "expectedType", "role": "expected_type" },
+              { "name": "context", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "actualType" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_imported", "target": "expectedType" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "actualType" }, "adjustedProbability": 0.2, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": { "primaryStrategy": "cast_type", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "GO_CANNOT_CONVERT", "relationship": "same_root_cause", "sharedCapture": "actualType", "resolution": "fix_either" },
+              { "code": "GO_INTERFACE_NOT_IMPL", "relationship": "sometimes_together", "sharedCapture": "actualType", "resolution": "fix_either" }
+            ],
+            "rootCause": "Cannot use '{expr}' of type '{actualType}' where type '{expectedType}' is expected in {context}. The types are not assignment-compatible in Go's type system.",
+            "prescription": "1. If the types are convertible, use an explicit type conversion: {expectedType}({expr})\n2. If '{actualType}' should satisfy an interface '{expectedType}', check that all required methods are implemented.\n3. If the types should match, update the declaration of '{expr}' or change the expected type.\n4. Check if you're passing a pointer where a value is expected (or vice versa).",
+            "codeBlock": "// BEFORE (wrong):\nvar x int32 = 5\nvar y int64 = x  // cannot use x (type int32) as type int64\n\n// AFTER (correct):\nvar x int32 = 5\nvar y int64 = int64(x)",
+            "conditions": [
+              {
+                "when": "context contains argument",
+                "rootCause": "The function argument '{expr}' has type '{actualType}' but the function parameter expects '{expectedType}'. The argument types don't match the function signature.",
+                "prescription": "1. Convert the argument: funcCall({expectedType}({expr}))\n2. Or change the function parameter type to accept '{actualType}'.\n3. Check if you need to pass a pointer (&{expr}) or dereference (*{expr}).",
+                "codeBlock": null
+              },
+              {
+                "when": "context contains return",
+                "rootCause": "The return value '{expr}' has type '{actualType}' but the function returns '{expectedType}'. The return type doesn't match the function signature.",
+                "prescription": "1. Convert the return value: return {expectedType}({expr})\n2. Or update the function return type to '{actualType}'.",
+                "codeBlock": null
+              },
+              {
+                "when": "context contains assignment",
+                "rootCause": "The right side '{expr}' has type '{actualType}' but is being assigned to a variable of type '{expectedType}'.",
+                "prescription": "1. Use explicit conversion: variable = {expectedType}({expr})\n2. Or change the variable's type declaration.\n3. If using :=, the variable type is inferred — check the expression on the right side.",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "GO_CANNOT_CONVERT",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "cannot convert (?<expr>.+?) \\((?:untyped )?(?:(?:variable of )?type )?(?<fromType>[^)]+)\\) to (?:type )?(?<toType>.+)",
+            "match": "cannot convert .+ \\(.+\\) to (?:type )?.+",
+            "captures": [
+              { "name": "expr", "role": "symbol_name" },
+              { "name": "fromType", "role": "actual_type" },
+              { "name": "toType", "role": "expected_type" }
+            ],
+            "baseCrossFileProbability": 0.4,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "fromType" }, "adjustedProbability": 0.7, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_imported", "target": "toType" }, "adjustedProbability": 0.7, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "cast_type", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "GO_TYPE_MISMATCH", "relationship": "same_root_cause", "sharedCapture": "fromType", "resolution": "fix_either" }
+            ],
+            "rootCause": "The expression '{expr}' of type '{fromType}' cannot be converted to type '{toType}'. Go only allows conversions between compatible types (e.g., numeric types, string/[]byte, types with identical underlying types).",
+            "prescription": "1. Check if the conversion is valid in Go. Numeric types can convert between each other. string <-> []byte and string <-> []rune are valid.\n2. For struct types, ensure they have identical underlying field types.\n3. If converting interface to concrete type, use a type assertion: val.(ConcreteType)\n4. For incompatible types, restructure code to avoid the conversion.",
+            "codeBlock": "// BEFORE (wrong):\nvar s string = \"hello\"\nvar n int = int(s)  // cannot convert string to int\n\n// AFTER (correct):\nimport \"strconv\"\nvar s string = \"42\"\nn, err := strconv.Atoi(s)",
+            "conditions": [
+              {
+                "when": "fromType equals string",
+                "rootCause": "Cannot directly convert a string to '{toType}'. String conversions in Go are limited to []byte, []rune, and numeric-to-string (which produces a Unicode character, not a number string).",
+                "prescription": "Use strconv package for string-to-number conversions: strconv.Atoi() for int, strconv.ParseFloat() for float64, strconv.ParseBool() for bool.",
+                "codeBlock": "import \"strconv\"\nn, err := strconv.Atoi(myString)\nf, err := strconv.ParseFloat(myString, 64)\nb, err := strconv.ParseBool(myString)"
+              }
+            ]
+          },
+          {
+            "code": "GO_INTERFACE_NOT_IMPL",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "(?:cannot use .+ as .+ value in .+: )?(?<actualType>[\\w.*]+) does not implement (?<interfaceName>[\\w.]+)(?: \\(missing (?:method )?(?<missingMethod>[\\w]+)\\))?",
+            "match": "does not implement (?<interfaceName>[\\w.]+)",
+            "captures": [
+              { "name": "actualType", "role": "actual_type" },
+              { "name": "interfaceName", "role": "expected_type" },
+              { "name": "missingMethod", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.75,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "interfaceName" }, "adjustedProbability": 0.9, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "actualType" }, "adjustedProbability": 0.3, "traceDepth": "none", "traceTarget": "same_file" },
+              { "check": { "type": "is_imported", "target": "actualType" }, "adjustedProbability": 0.85, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "implement_interface", "requiresCrossFileEdit": false, "typicalScope": "type_definition" },
+            "coOccurrence": [
+              { "code": "GO_MISSING_METHOD", "relationship": "same_root_cause", "sharedCapture": "missingMethod", "resolution": "fix_this_first" },
+              { "code": "GO_TYPE_MISMATCH", "relationship": "sometimes_together", "sharedCapture": "actualType", "resolution": "fix_this_first" }
+            ],
+            "rootCause": "Type '{actualType}' does not satisfy interface '{interfaceName}' because it is missing the method '{missingMethod}'. Go uses implicit interface satisfaction — a type must have all methods of an interface to implement it.",
+            "prescription": "1. Add the missing method '{missingMethod}' to type '{actualType}' with the exact signature required by '{interfaceName}'.\n2. Check if the method exists but with wrong receiver type (pointer vs value receiver).\n3. If using a pointer receiver, ensure you pass a pointer (*{actualType}) not a value.\n4. Verify the method signature matches exactly (parameter types, return types).",
+            "codeBlock": "// Interface:\ntype {interfaceName} interface {\n    {missingMethod}() error\n}\n\n// BEFORE (wrong):\ntype {actualType} struct{}\n// missing {missingMethod} method\n\n// AFTER (correct):\ntype {actualType} struct{}\n\nfunc (t *{actualType}) {missingMethod}() error {\n    return nil\n}",
+            "conditions": [
+              {
+                "when": "interfaceName equals error",
+                "rootCause": "Type '{actualType}' does not implement the built-in 'error' interface. The error interface requires a single method: Error() string.",
+                "prescription": "Add an Error() string method to type '{actualType}'.",
+                "codeBlock": "type {actualType} struct {\n    Message string\n}\n\nfunc (e *{actualType}) Error() string {\n    return e.Message\n}"
+              },
+              {
+                "when": "interfaceName contains Stringer",
+                "rootCause": "Type '{actualType}' does not implement fmt.Stringer. The Stringer interface requires a String() string method.",
+                "prescription": "Add a String() string method to type '{actualType}'.",
+                "codeBlock": "func (t {actualType}) String() string {\n    return fmt.Sprintf(\"%+v\", t)\n}"
+              }
+            ]
+          },
+          {
+            "code": "GO_MISSING_METHOD",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "(?<typeName>[\\w.*]+)\\.(?<methodName>\\w+) undefined \\(type (?<typeDesc>[^)]+) has no field or method (?<methodName2>\\w+)\\)",
+            "match": "\\.(?<methodName>\\w+) undefined \\(type .+ has no field or method",
+            "captures": [
+              { "name": "typeName", "role": "type_name" },
+              { "name": "methodName", "role": "symbol_name" },
+              { "name": "typeDesc", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.65,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "typeName" }, "adjustedProbability": 0.85, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "typeName" }, "adjustedProbability": 0.2, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": { "primaryStrategy": "add_property", "requiresCrossFileEdit": true, "typicalScope": "type_definition" },
+            "coOccurrence": [
+              { "code": "GO_INTERFACE_NOT_IMPL", "relationship": "sometimes_together", "sharedCapture": "methodName", "resolution": "fix_this_first" }
+            ],
+            "rootCause": "Type '{typeDesc}' has no field or method named '{methodName}'. The method may not exist, may have a different receiver type, or may be unexported (lowercase).",
+            "prescription": "1. Check for typos in the method name '{methodName}'.\n2. If the method exists, check if it uses a pointer receiver (*T) — you may need to use a pointer.\n3. If the method is in another package, verify it starts with an uppercase letter (exported).\n4. If you need to add this method, define it with the correct receiver type.",
+            "codeBlock": "// BEFORE (wrong):\ntype MyStruct struct{}\ns := MyStruct{}\ns.DoWork()  // undefined\n\n// AFTER (correct):\ntype MyStruct struct{}\n\nfunc (s *MyStruct) DoWork() {\n    // implementation\n}\n\ns := &MyStruct{}\ns.DoWork()",
+            "conditions": []
+          },
+          {
+            "code": "GO_MISSING_RETURN",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "missing return at end of function",
+            "match": "missing return at end of function",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "add_missing_return", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "A function with a declared return type does not have a return statement on all code paths. Go requires that all branches of a function with return values end with a return statement.",
+            "prescription": "1. Add a return statement at the end of the function with appropriate zero values.\n2. Ensure all branches (if/else, switch) have return statements.\n3. If using a switch, add a default case with a return.",
+            "codeBlock": "// BEFORE (wrong):\nfunc getValue(x int) string {\n    if x > 0 {\n        return \"positive\"\n    }\n    // missing return for x <= 0\n}\n\n// AFTER (correct):\nfunc getValue(x int) string {\n    if x > 0 {\n        return \"positive\"\n    }\n    return \"non-positive\"\n}",
+            "conditions": []
+          },
+          {
+            "code": "GO_TOO_MANY_ARGS",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "too many arguments in call to (?<funcName>[\\w.]+)",
+            "match": "too many arguments in call to (?<funcName>[\\w.]+)",
+            "captures": [
+              { "name": "funcName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "funcName" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "funcName" }, "adjustedProbability": 0.1, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": { "primaryStrategy": "change_signature", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "GO_TOO_FEW_ARGS", "relationship": "same_root_cause", "sharedCapture": "funcName", "resolution": "fix_either" }
+            ],
+            "rootCause": "The function '{funcName}' was called with more arguments than it accepts. The function signature has fewer parameters than the number of arguments provided.",
+            "prescription": "1. Check the function signature of '{funcName}' and remove the extra arguments.\n2. If the function was recently changed, update this call site.\n3. If you need to pass more data, consider updating the function signature or using a struct/options pattern.",
+            "codeBlock": "// BEFORE (wrong):\nfunc greet(name string) string {\n    return \"Hello, \" + name\n}\ngreet(\"Alice\", \"Bob\")  // too many arguments\n\n// AFTER (correct):\ngreet(\"Alice\")",
+            "conditions": []
+          },
+          {
+            "code": "GO_TOO_FEW_ARGS",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "(?:not enough|too few) arguments in call to (?<funcName>[\\w.]+)",
+            "match": "(?:not enough|too few) arguments in call to (?<funcName>[\\w.]+)",
+            "captures": [
+              { "name": "funcName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "funcName" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "funcName" }, "adjustedProbability": 0.1, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": { "primaryStrategy": "change_signature", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "GO_TOO_MANY_ARGS", "relationship": "same_root_cause", "sharedCapture": "funcName", "resolution": "fix_either" }
+            ],
+            "rootCause": "The function '{funcName}' was called with fewer arguments than required. The function signature expects more parameters than were provided.",
+            "prescription": "1. Check the function signature of '{funcName}' and add the missing arguments.\n2. If the function was recently changed, update this call site.\n3. Check if you forgot to pass context.Context or error parameters.",
+            "codeBlock": "// BEFORE (wrong):\nfunc add(a, b int) int { return a + b }\nadd(5)  // not enough arguments\n\n// AFTER (correct):\nadd(5, 3)",
+            "conditions": []
+          },
+          {
+            "code": "GO_INVALID_OPERATION",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "invalid operation: (?<operation>.+?) \\((?<reason>.+)\\)",
+            "match": "invalid operation: .+ \\(.+\\)",
+            "captures": [
+              { "name": "operation", "role": "literal_value" },
+              { "name": "reason", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "operation" }, "adjustedProbability": 0.6, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "cast_type", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The operation '{operation}' is invalid: {reason}. This typically occurs when using operators with incompatible types, indexing non-indexable types, or comparing uncomparable types.",
+            "prescription": "1. Check that both operands have compatible types for the operator.\n2. If comparing values, ensure the type supports comparison (no slices, maps, or functions with ==).\n3. If indexing, ensure the type is a slice, array, map, or string.\n4. For mixed numeric operations, convert to the same type first.",
+            "codeBlock": "// BEFORE (wrong):\nvar x int = 5\nvar y float64 = 3.14\nz := x + y  // mismatched types\n\n// AFTER (correct):\nvar x int = 5\nvar y float64 = 3.14\nz := float64(x) + y",
+            "conditions": [
+              {
+                "when": "reason contains mismatched types",
+                "rootCause": "The operation '{operation}' involves operands of different types. Go does not perform implicit type conversion between numeric types.",
+                "prescription": "Explicitly convert one operand to match the other's type before the operation.",
+                "codeBlock": null
+              },
+              {
+                "when": "reason contains not comparable",
+                "rootCause": "The type used in comparison '{operation}' contains fields that are not comparable (slices, maps, or functions). Go only allows == and != on comparable types.",
+                "prescription": "Use reflect.DeepEqual() for deep comparison, or implement a custom comparison function.",
+                "codeBlock": "import \"reflect\"\nif reflect.DeepEqual(a, b) {\n    // ...\n}"
+              },
+              {
+                "when": "reason contains operator .+ not defined",
+                "rootCause": "The operator used in '{operation}' is not defined for the operand type. For example, using + on structs or < on complex numbers.",
+                "prescription": "Implement the operation manually or use a different approach. Go does not support operator overloading.",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "GO_ASSIGNMENT_MISMATCH",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "(?:assignment mismatch|cannot initialize): (?<leftCount>\\d+) variables? but .+? returns (?<rightCount>\\d+) values?",
+            "match": "(?:assignment mismatch|cannot initialize): \\d+ variables? but .+? returns \\d+ values?",
+            "captures": [
+              { "name": "leftCount", "role": "literal_value" },
+              { "name": "rightCount", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.4,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "leftCount" }, "adjustedProbability": 0.7, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "change_signature", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The left side of the assignment has {leftCount} variable(s) but the right side returns {rightCount} value(s). The number of variables must match the number of return values.",
+            "prescription": "1. Add or remove variables on the left side to match the number of return values ({rightCount}).\n2. Use _ to discard unwanted return values.\n3. If the function signature changed, update all call sites.",
+            "codeBlock": "// BEFORE (wrong):\nresult := os.Open(\"file.txt\")  // returns (file, error)\n\n// AFTER (correct):\nresult, err := os.Open(\"file.txt\")\nif err != nil {\n    log.Fatal(err)\n}",
+            "conditions": []
+          },
+          {
+            "code": "GO_NIL_DEREF",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "(?:invalid memory address or nil pointer dereference|nil pointer dereference)",
+            "match": "(?:invalid memory address or nil pointer dereference|nil pointer dereference)",
+            "captures": [],
+            "baseCrossFileProbability": 0.4,
+            "confidence": "heuristic",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "add_null_check", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "A nil pointer was dereferenced at runtime. This means a variable of pointer type was nil when a method was called on it or a field was accessed.",
+            "prescription": "1. Add a nil check before dereferencing the pointer: if ptr != nil { ... }\n2. Ensure all paths that assign to the pointer variable actually set a non-nil value.\n3. Check function return values for nil before using them.\n4. Initialize pointer variables with a non-nil value at declaration.",
+            "codeBlock": "// BEFORE (wrong):\nvar user *User\nfmt.Println(user.Name)  // nil pointer dereference\n\n// AFTER (correct):\nvar user *User\nif user != nil {\n    fmt.Println(user.Name)\n}",
+            "conditions": []
+          },
+          {
+            "code": "GO_MIXED_POINTER_RECEIVER",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "(?:method has pointer receiver|cannot call pointer method on)",
+            "match": "(?:method has pointer receiver|cannot call pointer method on)",
+            "captures": [],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "cast_type", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "GO_INTERFACE_NOT_IMPL", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_this_first" }
+            ],
+            "rootCause": "A method with a pointer receiver was called on a non-addressable value. Methods with pointer receivers (*T) can only be called on pointer values or addressable variables, not on temporary values or map entries.",
+            "prescription": "1. Use a pointer to the value: (&value).Method() or assign to a variable first.\n2. If the value comes from a map, assign it to a variable: v := myMap[key]; v.Method(); myMap[key] = v\n3. Consider changing the method to use a value receiver if it doesn't modify the struct.",
+            "codeBlock": "// BEFORE (wrong):\ntype Counter struct{ n int }\nfunc (c *Counter) Inc() { c.n++ }\n\nm := map[string]Counter{\"a\": {0}}\nm[\"a\"].Inc()  // cannot call pointer method\n\n// AFTER (correct):\nc := m[\"a\"]\nc.Inc()\nm[\"a\"] = c",
+            "conditions": []
+          },
+          {
+            "code": "GO_GENERIC_CONSTRAINT",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "(?<actualType>[\\w.]+) does not (?:satisfy|implement) (?<constraint>[\\w.~|]+)",
+            "match": "does not (?:satisfy|implement) (?<constraint>[\\w.~|]+)",
+            "captures": [
+              { "name": "actualType", "role": "actual_type" },
+              { "name": "constraint", "role": "expected_type" }
+            ],
+            "baseCrossFileProbability": 0.6,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "constraint" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_generic_param", "target": "constraint" }, "adjustedProbability": 0.7, "traceDepth": "transitive", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "fix_generic_constraint", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Type '{actualType}' does not satisfy the generic type constraint '{constraint}'. The type parameter requires types that match the constraint's type set or implement its methods.",
+            "prescription": "1. Use a type that satisfies the constraint '{constraint}'.\n2. If you own the constraint, widen it to include '{actualType}'.\n3. If the constraint uses ~T (underlying type), ensure '{actualType}' has the correct underlying type.\n4. For method-based constraints, add the missing methods to '{actualType}'.",
+            "codeBlock": "// BEFORE (wrong):\nfunc Sum[T constraints.Integer](vals []T) T { ... }\nSum([]float64{1.1, 2.2})  // float64 does not satisfy Integer\n\n// AFTER (correct):\nfunc Sum[T constraints.Integer | constraints.Float](vals []T) T { ... }\nSum([]float64{1.1, 2.2})",
+            "conditions": []
+          },
+          {
+            "code": "GO_CANNOT_RANGE",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "cannot range over (?<expr>.+?) \\((?:variable of )?type (?<typeName>.+)\\)",
+            "match": "cannot range over .+ \\((?:variable of )?type .+\\)",
+            "captures": [
+              { "name": "expr", "role": "symbol_name" },
+              { "name": "typeName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "cast_type", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The for-range loop cannot iterate over '{expr}' of type '{typeName}'. Go's range clause only works with arrays, slices, strings, maps, channels, and integer types (Go 1.22+).",
+            "prescription": "1. Convert the expression to an iterable type (slice, map, or channel).\n2. If iterating over a custom collection, add a method that returns a slice or use a regular for loop.\n3. In Go 1.22+, range can iterate over integers: for i := range n {}",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "GO_CANNOT_INDEX",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "(?:invalid operation: .+)?cannot index (?<expr>.+?) \\((?:variable of )?type (?<typeName>.+)\\)",
+            "match": "cannot index .+ \\((?:variable of )?type .+\\)",
+            "captures": [
+              { "name": "expr", "role": "symbol_name" },
+              { "name": "typeName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "cast_type", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Cannot use index operation on '{expr}' of type '{typeName}'. Only arrays, slices, strings, and maps support indexing in Go.",
+            "prescription": "1. Verify the variable type — it may need to be a slice or map.\n2. If working with an interface, use a type assertion to the concrete indexable type first.\n3. If working with a struct, access fields with dot notation instead of indexing.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "GO_CANNOT_ASSIGN_NIL",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "cannot use nil as (?<typeName>.+?) value in (?<context>.+)",
+            "match": "cannot use nil as .+ value",
+            "captures": [
+              { "name": "typeName", "role": "type_name" },
+              { "name": "context", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.2,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "update_type_annotation", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Cannot assign nil to a variable of type '{typeName}'. In Go, nil can only be assigned to pointers, interfaces, maps, slices, channels, and function types — not to value types like int, string, struct, bool.",
+            "prescription": "1. Change the variable type to a pointer (*{typeName}) if nil is a valid state.\n2. Use the zero value instead of nil (0 for int, \"\" for string, false for bool, empty struct for struct types).\n3. If using a function return, change the return type to a pointer or use (value, bool) pattern.",
+            "codeBlock": "// BEFORE (wrong):\nvar x int = nil\n\n// AFTER (correct):\nvar x *int = nil\n// or\nvar x int = 0  // zero value",
+            "conditions": []
+          }
+        ]
+      },
+      {
+        "id": "module_resolution",
+        "name": "Module and Package Resolution Errors",
+        "description": "Import path resolution, missing packages, circular imports, and module management errors",
+        "defaultTracingBehavior": "external_check",
+        "errors": [
+          {
+            "code": "GO_PACKAGE_NOT_FOUND",
+            "category": "module_resolution",
+            "severity": "error",
+            "messagePattern": "(?:package (?<packagePath>[\\w./\\-]+) is not in (?:std|GOROOT)|cannot find package \"(?<packagePath2>[^\"]+)\")",
+            "match": "(?:package .+ is not in (?:std|GOROOT)|cannot find package)",
+            "captures": [
+              { "name": "packagePath", "role": "package_name" },
+              { "name": "packagePath2", "role": "package_name" }
+            ],
+            "baseCrossFileProbability": 1.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "install_package", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [
+              { "code": "GO_UNDEFINED", "relationship": "causes_this", "sharedCapture": null, "resolution": "fix_this_first" }
+            ],
+            "rootCause": "The package '{packagePath}' cannot be found. It is not in the standard library and not in the module's dependencies. The package may need to be added to go.mod.",
+            "prescription": "1. Run 'go get {packagePath}' to add the dependency.\n2. Check for typos in the import path.\n3. If it's a local package, verify the import path matches your module path in go.mod.\n4. Run 'go mod tidy' to synchronize dependencies.",
+            "codeBlock": "// Fix:\n// $ go get {packagePath}\n// $ go mod tidy",
+            "conditions": [
+              {
+                "when": "packagePath contains github.com",
+                "rootCause": "The external package '{packagePath}' from GitHub is not in your go.mod dependencies.",
+                "prescription": "Run: go get {packagePath}\nThen run: go mod tidy",
+                "codeBlock": null
+              },
+              {
+                "when": "packagePath contains internal",
+                "rootCause": "Attempting to import a package from another module's 'internal' directory. Go's internal package convention restricts imports to the parent module tree only.",
+                "prescription": "You cannot import internal packages from external modules. Find a public API in the same module or fork the module.",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "GO_CIRCULAR_IMPORT",
+            "category": "module_resolution",
+            "severity": "error",
+            "messagePattern": "import cycle not allowed(?::? (?<cycle>.+))?",
+            "match": "import cycle not allowed",
+            "captures": [
+              { "name": "cycle", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 1.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": true, "typicalScope": "entire_file" },
+            "coOccurrence": [],
+            "rootCause": "A circular import dependency was detected: {cycle}. Go does not allow circular imports between packages. Package A imports B and B imports A (directly or transitively).",
+            "prescription": "1. Extract shared types/interfaces into a separate package that both packages can import.\n2. Use interfaces to break the dependency — define the interface in the consumer package.\n3. Use dependency injection to pass implementations instead of importing them directly.\n4. Merge the two packages if they are tightly coupled.\n5. Move the conflicting declarations to break the cycle.",
+            "codeBlock": "// BEFORE (circular):\n// package a\nimport \"mymod/b\"  // a imports b\n\n// package b\nimport \"mymod/a\"  // b imports a -> cycle!\n\n// AFTER (fixed):\n// package types (new shared package)\ntype Processor interface { Process() }\n\n// package a\nimport \"mymod/types\"\n\n// package b\nimport \"mymod/types\"",
+            "conditions": []
+          },
+          {
+            "code": "GO_MODULE_NOT_FOUND",
+            "category": "module_resolution",
+            "severity": "error",
+            "messagePattern": "(?:no required module provides package (?<packagePath>[^;]+)|module (?<modulePath>[^@]+)(?:@(?<version>[^:]+))?: (?<reason>.+))",
+            "match": "(?:no required module provides package|module .+: .+)",
+            "captures": [
+              { "name": "packagePath", "role": "package_name" },
+              { "name": "modulePath", "role": "package_name" },
+              { "name": "version", "role": "literal_value" },
+              { "name": "reason", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 1.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "install_package", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [
+              { "code": "GO_PACKAGE_NOT_FOUND", "relationship": "same_root_cause", "sharedCapture": "packagePath", "resolution": "fix_either" },
+              { "code": "GO_UNDEFINED", "relationship": "causes_this", "sharedCapture": null, "resolution": "fix_this_first" }
+            ],
+            "rootCause": "No module in go.mod provides the package '{packagePath}'. The dependency may be missing, at the wrong version, or the import path may be incorrect.",
+            "prescription": "1. Run 'go get {packagePath}' to add the module.\n2. Run 'go mod tidy' to clean up and verify dependencies.\n3. Check that go.sum is up to date.\n4. If using a replace directive, verify the local path exists.",
+            "codeBlock": "// Fix:\n// $ go get {packagePath}\n// $ go mod tidy",
+            "conditions": []
+          },
+          {
+            "code": "GO_NO_GO_MOD",
+            "category": "module_resolution",
+            "severity": "error",
+            "messagePattern": "go: (?:cannot find main module|no go.mod file found)",
+            "match": "(?:cannot find main module|no go.mod file found)",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "update_config", "requiresCrossFileEdit": false, "typicalScope": "entire_file" },
+            "coOccurrence": [],
+            "rootCause": "No go.mod file was found in the current directory or any parent directory. Since Go 1.16, a go.mod file is required for all projects outside of GOPATH.",
+            "prescription": "Run 'go mod init <module-path>' to initialize a new module. The module path is typically your repository URL (e.g., github.com/user/project).",
+            "codeBlock": "// Fix:\n// $ go mod init github.com/username/projectname\n// $ go mod tidy",
+            "conditions": []
+          },
+          {
+            "code": "GO_PACKAGE_NAME_MISMATCH",
+            "category": "module_resolution",
+            "severity": "error",
+            "messagePattern": "found packages (?<pkg1>\\w+) \\((?<file1>[^)]+)\\) and (?<pkg2>\\w+) \\((?<file2>[^)]+)\\) in (?<dir>.+)",
+            "match": "found packages \\w+ \\(.+\\) and \\w+ \\(.+\\)",
+            "captures": [
+              { "name": "pkg1", "role": "package_name" },
+              { "name": "file1", "role": "file_path" },
+              { "name": "pkg2", "role": "package_name" },
+              { "name": "file2", "role": "file_path" },
+              { "name": "dir", "role": "file_path" }
+            ],
+            "baseCrossFileProbability": 0.8,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "rename_symbol", "requiresCrossFileEdit": true, "typicalScope": "file_header" },
+            "coOccurrence": [],
+            "rootCause": "Directory '{dir}' contains files with different package names: '{pkg1}' in {file1} and '{pkg2}' in {file2}. In Go, all .go files in the same directory must belong to the same package (except _test.go files which can use packagename_test).",
+            "prescription": "1. Ensure all files in the directory use the same package name.\n2. Move files with different package names to separate directories.\n3. Test files can use 'package {pkg1}_test' for black-box testing.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "GO_IMPORTED_NOT_USED_ALIAS",
+            "category": "module_resolution",
+            "severity": "error",
+            "messagePattern": "\"(?<packagePath>[^\"]+)\" imported and not used as (?<alias>\\w+)",
+            "match": "\"[^\"]+\" imported and not used as \\w+",
+            "captures": [
+              { "name": "packagePath", "role": "package_name" },
+              { "name": "alias", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "remove_import", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [],
+            "rootCause": "The package '{packagePath}' imported with alias '{alias}' is not used. Remove the import or use the alias to reference symbols from the package.",
+            "prescription": "Remove the unused import or reference symbols from it using the alias '{alias}'.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "GO_MODULE_VERSION_MISMATCH",
+            "category": "module_resolution",
+            "severity": "error",
+            "messagePattern": "go: (?<module>[^@]+)@(?<version>[^:]+): (?<reason>.+)",
+            "match": "go: .+@.+: .+",
+            "captures": [
+              { "name": "module", "role": "package_name" },
+              { "name": "version", "role": "literal_value" },
+              { "name": "reason", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 1.0,
+            "confidence": "heuristic",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "update_package", "requiresCrossFileEdit": false, "typicalScope": "entire_file" },
+            "coOccurrence": [],
+            "rootCause": "Module '{module}' at version '{version}' has an issue: {reason}. This can be a checksum mismatch, retracted version, or unavailable module.",
+            "prescription": "1. Run 'go mod tidy' to resolve version conflicts.\n2. Try updating the module: 'go get {module}@latest'\n3. If a checksum mismatch, delete go.sum and run 'go mod tidy'.\n4. If the version is retracted, update to a non-retracted version.",
+            "codeBlock": "// Fix:\n// $ go get {module}@latest\n// $ go mod tidy",
+            "conditions": []
+          }
+        ]
+      },
+      {
+        "id": "control_flow",
+        "name": "Control Flow and Function Errors",
+        "description": "Return value errors, unreachable code, missing cases, defer/go issues",
+        "defaultTracingBehavior": "local_only",
+        "errors": [
+          {
+            "code": "GO_MULTI_VALUE_SINGLE_CONTEXT",
+            "category": "control_flow",
+            "severity": "error",
+            "messagePattern": "multiple-value (?<funcName>[\\w.]+)\\(\\) (?:used in|in) single-value context",
+            "match": "multiple-value .+\\(\\) (?:used in|in) single-value context",
+            "captures": [
+              { "name": "funcName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.4,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "funcName" }, "adjustedProbability": 0.7, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "change_signature", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The function '{funcName}()' returns multiple values but is used in a context that expects a single value. Most Go functions return (result, error) pairs.",
+            "prescription": "1. Assign all return values: result, err := {funcName}()\n2. If you only need one value, discard the others with _: result, _ := {funcName}()\n3. In Go, multi-value returns cannot be used directly in expressions — assign first.",
+            "codeBlock": "// BEFORE (wrong):\nfmt.Println(strconv.Atoi(\"42\"))  // Atoi returns (int, error)\n\n// AFTER (correct):\nn, err := strconv.Atoi(\"42\")\nif err != nil {\n    log.Fatal(err)\n}\nfmt.Println(n)",
+            "conditions": []
+          },
+          {
+            "code": "GO_UNREACHABLE_CODE",
+            "category": "control_flow",
+            "severity": "warning",
+            "messagePattern": "unreachable code",
+            "match": "unreachable code",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "Code follows a return, break, continue, goto, or panic statement and can never be executed.",
+            "prescription": "Remove the unreachable code, or restructure the function so the code is reachable. If the code should execute, move it before the terminating statement.",
+            "codeBlock": "// BEFORE (wrong):\nfunc f() int {\n    return 42\n    fmt.Println(\"never runs\")  // unreachable\n}\n\n// AFTER (correct):\nfunc f() int {\n    fmt.Println(\"runs first\")\n    return 42\n}",
+            "conditions": []
+          },
+          {
+            "code": "GO_FALLTHROUGH_FINAL",
+            "category": "control_flow",
+            "severity": "error",
+            "messagePattern": "cannot fallthrough final case in switch",
+            "match": "cannot fallthrough final case in switch",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "The 'fallthrough' keyword is used in the last case of a switch statement. There is no subsequent case to fall through to.",
+            "prescription": "Remove the 'fallthrough' statement from the last case, or add another case below it.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "GO_GOTO_JUMPS_OVER",
+            "category": "control_flow",
+            "severity": "error",
+            "messagePattern": "goto (?<label>\\w+) jumps over declaration of (?<varName>\\w+)",
+            "match": "goto \\w+ jumps over declaration",
+            "captures": [
+              { "name": "label", "role": "symbol_name" },
+              { "name": "varName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "The goto statement to label '{label}' would skip the declaration of variable '{varName}'. Go does not allow goto statements that jump over variable declarations.",
+            "prescription": "1. Move the variable declaration before the goto statement.\n2. Restructure the code to avoid using goto.\n3. Limit the variable's scope with a block.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "GO_DEFER_IN_LOOP",
+            "category": "control_flow",
+            "severity": "warning",
+            "messagePattern": "Possible resource leak, 'defer' is called in (?:a |the )?'for' loop",
+            "match": "defer.*(?:in|inside).*(?:for|loop)",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "A defer statement inside a loop will not execute until the enclosing function returns, not at the end of each loop iteration. This can cause resource leaks (file handles, connections).",
+            "prescription": "1. Extract the loop body into a separate function so defer runs per iteration.\n2. Use explicit Close() calls instead of defer inside the loop.\n3. Use a closure: func() { defer f.Close(); ... }()",
+            "codeBlock": "// BEFORE (resource leak):\nfor _, name := range files {\n    f, _ := os.Open(name)\n    defer f.Close()  // won't close until function returns\n}\n\n// AFTER (correct):\nfor _, name := range files {\n    func() {\n        f, _ := os.Open(name)\n        defer f.Close()\n        // use f\n    }()\n}",
+            "conditions": []
+          }
+        ]
+      },
+      {
+        "id": "concurrency",
+        "name": "Concurrency Errors",
+        "description": "Goroutine, channel, mutex, and race condition errors",
+        "defaultTracingBehavior": "check_imports",
+        "errors": [
+          {
+            "code": "GO_SEND_TO_CLOSED",
+            "category": "concurrency",
+            "severity": "error",
+            "messagePattern": "send on closed channel",
+            "match": "send on closed channel",
+            "captures": [],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "heuristic",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "A goroutine attempted to send a value on a channel that has already been closed. Sending on a closed channel causes a runtime panic.",
+            "prescription": "1. Only close channels from the sender side, never the receiver.\n2. Use sync.Once to ensure a channel is closed exactly once.\n3. Use a done channel or context.Context to signal goroutines to stop sending before closing.\n4. Check if the channel is closed before sending (use select with default).",
+            "codeBlock": "// BEFORE (panic):\nch := make(chan int)\nclose(ch)\nch <- 42  // panic: send on closed channel\n\n// AFTER (correct):\nch := make(chan int)\ngo func() {\n    ch <- 42\n    close(ch)\n}()",
+            "conditions": []
+          },
+          {
+            "code": "GO_DATA_RACE",
+            "category": "concurrency",
+            "severity": "error",
+            "messagePattern": "DATA RACE|(?:Read|Write) at .+ by goroutine",
+            "match": "DATA RACE|(?:Read|Write) at .+ by goroutine",
+            "captures": [],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "heuristic",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "Multiple goroutines access the same variable concurrently and at least one access is a write. This is a data race detected by Go's race detector (-race flag).",
+            "prescription": "1. Use sync.Mutex or sync.RWMutex to protect shared data.\n2. Use channels to communicate data between goroutines instead of shared memory.\n3. Use sync/atomic for simple counter operations.\n4. Use sync.Map for concurrent map access.",
+            "codeBlock": "// BEFORE (race):\nvar count int\nfor i := 0; i < 10; i++ {\n    go func() { count++ }()\n}\n\n// AFTER (correct):\nvar count int64\nfor i := 0; i < 10; i++ {\n    go func() { atomic.AddInt64(&count, 1) }()\n}",
+            "conditions": []
+          },
+          {
+            "code": "GO_DEADLOCK",
+            "category": "concurrency",
+            "severity": "error",
+            "messagePattern": "(?:fatal error: )?all goroutines are asleep - deadlock",
+            "match": "all goroutines are asleep.*deadlock",
+            "captures": [],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "heuristic",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "All goroutines are blocked waiting for channel operations or mutex locks that will never complete. This creates a deadlock where no progress is possible.",
+            "prescription": "1. Ensure channels have a sender and receiver on separate goroutines.\n2. Use buffered channels if the sender and receiver are in the same goroutine.\n3. Check for double-locking mutexes.\n4. Use select with timeout to avoid indefinite blocking.\n5. Verify that goroutines are started before blocking on channels.",
+            "codeBlock": "// BEFORE (deadlock):\nch := make(chan int)\nch <- 42  // blocks forever, no receiver\nval := <-ch\n\n// AFTER (correct):\nch := make(chan int)\ngo func() { ch <- 42 }()\nval := <-ch",
+            "conditions": []
+          },
+          {
+            "code": "GO_CLOSE_NIL_CHAN",
+            "category": "concurrency",
+            "severity": "error",
+            "messagePattern": "close of nil channel",
+            "match": "close of nil channel",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "add_null_check", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Attempting to close a nil channel causes a runtime panic. The channel variable was declared but never initialized with make().",
+            "prescription": "Initialize the channel with make() before closing it: ch = make(chan Type). Add a nil check before close if the channel might not always be initialized.",
+            "codeBlock": "// BEFORE (panic):\nvar ch chan int\nclose(ch)  // panic\n\n// AFTER (correct):\nch := make(chan int)\nclose(ch)",
+            "conditions": []
+          }
+        ]
+      },
+      {
+        "id": "struct_composite",
+        "name": "Struct and Composite Literal Errors",
+        "description": "Struct initialization, embedding, field access, and composite literal issues",
+        "defaultTracingBehavior": "check_definitions",
+        "errors": [
+          {
+            "code": "GO_UNKNOWN_FIELD",
+            "category": "struct_composite",
+            "severity": "error",
+            "messagePattern": "unknown field (?:')?(?<fieldName>\\w+)(?:')? in struct literal of type (?<typeName>[\\w.]+)",
+            "match": "unknown field .+ in struct literal of type",
+            "captures": [
+              { "name": "fieldName", "role": "property_name" },
+              { "name": "typeName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.7,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "typeName" }, "adjustedProbability": 0.9, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "typeName" }, "adjustedProbability": 0.2, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": { "primaryStrategy": "add_property", "requiresCrossFileEdit": true, "typicalScope": "type_definition" },
+            "coOccurrence": [],
+            "rootCause": "The field '{fieldName}' does not exist on struct type '{typeName}'. The field may have been removed, renamed, or never existed. If the struct is from another package, the field may be unexported (lowercase).",
+            "prescription": "1. Check the struct definition of '{typeName}' for available field names.\n2. Check for typos in '{fieldName}'.\n3. If the struct is from another package, only exported (Capitalized) fields can be set.\n4. If the field was removed, update the struct literal.",
+            "codeBlock": "// BEFORE (wrong):\ntype User struct {\n    Name string\n    Email string\n}\nu := User{Name: \"Alice\", Phone: \"555\"}  // unknown field Phone\n\n// AFTER (correct):\ntype User struct {\n    Name  string\n    Email string\n    Phone string  // add the field\n}\nu := User{Name: \"Alice\", Phone: \"555\"}",
+            "conditions": []
+          },
+          {
+            "code": "GO_MIXTURE_FIELD_VALUE",
+            "category": "struct_composite",
+            "severity": "error",
+            "messagePattern": "mixture of field:value and value elements",
+            "match": "mixture of field:value and value elements",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "A struct literal mixes named (field: value) and positional (value-only) initialization. Go requires that either all fields are named or all fields are positional.",
+            "prescription": "Use either all named fields or all positional fields. Named fields are preferred for readability and maintenance.",
+            "codeBlock": "// BEFORE (wrong):\ntype Point struct { X, Y int }\np := Point{X: 1, 2}  // mixture\n\n// AFTER (correct):\np := Point{X: 1, Y: 2}  // all named\n// or\np := Point{1, 2}  // all positional",
+            "conditions": []
+          },
+          {
+            "code": "GO_TOO_FEW_VALUES",
+            "category": "struct_composite",
+            "severity": "error",
+            "messagePattern": "too few values in (?<typeName>[\\w.]+)\\{\\}",
+            "match": "too few values in .+\\{\\}",
+            "captures": [
+              { "name": "typeName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "typeName" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The positional struct literal for '{typeName}' has fewer values than fields. When using positional initialization, all fields must be provided.",
+            "prescription": "Provide values for all fields or switch to named field syntax (recommended): {typeName}{FieldName: value, ...}",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "GO_TOO_MANY_VALUES",
+            "category": "struct_composite",
+            "severity": "error",
+            "messagePattern": "too many values in (?<typeName>[\\w.]+)\\{\\}",
+            "match": "too many values in .+\\{\\}",
+            "captures": [
+              { "name": "typeName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "typeName" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The positional struct literal for '{typeName}' has more values than fields. A field may have been removed from the struct definition.",
+            "prescription": "Remove the extra values or switch to named field syntax to make the code resilient to struct changes.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "GO_CANNOT_USE_PROMOTED",
+            "category": "struct_composite",
+            "severity": "error",
+            "messagePattern": "cannot use promoted field (?<fieldName>\\w+) in struct literal of type (?<typeName>[\\w.]+)",
+            "match": "cannot use promoted field .+ in struct literal",
+            "captures": [
+              { "name": "fieldName", "role": "property_name" },
+              { "name": "typeName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.6,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The field '{fieldName}' is promoted from an embedded struct in '{typeName}'. While promoted fields can be accessed directly, they cannot be set directly in struct literals of the outer type.",
+            "prescription": "Initialize the embedded struct separately in the composite literal.",
+            "codeBlock": "// BEFORE (wrong):\ntype Base struct { ID int }\ntype User struct { Base; Name string }\nu := User{ID: 1, Name: \"Alice\"}  // cannot use promoted field\n\n// AFTER (correct):\nu := User{Base: Base{ID: 1}, Name: \"Alice\"}",
+            "conditions": []
+          }
+        ]
+      },
+      {
+        "id": "goroutine_errors",
+        "name": "Goroutine and Closure Errors",
+        "description": "Common goroutine closure variable capture and goroutine usage errors",
+        "defaultTracingBehavior": "local_only",
+        "errors": [
+          {
+            "code": "GO_LOOP_VAR_CAPTURE",
+            "category": "goroutine_errors",
+            "severity": "warning",
+            "messagePattern": "loop variable (?<varName>\\w+) captured by func literal",
+            "match": "loop variable \\w+ captured by func literal",
+            "captures": [
+              { "name": "varName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "The loop variable '{varName}' is captured by reference in a closure (func literal). All goroutines or deferred functions will see the final value of '{varName}', not the value at the time of capture. Note: In Go 1.22+, loop variables are per-iteration, fixing this issue.",
+            "prescription": "1. For Go <1.22: Shadow the variable: {varName} := {varName} inside the loop body.\n2. Pass the variable as a function parameter.\n3. Upgrade to Go 1.22+ where loop variables are per-iteration by default.",
+            "codeBlock": "// BEFORE (bug in Go <1.22):\nfor _, v := range items {\n    go func() {\n        fmt.Println(v)  // always prints last item\n    }()\n}\n\n// AFTER (correct for all versions):\nfor _, v := range items {\n    v := v  // shadow the variable\n    go func() {\n        fmt.Println(v)  // correct value\n    }()\n}",
+            "conditions": []
+          },
+          {
+            "code": "GO_GO_DISCARDS_RESULT",
+            "category": "goroutine_errors",
+            "severity": "warning",
+            "messagePattern": "result of .+ is not used|go discards result",
+            "match": "(?:result of .+ is not used|go discards result)",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "A 'go' statement discards the return values of the goroutine function. Goroutines cannot return values directly.",
+            "prescription": "Use channels to collect results from goroutines, or use an errgroup/sync.WaitGroup pattern.",
+            "codeBlock": "// BEFORE (lost result):\ngo computeResult()  // return value lost\n\n// AFTER (correct):\nch := make(chan int)\ngo func() {\n    ch <- computeResult()\n}()\nresult := <-ch",
+            "conditions": []
+          }
+        ]
+      },
+      {
+        "id": "vet_errors",
+        "name": "Go Vet and Analysis Errors",
+        "description": "Static analysis issues detected by go vet and related tools",
+        "defaultTracingBehavior": "local_only",
+        "errors": [
+          {
+            "code": "GO_VET_PRINTF_FORMAT",
+            "category": "vet_errors",
+            "severity": "error",
+            "messagePattern": "(?<funcName>\\w+(?:printf|errorf|sprintf|fprintf|logf|fatalf))\\s+call has arguments but no formatting directives",
+            "match": "call has arguments but no formatting directives",
+            "captures": [
+              { "name": "funcName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The '{funcName}' function was called with extra arguments but the format string has no %v/%s/%d format directives. The extra arguments will be silently ignored.",
+            "prescription": "1. Add format directives (%v, %s, %d, etc.) to the format string.\n2. Or use the non-formatting variant (Println instead of Printf, Errorf → errors.New).",
+            "codeBlock": "// BEFORE (wrong):\nfmt.Printf(\"value is\", x)  // missing %v\n\n// AFTER (correct):\nfmt.Printf(\"value is %v\", x)\n// or\nfmt.Println(\"value is\", x)",
+            "conditions": []
+          },
+          {
+            "code": "GO_VET_PRINTF_ARG_MISMATCH",
+            "category": "vet_errors",
+            "severity": "error",
+            "messagePattern": "(?<funcName>\\w+(?:printf|errorf|sprintf|fprintf))\\s+format (?<format>%[^\\s]+) has arg .+ of wrong type (?<actualType>.+)",
+            "match": "format %[^\\s]+ has arg .+ of wrong type",
+            "captures": [
+              { "name": "funcName", "role": "symbol_name" },
+              { "name": "format", "role": "literal_value" },
+              { "name": "actualType", "role": "actual_type" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The format directive '{format}' expects a different type than the provided argument of type '{actualType}'. For example, %d expects an integer but received a string.",
+            "prescription": "Change the format directive to match the argument type, or convert the argument. Common directives: %s (string), %d (integer), %f (float), %v (any), %+v (struct with field names), %T (type name).",
+            "codeBlock": "// BEFORE (wrong):\nfmt.Printf(\"name: %d\", \"Alice\")  // %d is for integers\n\n// AFTER (correct):\nfmt.Printf(\"name: %s\", \"Alice\")",
+            "conditions": []
+          },
+          {
+            "code": "GO_VET_COPY_LOCK",
+            "category": "vet_errors",
+            "severity": "warning",
+            "messagePattern": "(?:assignment copies lock value|call of .+ copies lock value|return copies lock value|.+ passes lock by value)",
+            "match": "(?:copies lock value|passes lock by value)",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "A value containing a sync.Mutex, sync.WaitGroup, or similar synchronization primitive is being copied. Copying a lock creates a new independent lock, which defeats the purpose of synchronization and can cause deadlocks.",
+            "prescription": "1. Pass the value by pointer instead of by value.\n2. Use a pointer field for the lock in your struct.\n3. Never copy a struct that contains a Mutex after first use.",
+            "codeBlock": "// BEFORE (wrong):\ntype Counter struct {\n    mu sync.Mutex\n    n  int\n}\nfunc (c Counter) Get() int { ... }  // copies lock\n\n// AFTER (correct):\nfunc (c *Counter) Get() int { ... }  // pointer receiver",
+            "conditions": []
+          },
+          {
+            "code": "GO_VET_STRUCT_TAG",
+            "category": "vet_errors",
+            "severity": "error",
+            "messagePattern": "struct field (?<fieldName>\\w+) has (?:malformed|invalid) tag",
+            "match": "struct field .+ has (?:malformed|invalid) tag",
+            "captures": [
+              { "name": "fieldName", "role": "property_name" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The struct tag on field '{fieldName}' is malformed. Struct tags must use the format `key:\"value\"` with backtick-quoted raw strings.",
+            "prescription": "Fix the struct tag syntax. Use backticks for the entire tag, and the format key:\"value\" for each entry. Multiple tags are space-separated.",
+            "codeBlock": "// BEFORE (wrong):\ntype User struct {\n    Name string `json:name`  // missing quotes\n}\n\n// AFTER (correct):\ntype User struct {\n    Name string `json:\"name\"`\n}",
+            "conditions": []
+          },
+          {
+            "code": "GO_VET_BOOL_COMPARE",
+            "category": "vet_errors",
+            "severity": "warning",
+            "messagePattern": "comparison of (?:function|method) (?<funcName>\\w+) (?:==|!=) nil is always (?<result>\\w+)",
+            "match": "comparison of .+ (?:==|!=) nil is always",
+            "captures": [
+              { "name": "funcName", "role": "symbol_name" },
+              { "name": "result", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Comparing a function/method reference to nil is always {result}. You likely meant to call the function and compare the result.",
+            "prescription": "Add parentheses to call the function: {funcName}() != nil",
+            "codeBlock": "// BEFORE (wrong):\nif err != nil  // correct, err is a variable\nif myFunc == nil  // always true/false, comparing function itself\n\n// AFTER (correct):\nif myFunc() == nil  // call the function first",
+            "conditions": []
+          },
+          {
+            "code": "GO_VET_SHADOW",
+            "category": "vet_errors",
+            "severity": "warning",
+            "messagePattern": "declaration of \"(?<varName>\\w+)\" shadows declaration at (?<location>.+)",
+            "match": "declaration of .+ shadows declaration",
+            "captures": [
+              { "name": "varName", "role": "symbol_name" },
+              { "name": "location", "role": "file_path" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "rename_symbol", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The variable '{varName}' shadows a variable of the same name in an outer scope (declared at {location}). The inner declaration hides the outer one, which may cause unexpected behavior — especially with 'err' variables.",
+            "prescription": "1. Rename the inner variable to avoid shadowing.\n2. If intentional (e.g., err in nested if blocks), use = instead of := to reuse the outer variable.\n3. Be especially careful with 'err' — shadowing err can hide error handling bugs.",
+            "codeBlock": "// BEFORE (shadow bug):\nerr := doFirst()\nif true {\n    result, err := doSecond()  // shadows outer err\n    _ = result\n}\n// outer err is still from doFirst!\n\n// AFTER (correct):\nerr := doFirst()\nif true {\n    var result int\n    result, err = doSecond()  // reuses outer err\n    _ = result\n}",
+            "conditions": []
+          }
+        ]
+      },
+      {
+        "id": "staticcheck",
+        "name": "Staticcheck and Linter Errors",
+        "description": "Errors from staticcheck (SA/S/ST/QF series) and golangci-lint",
+        "defaultTracingBehavior": "local_only",
+        "errors": [
+          {
+            "code": "SA1000",
+            "category": "staticcheck",
+            "severity": "error",
+            "messagePattern": "Invalid regular expression",
+            "match": "SA1000.+Invalid regular expression",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "An invalid regular expression was passed to regexp.Compile, regexp.MustCompile, or a related function. The regex syntax is malformed.",
+            "prescription": "Fix the regular expression syntax. Use a regex tester to validate. Remember that Go uses RE2 syntax which does not support lookahead/lookbehind.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "SA1006",
+            "category": "staticcheck",
+            "severity": "error",
+            "messagePattern": "Printf with dynamic first argument and no further arguments",
+            "match": "SA1006.+Printf with dynamic first argument",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "A Printf-style function was called with a dynamic (non-literal) format string and no arguments. If the string contains % characters, they will be interpreted as format directives.",
+            "prescription": "Use Print/Println instead of Printf for dynamic strings, or use Printf(\"%s\", dynamicString).",
+            "codeBlock": "// BEFORE (wrong):\nfmt.Printf(userInput)  // potential format string vulnerability\n\n// AFTER (correct):\nfmt.Print(userInput)\n// or\nfmt.Printf(\"%s\", userInput)",
+            "conditions": []
+          },
+          {
+            "code": "SA1012",
+            "category": "staticcheck",
+            "severity": "error",
+            "messagePattern": "A nil context\\.Context is being passed",
+            "match": "SA1012.+nil context",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "A nil value is being passed where a context.Context is expected. Even if you don't need cancellation, always pass a valid context.",
+            "prescription": "Use context.Background() for top-level/main operations or context.TODO() as a placeholder.",
+            "codeBlock": "// BEFORE (wrong):\ndb.QueryContext(nil, query)\n\n// AFTER (correct):\ndb.QueryContext(context.Background(), query)",
+            "conditions": []
+          },
+          {
+            "code": "SA1029",
+            "category": "staticcheck",
+            "severity": "warning",
+            "messagePattern": "Inappropriate key in call to context\\.WithValue",
+            "match": "SA1029.+Inappropriate key",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Using a built-in type (string, int) as a context value key can cause key collisions between packages. Context keys should be unexported custom types.",
+            "prescription": "Define an unexported type for context keys to prevent collisions.",
+            "codeBlock": "// BEFORE (wrong):\nctx = context.WithValue(ctx, \"userID\", 42)\n\n// AFTER (correct):\ntype ctxKey struct{}\nvar userIDKey = ctxKey{}\nctx = context.WithValue(ctx, userIDKey, 42)",
+            "conditions": []
+          },
+          {
+            "code": "SA4001",
+            "category": "staticcheck",
+            "severity": "warning",
+            "messagePattern": "&\\*(?<varName>\\w+) will be simplified to (?<varName2>\\w+)",
+            "match": "SA4001.*will be simplified",
+            "captures": [
+              { "name": "varName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The expression &*{varName} (address-of dereference) is redundant and equivalent to just '{varName}'. The pointer-to-dereference cancels out.",
+            "prescription": "Simplify &*{varName} to just {varName}.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "SA4003",
+            "category": "staticcheck",
+            "severity": "warning",
+            "messagePattern": "Comparing unsigned .+ >= 0 is always true",
+            "match": "SA4003.*unsigned.*>= 0.*always true",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Comparing an unsigned integer >= 0 is always true because unsigned integers cannot be negative. This comparison is likely a logic error.",
+            "prescription": "Remove the redundant comparison, or change the variable type to a signed integer if negative values are possible.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "SA4006",
+            "category": "staticcheck",
+            "severity": "warning",
+            "messagePattern": "Value of `(?<varName>\\w+)` is never used",
+            "match": "SA4006.*Value of .+ is never used",
+            "captures": [
+              { "name": "varName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "rename_symbol", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The value assigned to '{varName}' is never read before being overwritten or going out of scope. The assignment is wasteful.",
+            "prescription": "Remove the unnecessary assignment or use the value. If discarding intentionally, use _.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "SA4010",
+            "category": "staticcheck",
+            "severity": "warning",
+            "messagePattern": "The result of append is never used",
+            "match": "SA4010.*result of append is never used",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The result of append() is not assigned back to the slice variable. append() returns a new slice header — it does not modify the original in place.",
+            "prescription": "Assign the result of append back to the slice: slice = append(slice, element)",
+            "codeBlock": "// BEFORE (wrong):\nappend(items, newItem)  // result lost\n\n// AFTER (correct):\nitems = append(items, newItem)",
+            "conditions": []
+          },
+          {
+            "code": "SA5001",
+            "category": "staticcheck",
+            "severity": "warning",
+            "messagePattern": "Deferring Close before checking for a possible error",
+            "match": "SA5001.*Deferring Close before checking",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "A resource is being deferred for closing before checking if the open/create call succeeded. If the call failed, the defer will try to Close a nil/invalid resource.",
+            "prescription": "Check the error before deferring Close.",
+            "codeBlock": "// BEFORE (wrong):\nf, err := os.Open(\"file\")\ndefer f.Close()\nif err != nil { return err }\n\n// AFTER (correct):\nf, err := os.Open(\"file\")\nif err != nil { return err }\ndefer f.Close()",
+            "conditions": []
+          },
+          {
+            "code": "SA9003",
+            "category": "staticcheck",
+            "severity": "warning",
+            "messagePattern": "Empty branch",
+            "match": "SA9003.*Empty branch",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "An if/else/switch branch has an empty body. This is likely either unfinished code or a logic error.",
+            "prescription": "Add code to the empty branch, invert the condition and remove the empty branch, or add a comment explaining why it's intentionally empty.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "S1000",
+            "category": "staticcheck",
+            "severity": "warning",
+            "messagePattern": "Use plain channel send or receive instead of single-case select",
+            "match": "S1000.*single-case select",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "A select statement with only one case can be simplified to a plain channel send or receive.",
+            "prescription": "Replace the select { case ... } with the plain channel operation.",
+            "codeBlock": "// BEFORE:\nselect {\ncase v := <-ch:\n    fmt.Println(v)\n}\n\n// AFTER:\nv := <-ch\nfmt.Println(v)",
+            "conditions": []
+          },
+          {
+            "code": "S1001",
+            "category": "staticcheck",
+            "severity": "warning",
+            "messagePattern": "Replace for loop with call to copy",
+            "match": "S1001.*Replace for loop.*copy",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "A for loop that copies elements one by one can be replaced with the built-in copy() function, which is more idiomatic and potentially faster.",
+            "prescription": "Replace the element-by-element copy loop with copy(dst, src).",
+            "codeBlock": "// BEFORE:\nfor i := range src {\n    dst[i] = src[i]\n}\n\n// AFTER:\ncopy(dst, src)",
+            "conditions": []
+          },
+          {
+            "code": "S1023",
+            "category": "staticcheck",
+            "severity": "warning",
+            "messagePattern": "Omit redundant control flow",
+            "match": "S1023.*Omit redundant control flow",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "A return/break/continue statement at the end of a function/loop body is redundant because the flow would reach the same point naturally.",
+            "prescription": "Remove the redundant return/break/continue statement.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "S1025",
+            "category": "staticcheck",
+            "severity": "warning",
+            "messagePattern": "Don't use fmt\\.Sprintf\\(\"%s\"",
+            "match": "S1025.*fmt\\.Sprintf.*%s",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Using fmt.Sprintf(\"%s\", x) where x already implements String() is redundant. Just use x.String() directly.",
+            "prescription": "Call .String() directly or use the value where a string is expected (Go will call String() automatically via fmt.Stringer interface).",
+            "codeBlock": "// BEFORE:\ns := fmt.Sprintf(\"%s\", myError)\n\n// AFTER:\ns := myError.Error()",
+            "conditions": []
+          }
+        ]
+      },
+      {
+        "id": "build_constraint",
+        "name": "Build Constraint and Compilation Errors",
+        "description": "Build tags, cross-compilation, cgo, and compilation errors",
+        "defaultTracingBehavior": "local_only",
+        "errors": [
+          {
+            "code": "GO_BUILD_CONSTRAINT_EXCLUDE",
+            "category": "build_constraint",
+            "severity": "warning",
+            "messagePattern": "build constraints exclude all Go files in (?<dir>.+)",
+            "match": "build constraints exclude all Go files",
+            "captures": [
+              { "name": "dir", "role": "file_path" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "update_config", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [],
+            "rootCause": "All Go files in directory '{dir}' are excluded by build constraints (build tags, GOOS/GOARCH constraints, or //go:build directives). No files match the current build environment.",
+            "prescription": "1. Check //go:build or // +build directives in the files.\n2. Verify your GOOS and GOARCH match the build constraints.\n3. Add a file without build constraints for the default case.\n4. Use 'go env GOOS GOARCH' to check the current build environment.",
+            "codeBlock": "//go:build linux\n// +build linux\n\n// This file only compiles on Linux.\n// Add a file with //go:build !linux for other platforms.",
+            "conditions": []
+          },
+          {
+            "code": "GO_NO_GO_FILES",
+            "category": "build_constraint",
+            "severity": "error",
+            "messagePattern": "no Go files in (?<dir>.+)",
+            "match": "no Go files in",
+            "captures": [
+              { "name": "dir", "role": "file_path" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "entire_file" },
+            "coOccurrence": [],
+            "rootCause": "The directory '{dir}' does not contain any .go files. Go packages must have at least one .go file.",
+            "prescription": "1. Create a .go file in the directory with the appropriate package declaration.\n2. If this is a testdata or vendor directory, it should not be imported directly.\n3. Verify you are building the correct directory path.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "GO_CGO_NOT_ENABLED",
+            "category": "build_constraint",
+            "severity": "error",
+            "messagePattern": "(?:cgo|CGO_ENABLED=0) .+ C code",
+            "match": "(?:cgo|CGO_ENABLED).*C code",
+            "captures": [],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "update_config", "requiresCrossFileEdit": false, "typicalScope": "entire_file" },
+            "coOccurrence": [],
+            "rootCause": "The package requires cgo but CGO_ENABLED is set to 0 or a C compiler is not available. Packages using import \"C\" or cgo directives need cgo enabled.",
+            "prescription": "1. Set CGO_ENABLED=1 in your build environment.\n2. Install a C compiler (gcc on Linux, Xcode on macOS, mingw on Windows).\n3. If cross-compiling, use a cross-compilation C toolchain.\n4. Find a pure-Go alternative library that doesn't require cgo.",
+            "codeBlock": "// Fix:\n// $ CGO_ENABLED=1 go build ./...\n// or use a pure-Go alternative",
+            "conditions": []
+          }
+        ]
+      },
+      {
+        "id": "interface_embedding",
+        "name": "Interface and Embedding Errors",
+        "description": "Interface composition, struct embedding, ambiguous selectors, and method set issues",
+        "defaultTracingBehavior": "check_definitions",
+        "errors": [
+          {
+            "code": "GO_AMBIGUOUS_SELECTOR",
+            "category": "interface_embedding",
+            "severity": "error",
+            "messagePattern": "ambiguous selector (?<expr>[\\w.]+)",
+            "match": "ambiguous selector",
+            "captures": [
+              { "name": "expr", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.6,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_composed_type", "target": "expr" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "composed_type" }
+            ],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The selector '{expr}' is ambiguous because it could refer to fields or methods from multiple embedded types. Two or more embedded structs have a field or method with the same name at the same depth.",
+            "prescription": "Qualify the access by specifying the embedded type explicitly: value.EmbeddedType.Field instead of value.Field.",
+            "codeBlock": "// BEFORE (ambiguous):\ntype A struct{ Name string }\ntype B struct{ Name string }\ntype C struct{ A; B }\nc := C{}\nfmt.Println(c.Name)  // ambiguous\n\n// AFTER (explicit):\nfmt.Println(c.A.Name)\nfmt.Println(c.B.Name)",
+            "conditions": []
+          },
+          {
+            "code": "GO_DUPLICATE_METHOD",
+            "category": "interface_embedding",
+            "severity": "error",
+            "messagePattern": "duplicate method (?<methodName>\\w+)",
+            "match": "duplicate method \\w+",
+            "captures": [
+              { "name": "methodName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "rename_symbol", "requiresCrossFileEdit": false, "typicalScope": "type_definition" },
+            "coOccurrence": [],
+            "rootCause": "The method '{methodName}' appears more than once in an interface definition, either directly or through embedded interfaces. Prior to Go 1.14, this was an error; in Go 1.14+, overlapping interfaces are allowed if the method signatures are identical.",
+            "prescription": "1. Remove the duplicate method declaration.\n2. If embedding interfaces, check that the shared method has identical signatures in all embedded interfaces.\n3. In Go 1.14+, identical method signatures from multiple embedded interfaces are allowed.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "GO_IMPOSSIBLE_TYPE_ASSERT",
+            "category": "interface_embedding",
+            "severity": "error",
+            "messagePattern": "impossible type assertion:.*(?<actualType>[\\w.*]+) does not implement (?<interfaceName>[\\w.]+).*(?:missing|wrong type for) method (?<methodName>\\w+)",
+            "match": "impossible type assertion",
+            "captures": [
+              { "name": "actualType", "role": "actual_type" },
+              { "name": "interfaceName", "role": "expected_type" },
+              { "name": "methodName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.7,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "actualType" }, "adjustedProbability": 0.85, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "implement_interface", "requiresCrossFileEdit": true, "typicalScope": "type_definition" },
+            "coOccurrence": [
+              { "code": "GO_INTERFACE_NOT_IMPL", "relationship": "same_root_cause", "sharedCapture": "methodName", "resolution": "fix_this_first" }
+            ],
+            "rootCause": "The type assertion to '{actualType}' is impossible because it does not implement '{interfaceName}' — it is missing method '{methodName}' or has the wrong signature. Since the interface cannot be satisfied, the assertion will always fail.",
+            "prescription": "1. Add the missing method '{methodName}' with the correct signature to '{actualType}'.\n2. Or use a different target type that implements the interface.\n3. Check if the method has the wrong receiver type (pointer vs value).",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "GO_INVALID_TYPE_ASSERT",
+            "category": "interface_embedding",
+            "severity": "error",
+            "messagePattern": "invalid type assertion: (?<expr>.+?) \\(non-interface type (?<typeName>[\\w.*]+) on left\\)",
+            "match": "invalid type assertion.*non-interface type .+ on left",
+            "captures": [
+              { "name": "expr", "role": "literal_value" },
+              { "name": "typeName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "cast_type", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "A type assertion was used on a non-interface type '{typeName}'. Type assertions can only be used on interface values. For concrete types, use type conversion instead.",
+            "prescription": "1. If the value is a concrete type, use type conversion: TargetType(value)\n2. If you need a type assertion, the value must be of an interface type.\n3. Check if the variable should be declared as an interface type.",
+            "codeBlock": "// BEFORE (wrong):\nvar x int = 42\ny := x.(string)  // x is not an interface\n\n// AFTER (correct):\nvar x interface{} = 42\ny, ok := x.(int)  // type assertion on interface",
+            "conditions": []
+          }
+        ]
+      },
+      {
+        "id": "generics",
+        "name": "Generics Errors (Go 1.18+)",
+        "description": "Type parameter, constraint, and generic instantiation errors",
+        "defaultTracingBehavior": "check_definitions",
+        "errors": [
+          {
+            "code": "GO_CANNOT_INFER_TYPE_PARAM",
+            "category": "generics",
+            "severity": "error",
+            "messagePattern": "cannot infer (?<typeParam>\\w+)",
+            "match": "cannot infer \\w+",
+            "captures": [
+              { "name": "typeParam", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "update_type_annotation", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The compiler cannot infer the type argument for type parameter '{typeParam}'. There is not enough information in the function arguments to determine the type.",
+            "prescription": "Explicitly provide the type argument: FuncName[ConcreteType](...)",
+            "codeBlock": "// BEFORE (cannot infer):\nfunc Map[T, U any](s []T, f func(T) U) []U { ... }\nresult := Map(nil, strconv.Itoa)  // cannot infer T from nil\n\n// AFTER (explicit):\nresult := Map[int, string](nil, strconv.Itoa)",
+            "conditions": []
+          },
+          {
+            "code": "GO_TYPE_PARAM_NOT_ALLOWED",
+            "category": "generics",
+            "severity": "error",
+            "messagePattern": "(?:type parameters|methods) (?:require|cannot have) (?:go1\\.18|type parameters)",
+            "match": "(?:type parameters|methods).*(?:require|cannot have)",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "update_config", "requiresCrossFileEdit": false, "typicalScope": "entire_file" },
+            "coOccurrence": [],
+            "rootCause": "Type parameters (generics) require Go 1.18 or later. The current module's go directive in go.mod specifies an older version, or methods cannot have their own type parameters (Go does not support method-level type parameters).",
+            "prescription": "1. Update go.mod to go 1.18 or later: 'go mod edit -go=1.21'\n2. If the error is about methods with type parameters, note that Go does not support generic methods — only generic functions and types. Move the type parameter to the type declaration.",
+            "codeBlock": "// Methods CANNOT have type parameters:\n// WRONG:\nfunc (s *MyStruct) DoWork[T any](val T) {}  // not allowed\n\n// CORRECT — use a generic type instead:\ntype MyStruct[T any] struct{}\nfunc (s *MyStruct[T]) DoWork(val T) {}",
+            "conditions": []
+          },
+          {
+            "code": "GO_CONSTRAINT_NOT_SATISFIED",
+            "category": "generics",
+            "severity": "error",
+            "messagePattern": "(?<typeName>[\\w.]+) does not satisfy (?<constraint>[\\w.~|\\[\\]]+)",
+            "match": "does not satisfy",
+            "captures": [
+              { "name": "typeName", "role": "actual_type" },
+              { "name": "constraint", "role": "expected_type" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "constraint" }, "adjustedProbability": 0.7, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "fix_generic_constraint", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "GO_GENERIC_CONSTRAINT", "relationship": "same_root_cause", "sharedCapture": "constraint", "resolution": "fix_either" }
+            ],
+            "rootCause": "Type '{typeName}' does not satisfy the constraint '{constraint}'. The constraint may require specific methods, underlying types (~T), or a union of types.",
+            "prescription": "1. Check what the constraint '{constraint}' requires (methods, underlying type, type union).\n2. Use a type that satisfies the constraint.\n3. Widen the constraint if it is too restrictive.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "GO_COMPARABLE_CONSTRAINT",
+            "category": "generics",
+            "severity": "error",
+            "messagePattern": "(?<typeName>[\\w.]+) does not satisfy comparable",
+            "match": "does not satisfy comparable",
+            "captures": [
+              { "name": "typeName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_generic_constraint", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Type '{typeName}' does not satisfy the 'comparable' constraint. Types containing slices, maps, or functions are not comparable. The comparable constraint is required for map keys and for use with == and !=.",
+            "prescription": "Use a type that supports == comparison (no slice, map, or function fields). If you need the type to be a map key, consider using a string representation or a comparable subset of fields.",
+            "codeBlock": null,
+            "conditions": []
+          }
+        ]
+      },
+      {
+        "id": "const_init",
+        "name": "Constant and Initialization Errors",
+        "description": "Constant expression, iota, initialization order, and init function errors",
+        "defaultTracingBehavior": "local_only",
+        "errors": [
+          {
+            "code": "GO_CONST_NOT_CONSTANT",
+            "category": "const_init",
+            "severity": "error",
+            "messagePattern": "(?<expr>.+?) is not (?:a )?constant",
+            "match": ".+ is not (?:a )?constant",
+            "captures": [
+              { "name": "expr", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.1,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The expression '{expr}' cannot be used in a constant declaration because it is not a compile-time constant. Function calls, variable references, and some operations are not constant expressions.",
+            "prescription": "1. Use 'var' instead of 'const' if the value cannot be determined at compile time.\n2. If the value depends on a function call, move it to a var declaration or init() function.\n3. Only literal values, arithmetic on constants, len() of string/array constants, and iota are valid in const declarations.",
+            "codeBlock": "// BEFORE (wrong):\nconst maxSize = len(os.Args)  // not a constant\n\n// AFTER (correct):\nvar maxSize = len(os.Args)",
+            "conditions": []
+          },
+          {
+            "code": "GO_CONST_OVERFLOW",
+            "category": "const_init",
+            "severity": "error",
+            "messagePattern": "constant (?<value>.+?) overflows (?<typeName>\\w+)",
+            "match": "constant .+ overflows",
+            "captures": [
+              { "name": "value", "role": "literal_value" },
+              { "name": "typeName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "cast_type", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The constant value '{value}' is too large (or too small) for type '{typeName}'. The value exceeds the range of the target type.",
+            "prescription": "Use a larger type (int64 instead of int32, float64 instead of float32) or reduce the constant value.",
+            "codeBlock": "// BEFORE (overflow):\nconst big int8 = 256  // max int8 is 127\n\n// AFTER (correct):\nconst big int16 = 256",
+            "conditions": []
+          },
+          {
+            "code": "GO_INIT_CYCLE",
+            "category": "const_init",
+            "severity": "error",
+            "messagePattern": "initialization (?:cycle|loop)",
+            "match": "initialization (?:cycle|loop)",
+            "captures": [],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": true, "typicalScope": "entire_file" },
+            "coOccurrence": [],
+            "rootCause": "Package-level variable initialization forms a cycle: variable A depends on B, and B depends on A. Go cannot determine the initialization order.",
+            "prescription": "1. Break the cycle by computing one of the values in an init() function.\n2. Restructure the declarations so they don't depend on each other.\n3. Use lazy initialization (sync.Once) instead of package-level vars.",
+            "codeBlock": "// BEFORE (cycle):\nvar a = b + 1\nvar b = a + 1  // cycle\n\n// AFTER (correct):\nvar a int\nvar b int\nfunc init() {\n    a = 1\n    b = a + 1\n}",
+            "conditions": []
+          }
+        ]
+      },
+      {
+        "id": "error_handling",
+        "name": "Error Handling Pattern Errors",
+        "description": "Errors related to Go error handling patterns and best practices",
+        "defaultTracingBehavior": "local_only",
+        "errors": [
+          {
+            "code": "GO_ERROR_NOT_CHECKED",
+            "category": "error_handling",
+            "severity": "warning",
+            "messagePattern": "Error return value of .+ is not checked",
+            "match": "Error return value .+ is not checked",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "A function that returns an error has its error return value ignored. Unchecked errors can lead to silent failures and unexpected behavior.",
+            "prescription": "1. Capture and check the error: if err := funcCall(); err != nil { return err }\n2. If you intentionally want to ignore the error, assign it to _: _ = funcCall()\n3. Consider wrapping the error with context: fmt.Errorf(\"context: %w\", err)",
+            "codeBlock": "// BEFORE (unchecked):\nos.Remove(\"file.txt\")\n\n// AFTER (checked):\nif err := os.Remove(\"file.txt\"); err != nil {\n    return fmt.Errorf(\"failed to remove file: %w\", err)\n}",
+            "conditions": []
+          },
+          {
+            "code": "GO_ERROR_STRING_FORMAT",
+            "category": "error_handling",
+            "severity": "warning",
+            "messagePattern": "error strings should not be capitalized|error strings should not end with punctuation",
+            "match": "error strings should not (?:be capitalized|end with punctuation)",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Go convention requires error strings to be lowercase and not end with punctuation, because errors are often wrapped with additional context using fmt.Errorf.",
+            "prescription": "Start error messages with a lowercase letter and remove trailing periods or exclamation marks.",
+            "codeBlock": "// BEFORE (wrong):\nreturn fmt.Errorf(\"Failed to connect.\")\n\n// AFTER (correct):\nreturn fmt.Errorf(\"failed to connect\")",
+            "conditions": []
+          },
+          {
+            "code": "GO_WRAP_ERROR",
+            "category": "error_handling",
+            "severity": "warning",
+            "messagePattern": "non-wrapping format verb for fmt\\.Errorf|use %w to format errors",
+            "match": "(?:non-wrapping format verb|use %w to format errors)",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Using %v or %s to format an error in fmt.Errorf loses the error chain. Use %w to wrap errors so they can be unwrapped with errors.Is() and errors.As().",
+            "prescription": "Change %v or %s to %w when wrapping errors with fmt.Errorf.",
+            "codeBlock": "// BEFORE (wrong):\nreturn fmt.Errorf(\"failed: %v\", err)  // loses error chain\n\n// AFTER (correct):\nreturn fmt.Errorf(\"failed: %w\", err)  // preserves error chain",
+            "conditions": []
+          }
+        ]
+      }
+    ]
+  },
+
+  "importSystem": {
+    "importPatterns": [
+      {
+        "type": "single_import",
+        "regex": "import\\s+(?:(?<alias>[\\w.]+)\\s+)?\"(?<path>[^\"]+)\"",
+        "captures": [
+          { "name": "alias", "index": 1, "isList": false },
+          { "name": "path", "index": 2, "isList": false }
+        ],
+        "example": "import \"fmt\"",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "aliased_import",
+        "regex": "import\\s+(?<alias>[\\w]+)\\s+\"(?<path>[^\"]+)\"",
+        "captures": [
+          { "name": "alias", "index": 1, "isList": false },
+          { "name": "path", "index": 2, "isList": false }
+        ],
+        "example": "import myfmt \"fmt\"",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "dot_import",
+        "regex": "import\\s+\\.\\s+\"(?<path>[^\"]+)\"",
+        "captures": [
+          { "name": "path", "index": 1, "isList": false }
+        ],
+        "example": "import . \"math\"",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "blank_import",
+        "regex": "import\\s+_\\s+\"(?<path>[^\"]+)\"",
+        "captures": [
+          { "name": "path", "index": 1, "isList": false }
+        ],
+        "example": "import _ \"github.com/lib/pq\"",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "grouped_import",
+        "regex": "import\\s*\\([^)]+\\)",
+        "captures": [],
+        "example": "import (\n\t\"fmt\"\n\t\"os\"\n)",
+        "isMultiLine": true,
+        "multiLineRegex": "import\\s*\\([\\s\\S]*?\\)"
+      },
+      {
+        "type": "grouped_import_entry",
+        "regex": "^\\s*(?:(?<alias>[\\w._]+)\\s+)?\"(?<path>[^\"]+)\"",
+        "captures": [
+          { "name": "alias", "index": 1, "isList": false },
+          { "name": "path", "index": 2, "isList": false }
+        ],
+        "example": "\t\"fmt\"",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      }
+    ],
+    "exportPatterns": [
+      {
+        "type": "exported_function",
+        "regex": "func\\s+(?:\\([^)]+\\)\\s+)?(?<name>[A-Z]\\w*)\\s*(?:\\[.*?\\])?\\s*\\(",
+        "captures": [
+          { "name": "name", "index": 1, "isList": false }
+        ],
+        "isReExport": false,
+        "example": "func ProcessData(data []byte) error {"
+      },
+      {
+        "type": "exported_type",
+        "regex": "type\\s+(?<name>[A-Z]\\w*)\\s+(?:struct|interface|func|\\w)",
+        "captures": [
+          { "name": "name", "index": 1, "isList": false }
+        ],
+        "isReExport": false,
+        "example": "type UserService struct {"
+      },
+      {
+        "type": "exported_var",
+        "regex": "var\\s+(?<name>[A-Z]\\w*)\\s+",
+        "captures": [
+          { "name": "name", "index": 1, "isList": false }
+        ],
+        "isReExport": false,
+        "example": "var DefaultTimeout = 30 * time.Second"
+      },
+      {
+        "type": "exported_const",
+        "regex": "const\\s+(?<name>[A-Z]\\w*)\\s*(?:=|\\w)",
+        "captures": [
+          { "name": "name", "index": 1, "isList": false }
+        ],
+        "isReExport": false,
+        "example": "const MaxRetries = 3"
+      },
+      {
+        "type": "exported_method",
+        "regex": "func\\s+\\(\\w+\\s+\\*?(?<receiver>[A-Z]\\w*)\\)\\s+(?<name>[A-Z]\\w*)\\s*\\(",
+        "captures": [
+          { "name": "receiver", "index": 1, "isList": false },
+          { "name": "name", "index": 2, "isList": false }
+        ],
+        "isReExport": false,
+        "example": "func (s *Server) HandleRequest(r *Request) Response {"
+      }
+    ],
+    "moduleResolution": {
+      "strategy": "go",
+      "extensions": [".go"],
+      "indexFiles": [],
+      "aliasConfig": {
+        "file": "go.mod",
+        "path": "module",
+        "format": "The module directive defines the import path prefix for all packages in the module. Replace directives can alias external modules to local paths."
+      },
+      "packageEntryPoints": [],
+      "relativeImportRules": "Go does not support relative imports like './pkg'. All imports use the full module path defined in go.mod. Local packages are imported as 'modulepath/subdir/pkgname'.",
+      "absoluteImportRules": "All imports are absolute paths rooted at the module path. Standard library packages use short paths ('fmt', 'net/http'). External packages use full URLs ('github.com/user/repo/pkg'). The Go tool resolves packages by matching the import path to the module path + directory structure."
+    }
+  },
+
+  "typeTracing": {
+    "definitionPatterns": [
+      {
+        "kind": "struct",
+        "regex": "type\\s+(?<name>[A-Za-z]\\w*)\\s+struct\\s*\\{",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "type User struct {"
+      },
+      {
+        "kind": "interface",
+        "regex": "type\\s+(?<name>[A-Za-z]\\w*)\\s+interface\\s*\\{",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "type Reader interface {"
+      },
+      {
+        "kind": "type_alias",
+        "regex": "type\\s+(?<name>[A-Za-z]\\w*)\\s*=\\s*(?<target>[\\w.*\\[\\]]+)",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "type StringSlice = []string"
+      },
+      {
+        "kind": "defined_type",
+        "regex": "type\\s+(?<name>[A-Za-z]\\w*)\\s+(?!struct|interface|func)(?<underlying>[\\w.*\\[\\]]+)",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "type Duration int64"
+      },
+      {
+        "kind": "function",
+        "regex": "func\\s+(?<name>[A-Za-z]\\w*)\\s*(?:\\[.*?\\])?\\s*\\(",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "func NewServer(addr string) *Server {"
+      },
+      {
+        "kind": "method",
+        "regex": "func\\s+\\((?<receiver>\\w+)\\s+\\*?(?<receiverType>[A-Za-z]\\w*)\\)\\s+(?<name>[A-Za-z]\\w*)\\s*\\(",
+        "captures": [{ "name": "name", "index": 3 }],
+        "canBeExported": true,
+        "example": "func (s *Server) Start() error {"
+      },
+      {
+        "kind": "variable",
+        "regex": "var\\s+(?<name>[A-Za-z]\\w*)\\s+(?<typeName>[\\w.*\\[\\]]+)",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "var ErrNotFound = errors.New(\"not found\")"
+      },
+      {
+        "kind": "constant",
+        "regex": "const\\s+(?<name>[A-Za-z]\\w*)(?:\\s+(?<typeName>[\\w]+))?\\s*=",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "const MaxSize int = 1024"
+      },
+      {
+        "kind": "generic_type",
+        "regex": "type\\s+(?<name>[A-Za-z]\\w*)\\[(?<typeParams>[^\\]]+)\\]\\s+(?:struct|interface)\\s*\\{",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "type Set[T comparable] struct {"
+      }
+    ],
+    "inheritancePatterns": [
+      {
+        "kind": "embedding",
+        "regex": "type\\s+(?<child>[A-Za-z]\\w*)\\s+struct\\s*\\{[^}]*?(?:\\s+(?<parents>[A-Z]\\w*(?:\\s*\\n\\s*[A-Z]\\w*)*))[^}]*\\}",
+        "captures": [
+          { "name": "child", "index": 1, "isList": false },
+          { "name": "parents", "index": 2, "isList": true, "listSeparator": "\n" }
+        ],
+        "traceConfidence": 0.8,
+        "example": "type ReadWriteCloser struct {\n\tReader\n\tWriter\n\tCloser\n}"
+      },
+      {
+        "kind": "interface_embedding",
+        "regex": "type\\s+(?<child>[A-Za-z]\\w*)\\s+interface\\s*\\{[^}]*?(?:\\s+(?<parents>[A-Z]\\w*(?:\\s*\\n\\s*[A-Z]\\w*)*))[^}]*\\}",
+        "captures": [
+          { "name": "child", "index": 1, "isList": false },
+          { "name": "parents", "index": 2, "isList": true, "listSeparator": "\n" }
+        ],
+        "traceConfidence": 0.85,
+        "example": "type ReadWriter interface {\n\tReader\n\tWriter\n}"
+      }
+    ],
+    "compositionPatterns": [
+      {
+        "kind": "generic_instantiation",
+        "regex": "(?<name>[A-Za-z]\\w*)\\[(?<typeArgs>[^\\]]+)\\]",
+        "captures": [
+          { "name": "name", "index": 1, "isList": false },
+          { "name": "typeArgs", "index": 2, "isList": true, "listSeparator": "," }
+        ],
+        "decomposable": true,
+        "traceConfidence": 0.8,
+        "example": "Map[string, *User]"
+      },
+      {
+        "kind": "embedding",
+        "regex": "type\\s+(?<outer>[A-Za-z]\\w*)\\s+struct\\s*\\{[\\s\\S]*?(?<embedded>\\*?[A-Z]\\w*(?:\\.[A-Z]\\w*)?)[\\s\\S]*?\\}",
+        "captures": [
+          { "name": "outer", "index": 1, "isList": false },
+          { "name": "embedded", "index": 2, "isList": false }
+        ],
+        "decomposable": false,
+        "traceConfidence": 0.75,
+        "example": "type Server struct {\n\t*http.Server\n\tconfig Config\n}"
+      }
+    ],
+    "confidenceTiers": {
+      "direct_import": 0.95,
+      "re_export_one_hop": 0.80,
+      "re_export_multi_hop": 0.60,
+      "inheritance_direct": 0.85,
+      "inheritance_chain": 0.70,
+      "generic_resolution": 0.65,
+      "inferred_type": 0.40,
+      "dynamic_type": 0.15
+    }
+  },
+
+  "externalDependencies": {
+    "pathIndicators": ["vendor/"],
+    "packageManifest": "go.mod",
+    "lockFile": "go.sum",
+    "typesPackagePattern": null,
+    "typeDeclarationLocations": [
+      {
+        "description": "Go source files in the module cache",
+        "path": "$GOPATH/pkg/mod/{module}@{version}/{package}/*.go",
+        "fallback": "vendor/{module}/{package}/*.go",
+        "entryPointField": null
+      }
+    ],
+    "detectionRules": [
+      {
+        "signal": "missing_module_dependency",
+        "condition": "Import path starts with a domain name (e.g., github.com/) and is not in go.mod",
+        "errorCodes": ["GO_PACKAGE_NOT_FOUND", "GO_MODULE_NOT_FOUND"],
+        "suggestedActions": ["Run 'go get <package-path>'", "Run 'go mod tidy'"],
+        "autoFixable": true,
+        "autoFixCommand": "go get {packagePath} && go mod tidy"
+      },
+      {
+        "signal": "missing_go_mod",
+        "condition": "No go.mod file exists in the project directory or any parent",
+        "errorCodes": ["GO_NO_GO_MOD"],
+        "suggestedActions": ["Run 'go mod init <module-path>'"],
+        "autoFixable": false,
+        "autoFixCommand": null
+      },
+      {
+        "signal": "checksum_mismatch",
+        "condition": "go.sum has a checksum that doesn't match the downloaded module",
+        "errorCodes": ["GO_MODULE_VERSION_MISMATCH"],
+        "suggestedActions": ["Delete go.sum and run 'go mod tidy'", "Verify module authenticity"],
+        "autoFixable": true,
+        "autoFixCommand": "rm go.sum && go mod tidy"
+      },
+      {
+        "signal": "incompatible_version",
+        "condition": "Module major version does not match import path (v2+ modules require /v2 suffix in import path)",
+        "errorCodes": ["GO_PACKAGE_NOT_FOUND", "GO_MODULE_NOT_FOUND"],
+        "suggestedActions": ["Add /v2 (or appropriate major version) suffix to the import path", "Update go.mod require directive to match"],
+        "autoFixable": false,
+        "autoFixCommand": null
+      },
+      {
+        "signal": "vendor_out_of_sync",
+        "condition": "vendor directory exists but does not match go.mod/go.sum",
+        "errorCodes": ["GO_PACKAGE_NOT_FOUND"],
+        "suggestedActions": ["Run 'go mod vendor' to regenerate vendor directory"],
+        "autoFixable": true,
+        "autoFixCommand": "go mod vendor"
+      },
+      {
+        "signal": "replace_directive_broken",
+        "condition": "go.mod has a replace directive pointing to a non-existent local path",
+        "errorCodes": ["GO_MODULE_NOT_FOUND"],
+        "suggestedActions": ["Fix the path in the replace directive in go.mod", "Remove the replace directive if no longer needed"],
+        "autoFixable": false,
+        "autoFixCommand": null
+      }
+    ],
+    "commonBreakingPatterns": [
+      {
+        "description": "Major version bump without updating import paths — Go v2+ modules require /v2 suffix in import path",
+        "errorCodes": ["GO_PACKAGE_NOT_FOUND", "GO_MODULE_NOT_FOUND"],
+        "resolution": "Add the major version suffix to all import paths: import \"github.com/user/repo/v2/pkg\""
+      },
+      {
+        "description": "Removed or renamed exported symbols in dependency update",
+        "errorCodes": ["GO_UNDEFINED", "GO_MISSING_METHOD"],
+        "resolution": "Check the dependency changelog. Pin to the previous version or update code to match new API."
+      },
+      {
+        "description": "go.sum desync after switching branches or resolving merge conflicts",
+        "errorCodes": ["GO_MODULE_VERSION_MISMATCH"],
+        "resolution": "Delete go.sum and run 'go mod tidy' to regenerate it."
+      },
+      {
+        "description": "Using replace directive in go.mod for local development without updating before publish",
+        "errorCodes": ["GO_MODULE_NOT_FOUND"],
+        "resolution": "Remove replace directives before publishing. Use go workspaces (go.work) for local multi-module development."
+      }
+    ]
+  },
+
+  "quirks": [
+    {
+      "id": "implicit_interfaces",
+      "name": "Implicit Interface Satisfaction",
+      "description": "Go uses structural typing for interfaces — a type implements an interface if it has all the required methods, without any 'implements' keyword. This makes it impossible to determine interface satisfaction from the type declaration alone; the method set must be checked. Pointer receivers (*T) are only in the method set of *T, not T.",
+      "affectsTracing": true,
+      "affectsResolution": true,
+      "workaround": "When tracing interface satisfaction errors, search for all methods on the type (including pointer receivers). Compare the method set against the interface definition. A common mistake is defining methods on *T but trying to use T (value, not pointer) as the interface.",
+      "example": "type Writer interface { Write([]byte) (int, error) }\ntype MyWriter struct{}\nfunc (w *MyWriter) Write(p []byte) (int, error) { return len(p), nil }\n// *MyWriter implements Writer, but MyWriter (value) does NOT",
+      "relatedErrorCodes": ["GO_INTERFACE_NOT_IMPL", "GO_MISSING_METHOD", "GO_MIXED_POINTER_RECEIVER"]
+    },
+    {
+      "id": "exported_capitalization",
+      "name": "Export by Capitalization",
+      "description": "In Go, identifiers starting with an uppercase letter are exported (public), and lowercase identifiers are unexported (package-private). There is no 'public' or 'private' keyword. This applies to functions, types, methods, fields, constants, and variables.",
+      "affectsTracing": true,
+      "affectsResolution": false,
+      "workaround": "When tracing cross-file dependencies, check if the first character of the symbol is uppercase. If lowercase, the symbol can only be accessed within the same package. Cross-package access to lowercase symbols is always an error.",
+      "example": "package mylib\nfunc PublicFunc() {}   // accessible from other packages\nfunc privateFunc() {}  // only accessible within mylib\ntype User struct {\n    Name string  // exported field\n    age  int     // unexported field\n}",
+      "relatedErrorCodes": ["GO_NOT_EXPORTED", "GO_UNEXPORTED_FIELD", "GO_UNDEFINED"]
+    },
+    {
+      "id": "init_functions",
+      "name": "init() Functions",
+      "description": "Go files can have one or more init() functions that run automatically at package initialization time (after all package-level variables are initialized, before main()). Multiple init() functions per file and per package are allowed. They cannot be called or referenced explicitly.",
+      "affectsTracing": false,
+      "affectsResolution": true,
+      "workaround": "init() functions create implicit dependencies. If a package is imported solely for its init() side effects (e.g., database driver registration), use blank import: import _ \"pkg\". When tracing, treat init() as an automatic execution dependency.",
+      "example": "package main\n\nimport (\n    _ \"github.com/lib/pq\"  // init() registers PostgreSQL driver\n)\n\nfunc init() {\n    // runs before main()\n    log.SetFlags(log.LstdFlags | log.Lshortfile)\n}",
+      "relatedErrorCodes": ["GO_UNUSED_IMPORT"]
+    },
+    {
+      "id": "internal_packages",
+      "name": "Internal Packages",
+      "description": "Any package within an 'internal/' directory can only be imported by code in the parent directory tree. For example, a/b/internal/c can be imported by a/b or a/b/d but not by a/e. This is enforced by the Go toolchain.",
+      "affectsTracing": true,
+      "affectsResolution": true,
+      "workaround": "When resolving imports, check if the import path contains '/internal/'. If so, verify that the importing package is within the allowed parent tree. This is a compile-time error that cannot be worked around — the code must be restructured.",
+      "example": "// mymod/internal/auth/auth.go — can only be imported by mymod/ and its subtree\n// mymod/cmd/server/main.go — CAN import mymod/internal/auth\n// othermod/main.go — CANNOT import mymod/internal/auth",
+      "relatedErrorCodes": ["GO_PACKAGE_NOT_FOUND"]
+    },
+    {
+      "id": "circular_imports",
+      "name": "Circular Import Detection",
+      "description": "Go strictly forbids circular imports between packages at compile time (unlike languages like Python or JavaScript). Package A cannot import B if B directly or transitively imports A. This is a hard compiler error, not a runtime issue.",
+      "affectsTracing": true,
+      "affectsResolution": true,
+      "workaround": "When building the dependency graph, detect cycles early. When a circular import error occurs, identify the cycle chain and suggest restructuring: extract shared types into a separate package, use interfaces to break the dependency, or merge tightly-coupled packages.",
+      "example": "// package a\nimport \"mymod/b\"  // ERROR if b also imports a\n\n// Solutions:\n// 1. Extract shared types to package c\n// 2. Define interface in a, implement in b\n// 3. Use dependency injection",
+      "relatedErrorCodes": ["GO_CIRCULAR_IMPORT"]
+    },
+    {
+      "id": "build_tags",
+      "name": "Build Tags and Conditional Compilation",
+      "description": "Go supports conditional compilation via //go:build directives (or the legacy // +build syntax). Files can be restricted to specific OS (GOOS), architecture (GOARCH), or custom tags. Files with _test.go suffix are only compiled during testing. Files named like file_linux.go or file_amd64.go are implicitly constrained.",
+      "affectsTracing": true,
+      "affectsResolution": true,
+      "workaround": "When scanning for definitions, check //go:build directives and file name conventions. A symbol may be defined in platform-specific files and appear missing when building for a different platform. Always check all platform variants when tracing.",
+      "example": "//go:build linux && amd64\n\npackage myapp\n\n// This file only compiles on linux/amd64\nfunc platformSpecific() {}",
+      "relatedErrorCodes": ["GO_BUILD_CONSTRAINT_EXCLUDE", "GO_UNDEFINED", "GO_NO_GO_FILES"]
+    },
+    {
+      "id": "go_generate",
+      "name": "go generate Directives",
+      "description": "Go files can contain //go:generate directives that run arbitrary commands to generate code. Generated code (often in *_gen.go or *_string.go files) may define types and functions that other code depends on. If go generate hasn't been run, these generated files may be missing.",
+      "affectsTracing": true,
+      "affectsResolution": true,
+      "workaround": "When encountering undefined symbols that match generated file patterns (zz_generated_*, *_gen.go, *_string.go), suggest running 'go generate ./...' to regenerate the code. Check for //go:generate directives in the package.",
+      "example": "//go:generate stringer -type=Color\n\ntype Color int\nconst (\n    Red Color = iota\n    Green\n    Blue\n)\n// After 'go generate', color_string.go is created with String() method",
+      "relatedErrorCodes": ["GO_UNDEFINED", "GO_MISSING_METHOD"]
+    },
+    {
+      "id": "package_level_namespace",
+      "name": "Package-Level Namespace Across Files",
+      "description": "All .go files in the same directory (with the same package name) share a single top-level namespace. A function defined in a.go can be called from b.go without any import, as long as both have the same package declaration. This means name conflicts between files in the same package are compile errors.",
+      "affectsTracing": true,
+      "affectsResolution": false,
+      "workaround": "When a symbol is undefined, search all .go files in the same directory (same package). The definition may be in any file. When a redeclaration error occurs, check all files in the directory for conflicting declarations.",
+      "example": "// server.go\npackage server\nfunc Start() error { return listen() }\n\n// helpers.go\npackage server\nfunc listen() error { ... }  // accessible from server.go",
+      "relatedErrorCodes": ["GO_UNDEFINED", "GO_REDECLARED", "GO_MULTIPLE_DECL"]
+    },
+    {
+      "id": "automatic_semicolons",
+      "name": "Automatic Semicolon Insertion",
+      "description": "Go automatically inserts semicolons at the end of lines that end with an identifier, literal, or certain tokens (return, break, continue, ++, --, }, )). This means line breaks are significant and can cause syntax errors if a statement is split across lines incorrectly.",
+      "affectsTracing": false,
+      "affectsResolution": false,
+      "workaround": "When seeing unexpected syntax errors, check if the code was split across lines in a way that triggers automatic semicolons. Operators and commas should be at the END of lines, not the BEGINNING of the next line.",
+      "example": "// WRONG — semicolon inserted after 'a':\nresult := a\n    + b  // parsed as: result := a; +b\n\n// CORRECT:\nresult := a +\n    b  // no semicolon after +",
+      "relatedErrorCodes": ["GO_SYNTAX_UNEXPECTED", "GO_MISSING_SEMICOLON"]
+    },
+    {
+      "id": "test_package_convention",
+      "name": "Test File and Package Conventions",
+      "description": "Files ending in _test.go are only compiled for testing. Test files can use either 'package foo' (white-box testing, access to unexported symbols) or 'package foo_test' (black-box testing, only access exported symbols). Both can coexist in the same directory.",
+      "affectsTracing": true,
+      "affectsResolution": false,
+      "workaround": "When analyzing files, check for _test.go suffix. These files may use a different package name (pkg_test) and should not be considered when tracing non-test compilation errors. Multiple package names in the same directory are allowed only when one is the _test variant.",
+      "example": "// math.go\npackage math\nfunc Add(a, b int) int { return add(a, b) }\nfunc add(a, b int) int { return a + b }\n\n// math_test.go (white-box)\npackage math\nfunc TestAdd(t *testing.T) { add(1, 2) }  // can call unexported\n\n// math_external_test.go (black-box)\npackage math_test\nfunc TestPublicAdd(t *testing.T) { math.Add(1, 2) }",
+      "relatedErrorCodes": ["GO_PACKAGE_NAME_MISMATCH", "GO_NOT_EXPORTED"]
+    },
+    {
+      "id": "go_workspaces",
+      "name": "Go Workspaces (go.work)",
+      "description": "Go 1.18+ supports workspaces via go.work files, allowing multiple modules to be developed together. The go.work file uses 'use' directives to specify local module directories, and 'replace' to override module resolution. This is preferred over go.mod replace directives for multi-module development.",
+      "affectsTracing": false,
+      "affectsResolution": true,
+      "workaround": "Check for go.work files in the project root. When a go.work file exists, module resolution follows its use and replace directives instead of individual go.mod files. This can affect which version of a dependency is used.",
+      "example": "// go.work\ngo 1.21\n\nuse (\n    ./api\n    ./shared\n    ./worker\n)",
+      "relatedErrorCodes": ["GO_MODULE_NOT_FOUND", "GO_PACKAGE_NOT_FOUND"]
+    },
+    {
+      "id": "embed_directive",
+      "name": "go:embed Directive",
+      "description": "Go 1.16+ supports embedding files into binaries with //go:embed directives. The embed package must be imported (even as blank import) when using embed.FS. Missing embed import or incorrect glob patterns cause compile errors.",
+      "affectsTracing": false,
+      "affectsResolution": false,
+      "workaround": "When seeing errors related to embed.FS or //go:embed, check that 'embed' is imported and that the referenced files exist at the specified paths relative to the Go source file.",
+      "example": "import \"embed\"\n\n//go:embed templates/*.html\nvar templates embed.FS\n\n//go:embed version.txt\nvar version string",
+      "relatedErrorCodes": ["GO_UNDEFINED", "GO_UNUSED_IMPORT"]
+    }
+  ],
+
+  "buildTools": [
+    {
+      "name": "go-build",
+      "detectFiles": ["go.mod", "go.sum"],
+      "buildCommand": "go build ./... 2>&1",
+      "watchCommand": null,
+      "errorStream": "stderr",
+      "supportsJsonOutput": true,
+      "jsonOutputFlag": "-json",
+      "commonConfigs": ["go.mod", "go.sum", "go.work"]
+    },
+    {
+      "name": "go-vet",
+      "detectFiles": ["go.mod"],
+      "buildCommand": "go vet ./... 2>&1",
+      "watchCommand": null,
+      "errorStream": "stderr",
+      "supportsJsonOutput": true,
+      "jsonOutputFlag": "-json",
+      "commonConfigs": ["go.mod"]
+    },
+    {
+      "name": "go-test",
+      "detectFiles": ["go.mod", "*_test.go"],
+      "buildCommand": "go test ./... 2>&1",
+      "watchCommand": null,
+      "errorStream": "stderr",
+      "supportsJsonOutput": true,
+      "jsonOutputFlag": "-json",
+      "commonConfigs": ["go.mod"]
+    },
+    {
+      "name": "golangci-lint",
+      "detectFiles": [".golangci.yml", ".golangci.yaml", ".golangci.json", ".golangci.toml"],
+      "buildCommand": "golangci-lint run ./... 2>&1",
+      "watchCommand": null,
+      "errorStream": "stdout",
+      "supportsJsonOutput": true,
+      "jsonOutputFlag": "--out-format json",
+      "commonConfigs": [".golangci.yml", ".golangci.yaml", ".golangci.json", ".golangci.toml"]
+    },
+    {
+      "name": "staticcheck",
+      "detectFiles": ["go.mod"],
+      "buildCommand": "staticcheck ./... 2>&1",
+      "watchCommand": null,
+      "errorStream": "stdout",
+      "supportsJsonOutput": true,
+      "jsonOutputFlag": "-f json",
+      "commonConfigs": ["staticcheck.conf"]
+    },
+    {
+      "name": "gopls",
+      "detectFiles": ["go.mod"],
+      "buildCommand": null,
+      "watchCommand": null,
+      "errorStream": "stderr",
+      "supportsJsonOutput": true,
+      "jsonOutputFlag": null,
+      "commonConfigs": ["go.mod", ".gopls.json"]
+    }
+  ]
+}

@@ -1,0 +1,2854 @@
+{
+  "metadata": {
+    "language": "C# / .NET",
+    "version": "1.0.0",
+    "description": "Error classification, dependency tracing, and fix ordering for C# 12+ / .NET 8+ projects using Roslyn, dotnet analyzers, and StyleCop",
+    "toolchains": [
+      {
+        "name": "roslyn",
+        "errorPrefix": "CS",
+        "errorFormat": "(?<file>[^(\\s]+)\\((?<line>\\d+),(?<column>\\d+)\\):\\s*error\\s+(?<code>CS\\d+):\\s*(?<message>.+)",
+        "errorFormatCaptures": ["file", "line", "column", "code", "message"],
+        "outputStream": "stdout",
+        "supportsJsonOutput": false,
+        "jsonOutputFlag": null
+      },
+      {
+        "name": "roslyn-warning",
+        "errorPrefix": "CS",
+        "errorFormat": "(?<file>[^(\\s]+)\\((?<line>\\d+),(?<column>\\d+)\\):\\s*warning\\s+(?<code>CS\\d+):\\s*(?<message>.+)",
+        "errorFormatCaptures": ["file", "line", "column", "code", "message"],
+        "outputStream": "stdout",
+        "supportsJsonOutput": false,
+        "jsonOutputFlag": null
+      },
+      {
+        "name": "dotnet-build",
+        "errorPrefix": "CS",
+        "errorFormat": "(?<file>[^(\\s]+)\\((?<line>\\d+),(?<column>\\d+)\\):\\s*(?:error|warning)\\s+(?<code>CS\\d+):\\s*(?<message>.+?)\\s*\\[",
+        "errorFormatCaptures": ["file", "line", "column", "code", "message"],
+        "outputStream": "stdout",
+        "supportsJsonOutput": false,
+        "jsonOutputFlag": null
+      },
+      {
+        "name": "dotnet-analyzer",
+        "errorPrefix": null,
+        "errorFormat": "(?<file>[^(\\s]+)\\((?<line>\\d+),(?<column>\\d+)\\):\\s*(?:error|warning)\\s+(?<code>[A-Z]+\\d+):\\s*(?<message>.+)",
+        "errorFormatCaptures": ["file", "line", "column", "code", "message"],
+        "outputStream": "stdout",
+        "supportsJsonOutput": false,
+        "jsonOutputFlag": null
+      },
+      {
+        "name": "stylecop",
+        "errorPrefix": "SA",
+        "errorFormat": "(?<file>[^(\\s]+)\\((?<line>\\d+),(?<column>\\d+)\\):\\s*warning\\s+(?<code>SA\\d+):\\s*(?<message>.+)",
+        "errorFormatCaptures": ["file", "line", "column", "code", "message"],
+        "outputStream": "stdout",
+        "supportsJsonOutput": false,
+        "jsonOutputFlag": null
+      }
+    ],
+    "fileExtensions": [".cs", ".csx", ".razor", ".cshtml"],
+    "generatedBy": "plugin-generator-v1",
+    "generatedFor": "attar-code-smart-fix"
+  },
+
+  "errorCatalog": {
+    "categories": [
+      {
+        "id": "syntax",
+        "name": "Syntax and Parse Errors",
+        "description": "Errors in code structure, missing tokens, unexpected tokens",
+        "defaultTracingBehavior": "local_only",
+        "errors": [
+          {
+            "code": "CS1001",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "Identifier expected",
+            "match": "CS1001:.*Identifier expected",
+            "captures": [],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "CS1002", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The compiler expected an identifier (type name, variable name, method name, etc.) but found something else. This typically happens when a keyword is used as a name, a name is missing after a type, or there is a stray token.",
+            "prescription": "Add the missing identifier. Check for accidental use of a reserved keyword as a name, or a missing variable/method name after a type annotation.",
+            "codeBlock": "// BEFORE (wrong)\npublic void () { }\n\n// AFTER (correct)\npublic void MyMethod() { }",
+            "conditions": []
+          },
+          {
+            "code": "CS1002",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "; expected",
+            "match": "CS1002:.*; expected",
+            "captures": [],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "add_semicolon", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "CS1001", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" },
+              { "code": "CS1513", "relationship": "caused_by_this", "sharedCapture": null, "resolution": "fix_this_first" }
+            ],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "A semicolon is missing at the end of a statement. C# requires semicolons to terminate statements, field declarations, and property auto-implementations.",
+            "prescription": "Add a semicolon at the indicated position. Check if the previous line is missing a semicolon that caused the parser to continue into this line.",
+            "codeBlock": "// BEFORE (wrong)\nint x = 5\n\n// AFTER (correct)\nint x = 5;",
+            "conditions": []
+          },
+          {
+            "code": "CS1003",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "Syntax error, '(?<expected>.+?)' expected",
+            "match": "CS1003:.*Syntax error, '(?<expected>.+?)' expected",
+            "captures": [{ "name": "expected", "role": "literal_value" }],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The compiler expected the token '{expected}' at this position but found something else. This usually indicates a missing delimiter, operator, or keyword.",
+            "prescription": "Insert '{expected}' at the indicated position. Verify the surrounding code structure is correct — a missing token earlier in the code may have caused the parser to become confused.",
+            "codeBlock": null,
+            "conditions": [
+              {
+                "when": "expected equals ,",
+                "rootCause": "A comma separator is missing between items in a list (parameters, arguments, initializer elements).",
+                "prescription": "Add a comma between the list elements at the indicated position.",
+                "codeBlock": null
+              },
+              {
+                "when": "expected equals >",
+                "rootCause": "A closing angle bracket is missing in a generic type parameter list.",
+                "prescription": "Add the closing '>' to complete the generic type parameter list.",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "CS1010",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "Newline in constant",
+            "match": "CS1010:.*Newline in constant",
+            "captures": [],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "A string literal or character constant contains a newline character. Regular string literals cannot span multiple lines.",
+            "prescription": "Close the string literal on the same line, or use a verbatim string (@\"...\") or raw string literal (\"\"\"...\"\"\") for multi-line strings.",
+            "codeBlock": "// BEFORE (wrong)\nstring s = \"hello\nworld\";\n\n// AFTER (correct)\nstring s = \"hello\\nworld\";\n// or\nstring s = @\"hello\nworld\";\n// or (C# 11+)\nstring s = \"\"\"\n    hello\n    world\n    \"\"\";",
+            "conditions": []
+          },
+          {
+            "code": "CS1012",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "Too many characters in character literal",
+            "match": "CS1012:.*Too many characters in character literal",
+            "captures": [],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "A char literal ('x') contains more than one character. Character literals in C# must contain exactly one character or one escape sequence.",
+            "prescription": "Use double quotes for string literals instead of single quotes, or reduce the content to a single character.",
+            "codeBlock": "// BEFORE (wrong)\nchar c = 'ab';\n\n// AFTER (correct)\nstring s = \"ab\";\n// or\nchar c = 'a';",
+            "conditions": []
+          },
+          {
+            "code": "CS1513",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "\\} expected",
+            "match": "CS1513:.*\\} expected",
+            "captures": [],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "close_bracket", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [
+              { "code": "CS1002", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" },
+              { "code": "CS1514", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "A closing brace '}' is missing. This typically means a class, method, namespace, or block statement was opened but never closed.",
+            "prescription": "Add the missing closing brace '}'. Count opening and closing braces in the file to find where the mismatch is. Use an IDE's brace matching feature to locate the unclosed block.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "CS1514",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "\\{ expected",
+            "match": "CS1514:.*\\{ expected",
+            "captures": [],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "CS1513", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "An opening brace '{' is expected after a class, struct, interface, enum, namespace, or method declaration.",
+            "prescription": "Add the opening brace '{' at the indicated position. Check that the declaration preceding this point is syntactically complete.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "CS1519",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "Invalid token '(?<token>.+?)' in class, record, struct, or interface member declaration",
+            "match": "CS1519:.*Invalid token '(?<token>.+?)' in class, record, struct, or interface member declaration",
+            "captures": [{ "name": "token", "role": "literal_value" }],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The token '{token}' is not valid inside a type declaration. This happens when code that should be inside a method body appears directly inside a class/struct, or when a member declaration is malformed.",
+            "prescription": "Move the offending code inside a method body, or fix the member declaration syntax. Executable statements cannot appear directly inside a class body — they must be inside a method, constructor, or property accessor.",
+            "codeBlock": "// BEFORE (wrong)\nclass MyClass\n{\n    Console.WriteLine(\"hello\"); // statements can't be here\n}\n\n// AFTER (correct)\nclass MyClass\n{\n    public void DoSomething()\n    {\n        Console.WriteLine(\"hello\");\n    }\n}",
+            "conditions": []
+          },
+          {
+            "code": "CS1525",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "Invalid expression term '(?<term>.+?)'",
+            "match": "CS1525:.*Invalid expression term '(?<term>.+?)'",
+            "captures": [{ "name": "term", "role": "literal_value" }],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The token '{term}' cannot begin or appear within an expression. This typically means a keyword or symbol appears where a value, variable, or expression was expected.",
+            "prescription": "Replace or remove the invalid token. Check for a missing operand, incorrect operator usage, or misplaced keyword.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "CS1026",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "\\) expected",
+            "match": "CS1026:.*\\) expected",
+            "captures": [],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "close_bracket", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "A closing parenthesis ')' is missing. The compiler encountered the end of a statement or an unexpected token before finding the matching closing parenthesis.",
+            "prescription": "Add the missing closing parenthesis ')'. Check that all opening parentheses have corresponding closing ones.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "CS1031",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "Type expected",
+            "match": "CS1031:.*Type expected",
+            "captures": [],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.1,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "update_type_annotation", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The compiler expected a type name at this position but found something else. This can happen in variable declarations, casts, generic arguments, or method return types.",
+            "prescription": "Provide a valid type name at the indicated position. Check for missing type arguments in generic declarations.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "CS0116",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "A namespace cannot directly contain members such as fields, methods or statements",
+            "match": "CS0116:.*A namespace cannot directly contain members such as fields, methods or statements",
+            "captures": [],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "entire_file" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "Code such as fields, methods, or executable statements was placed directly inside a namespace instead of inside a class, struct, or other type declaration. In C# (before top-level statements in .NET 6+), all code must reside inside a type.",
+            "prescription": "Wrap the code inside a class or struct declaration. If this is a console application using .NET 6+, ensure only one file uses top-level statements. Otherwise, enclose the members in a class.",
+            "codeBlock": "// BEFORE (wrong)\nnamespace MyApp\n{\n    void DoSomething() { }\n}\n\n// AFTER (correct)\nnamespace MyApp\n{\n    public class Program\n    {\n        void DoSomething() { }\n    }\n}",
+            "conditions": []
+          },
+          {
+            "code": "CS8803",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "Top-level statements must precede namespace and type declarations",
+            "match": "CS8803:.*Top-level statements must precede namespace and type declarations",
+            "captures": [],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "entire_file" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "Top-level statements (C# 9+) must appear before any namespace or type declarations in the file. You have statements appearing after a namespace or class declaration.",
+            "prescription": "Move all top-level statements to the beginning of the file, before any namespace or class declarations. Alternatively, wrap the statements inside a method within a class.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "CS8802",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "Only one compilation unit can have top-level statements",
+            "match": "CS8802:.*Only one compilation unit can have top-level statements",
+            "captures": [],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": true, "typicalScope": "entire_file" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "Multiple .cs files in the project contain top-level statements. Only one file (typically Program.cs) can use top-level statements; all other files must use explicit class/method structures.",
+            "prescription": "Keep top-level statements in only one file (usually Program.cs). Wrap the code in other files inside classes and methods. Use 'dotnet build' to identify which files have conflicting top-level statements.",
+            "codeBlock": null,
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "type_resolution",
+        "name": "Type and Namespace Resolution Errors",
+        "description": "Errors about types, namespaces, and symbols that cannot be found",
+        "defaultTracingBehavior": "trace_import_source",
+        "errors": [
+          {
+            "code": "CS0246",
+            "category": "type_resolution",
+            "severity": "error",
+            "messagePattern": "The type or namespace name '(?<typeName>.+?)' could not be found \\(are you missing a using directive or an assembly reference\\?\\)",
+            "match": "CS0246:.*The type or namespace name '(?<typeName>.+?)' could not be found",
+            "captures": [{ "name": "typeName", "role": "type_name" }],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.8,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_external", "target": "typeName" }, "adjustedProbability": 0.98, "traceDepth": "none", "traceTarget": "external_package" },
+              { "check": { "type": "is_imported", "target": "typeName" }, "adjustedProbability": 0.9, "traceDepth": "transitive", "traceTarget": "re_export_origin" },
+              { "check": { "type": "is_local", "target": "typeName" }, "adjustedProbability": 0.2, "traceDepth": "none", "traceTarget": "same_file" },
+              { "check": { "type": "comes_from_package", "target": "typeName" }, "adjustedProbability": 0.95, "traceDepth": "none", "traceTarget": "external_package" }
+            ],
+            "fixHint": { "primaryStrategy": "add_import", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [
+              { "code": "CS0234", "relationship": "same_root_cause", "sharedCapture": "typeName", "resolution": "fix_either" },
+              { "code": "CS1061", "relationship": "caused_by_this", "sharedCapture": null, "resolution": "auto_resolves_when_other_fixed" },
+              { "code": "CS0103", "relationship": "same_root_cause", "sharedCapture": "typeName", "resolution": "fix_either" }
+            ],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The type or namespace '{typeName}' is not recognized in the current scope. This means either: (1) a 'using' directive is missing, (2) a NuGet package or project reference is missing, (3) the type name is misspelled, or (4) the type is defined in another project not referenced by this one.",
+            "prescription": "1. Add the appropriate 'using' directive at the top of the file (e.g., 'using System.Collections.Generic;').\n2. If the type is from a NuGet package, run 'dotnet add package <PackageName>'.\n3. If the type is in another project, add a ProjectReference in the .csproj file.\n4. Check for typos in the type name.\n5. Verify the target framework supports this type.",
+            "codeBlock": "// BEFORE (wrong)\nList<string> items = new List<string>();\n// CS0246: The type or namespace name 'List<>' could not be found\n\n// AFTER (correct)\nusing System.Collections.Generic;\n\nList<string> items = new List<string>();",
+            "conditions": [
+              {
+                "when": "typeName contains Attribute",
+                "rootCause": "The attribute type '{typeName}' cannot be found. Custom attributes must derive from System.Attribute and be accessible via a using directive.",
+                "prescription": "Add the using directive for the namespace containing the attribute. If it's a custom attribute, ensure it is defined and accessible. Common attributes: [JsonProperty] needs 'using Newtonsoft.Json;', [Required] needs 'using System.ComponentModel.DataAnnotations;'.",
+                "codeBlock": null
+              },
+              {
+                "when": "typeName startsWith I",
+                "rootCause": "The interface '{typeName}' cannot be found. It may be defined in another namespace or assembly.",
+                "prescription": "Add the 'using' directive for the namespace that contains '{typeName}'. Common interfaces: ILogger (Microsoft.Extensions.Logging), IDisposable (System), IEnumerable (System.Collections.Generic), IHostedService (Microsoft.Extensions.Hosting).",
+                "codeBlock": null
+              },
+              {
+                "when": "typeName equals var",
+                "rootCause": "The 'var' keyword cannot be used here. 'var' is only valid for local variable declarations with an initializer.",
+                "prescription": "Replace 'var' with an explicit type name. 'var' cannot be used for fields, parameters, or return types.",
+                "codeBlock": null
+              },
+              {
+                "when": "typeName contains Task",
+                "rootCause": "The type 'Task' or 'Task<T>' is not found. This is typically from the System.Threading.Tasks namespace.",
+                "prescription": "Add 'using System.Threading.Tasks;' at the top of the file. If using .NET 6+ with implicit usings enabled, check that the project SDK is correct in the .csproj file.",
+                "codeBlock": null
+              },
+              {
+                "when": "typeName contains DbContext",
+                "rootCause": "The Entity Framework Core type '{typeName}' is not found. The EF Core NuGet package may not be installed.",
+                "prescription": "Run 'dotnet add package Microsoft.EntityFrameworkCore' and add 'using Microsoft.EntityFrameworkCore;' to the file.",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "CS0234",
+            "category": "type_resolution",
+            "severity": "error",
+            "messagePattern": "The type or namespace name '(?<typeName>.+?)' does not exist in the namespace '(?<namespaceName>.+?)' \\(are you missing an assembly reference\\?\\)",
+            "match": "CS0234:.*The type or namespace name '(?<typeName>.+?)' does not exist in the namespace '(?<namespaceName>.+?)'",
+            "captures": [
+              { "name": "typeName", "role": "type_name" },
+              { "name": "namespaceName", "role": "target_module" }
+            ],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.9,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_external", "target": "namespaceName" }, "adjustedProbability": 0.98, "traceDepth": "none", "traceTarget": "external_package" },
+              { "check": { "type": "is_local", "target": "namespaceName" }, "adjustedProbability": 0.85, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "install_package", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [
+              { "code": "CS0246", "relationship": "same_root_cause", "sharedCapture": "typeName", "resolution": "fix_either" }
+            ],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The type '{typeName}' does not exist in the namespace '{namespaceName}'. The namespace is recognized but the specific type is missing — this usually means: (1) a NuGet package is not installed, (2) the type was renamed or removed in a newer version, (3) a project reference is missing, or (4) the type is in a different namespace than expected.",
+            "prescription": "1. Check that the NuGet package providing '{namespaceName}.{typeName}' is installed.\n2. Verify the type hasn't been moved to a different namespace in a newer package version.\n3. For multi-project solutions, add the appropriate ProjectReference.\n4. Check if the type requires a specific target framework version.",
+            "codeBlock": "// BEFORE (wrong)\nusing Microsoft.AspNetCore.Mvc;\n// CS0234: 'ApiController' does not exist in 'Microsoft.AspNetCore.Mvc'\n\n// FIX: Install the package\n// dotnet add package Microsoft.AspNetCore.Mvc.Core",
+            "conditions": [
+              {
+                "when": "namespaceName startsWith System",
+                "rootCause": "The type '{typeName}' in namespace '{namespaceName}' is not available. It may require a different target framework or a specific System.* NuGet package.",
+                "prescription": "Check if this type was introduced in a newer .NET version. Some System.* types moved to separate NuGet packages (e.g., System.Text.Json). Verify the TargetFramework in your .csproj.",
+                "codeBlock": null
+              },
+              {
+                "when": "namespaceName contains EntityFrameworkCore",
+                "rootCause": "The EF Core type '{typeName}' in '{namespaceName}' is not found. An EF Core sub-package may be missing.",
+                "prescription": "Install the appropriate EF Core package: 'dotnet add package Microsoft.EntityFrameworkCore.SqlServer' (or .Sqlite, .InMemory, .Design, .Tools as needed).",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "CS0103",
+            "category": "type_resolution",
+            "severity": "error",
+            "messagePattern": "The name '(?<symbolName>.+?)' does not exist in the current context",
+            "match": "CS0103:.*The name '(?<symbolName>.+?)' does not exist in the current context",
+            "captures": [{ "name": "symbolName", "role": "symbol_name" }],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "symbolName" }, "adjustedProbability": 0.9, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "symbolName" }, "adjustedProbability": 0.05, "traceDepth": "none", "traceTarget": "same_file" },
+              { "check": { "type": "is_external", "target": "symbolName" }, "adjustedProbability": 0.95, "traceDepth": "none", "traceTarget": "external_package" }
+            ],
+            "fixHint": { "primaryStrategy": "add_import", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [
+              { "code": "CS0246", "relationship": "same_root_cause", "sharedCapture": "symbolName", "resolution": "fix_either" }
+            ],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The name '{symbolName}' is not recognized in the current scope. This can mean: (1) a variable was never declared, (2) a 'using static' directive is needed for a static member, (3) the symbol is out of scope, or (4) there is a typo in the name.",
+            "prescription": "1. If '{symbolName}' is a static method/property, add 'using static Namespace.ClassName;'.\n2. If it's a local variable, declare it before use.\n3. Check for typos in the name.\n4. Verify the symbol is in scope (correct braces nesting).\n5. If from a partial class in another file, ensure both files are in the project.",
+            "codeBlock": "// BEFORE (wrong)\nConsole.WriteLine(Max(1, 2));\n// CS0103: The name 'Max' does not exist in the current context\n\n// AFTER (correct)\nusing static System.Math;\nConsole.WriteLine(Max(1, 2));",
+            "conditions": [
+              {
+                "when": "symbolName equals nameof",
+                "rootCause": "The 'nameof' operator is not recognized. This may indicate the language version is below C# 6.",
+                "prescription": "Ensure your project targets at least C# 6.0 by setting <LangVersion>6</LangVersion> or higher in your .csproj file.",
+                "codeBlock": null
+              },
+              {
+                "when": "symbolName equals Console",
+                "rootCause": "'Console' is not found because the 'using System;' directive is missing.",
+                "prescription": "Add 'using System;' at the top of the file. In .NET 6+ with <ImplicitUsings>enable</ImplicitUsings>, this should be automatic — check your .csproj.",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "CS0117",
+            "category": "type_resolution",
+            "severity": "error",
+            "messagePattern": "'(?<typeName>.+?)' does not contain a definition for '(?<memberName>.+?)'",
+            "match": "CS0117:.*'(?<typeName>.+?)' does not contain a definition for '(?<memberName>.+?)'",
+            "captures": [
+              { "name": "typeName", "role": "type_name" },
+              { "name": "memberName", "role": "property_name" }
+            ],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.7,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "typeName" }, "adjustedProbability": 0.85, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "typeName" }, "adjustedProbability": 0.3, "traceDepth": "none", "traceTarget": "same_file" },
+              { "check": { "type": "is_external", "target": "typeName" }, "adjustedProbability": 0.95, "traceDepth": "none", "traceTarget": "external_package" }
+            ],
+            "fixHint": { "primaryStrategy": "add_property", "requiresCrossFileEdit": true, "typicalScope": "type_definition" },
+            "coOccurrence": [
+              { "code": "CS1061", "relationship": "same_root_cause", "sharedCapture": "memberName", "resolution": "fix_either" }
+            ],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The static member '{memberName}' does not exist on type '{typeName}'. This is used when accessing static members (Type.Member). The member may not exist, may be an instance member (not static), or may be in a different type.",
+            "prescription": "1. Verify '{memberName}' is a static member of '{typeName}'.\n2. If it is an instance member, create an instance first.\n3. Check for typos in both the type name and member name.\n4. If the member was recently removed or renamed, update the reference.",
+            "codeBlock": "// BEFORE (wrong)\nint count = MyClass.Count; // CS0117 if Count is instance member\n\n// AFTER (correct)\nvar obj = new MyClass();\nint count = obj.Count;",
+            "conditions": []
+          },
+          {
+            "code": "CS0120",
+            "category": "type_resolution",
+            "severity": "error",
+            "messagePattern": "An object reference is required for the non-static field, method, or property '(?<memberName>.+?)'",
+            "match": "CS0120:.*An object reference is required for the non-static field, method, or property '(?<memberName>.+?)'",
+            "captures": [{ "name": "memberName", "role": "symbol_name" }],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "memberName" }, "adjustedProbability": 0.7, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "memberName" }, "adjustedProbability": 0.1, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "You are trying to access the instance member '{memberName}' from a static context (e.g., a static method or a class-level static initializer). Instance members require an object instance to be accessed.",
+            "prescription": "Either: (1) create an instance of the class and access the member through it, (2) make the member static by adding the 'static' keyword, or (3) change the calling context from static to instance.",
+            "codeBlock": "// BEFORE (wrong)\npublic class MyClass\n{\n    public int Value = 10;\n    public static void Print()\n    {\n        Console.WriteLine(Value); // CS0120\n    }\n}\n\n// AFTER (correct — option 1: make member static)\npublic class MyClass\n{\n    public static int Value = 10;\n    public static void Print()\n    {\n        Console.WriteLine(Value);\n    }\n}\n\n// AFTER (correct — option 2: use instance)\npublic class MyClass\n{\n    public int Value = 10;\n    public static void Print()\n    {\n        var obj = new MyClass();\n        Console.WriteLine(obj.Value);\n    }\n}",
+            "conditions": []
+          },
+          {
+            "code": "CS0122",
+            "category": "type_resolution",
+            "severity": "error",
+            "messagePattern": "'(?<memberName>.+?)' is inaccessible due to its protection level",
+            "match": "CS0122:.*'(?<memberName>.+?)' is inaccessible due to its protection level",
+            "captures": [{ "name": "memberName", "role": "symbol_name" }],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.7,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "memberName" }, "adjustedProbability": 0.85, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "memberName" }, "adjustedProbability": 0.2, "traceDepth": "none", "traceTarget": "same_file" },
+              { "check": { "type": "is_external", "target": "memberName" }, "adjustedProbability": 0.95, "traceDepth": "none", "traceTarget": "external_package" }
+            ],
+            "fixHint": { "primaryStrategy": "fix_access_modifier", "requiresCrossFileEdit": true, "typicalScope": "type_definition" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The member '{memberName}' exists but its access modifier (private, protected, internal) prevents access from the current location.",
+            "prescription": "1. Change the access modifier on '{memberName}' to 'public' or 'internal'.\n2. If the member should stay private/protected, access it through a public property or method.\n3. If it's 'internal' and you're in a different assembly, consider using [InternalsVisibleTo] or making it public.\n4. For protected members, ensure you're accessing from a derived class.",
+            "codeBlock": "// BEFORE (wrong)\npublic class Base\n{\n    private int _value;\n}\npublic class Other\n{\n    void Do() { var b = new Base(); int v = b._value; } // CS0122\n}\n\n// AFTER (correct)\npublic class Base\n{\n    public int Value { get; private set; }\n}",
+            "conditions": []
+          },
+          {
+            "code": "CS0400",
+            "category": "type_resolution",
+            "severity": "error",
+            "messagePattern": "The type or namespace name '(?<typeName>.+?)' could not be found in the global namespace",
+            "match": "CS0400:.*The type or namespace name '(?<typeName>.+?)' could not be found in the global namespace",
+            "captures": [{ "name": "typeName", "role": "type_name" }],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.9,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_external", "target": "typeName" }, "adjustedProbability": 0.98, "traceDepth": "none", "traceTarget": "external_package" }
+            ],
+            "fixHint": { "primaryStrategy": "install_package", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [
+              { "code": "CS0246", "relationship": "same_root_cause", "sharedCapture": "typeName", "resolution": "fix_either" }
+            ],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The type '{typeName}' could not be found when using a fully-qualified global namespace reference (global::). The assembly containing this type is not referenced.",
+            "prescription": "Add the assembly reference or NuGet package that contains '{typeName}'. Check the .csproj file for missing PackageReference or ProjectReference entries.",
+            "codeBlock": null,
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "member_access",
+        "name": "Member Access Errors",
+        "description": "Errors about accessing properties, methods, and fields on types",
+        "defaultTracingBehavior": "trace_type_definition",
+        "errors": [
+          {
+            "code": "CS1061",
+            "category": "member_access",
+            "severity": "error",
+            "messagePattern": "'(?<typeName>.+?)' does not contain a definition for '(?<memberName>.+?)' and no accessible extension method '(?<memberName2>.+?)' accepting a first argument of type '(?<typeName2>.+?)' could be found",
+            "match": "CS1061:.*'(?<typeName>.+?)' does not contain a definition for '(?<memberName>.+?)'",
+            "captures": [
+              { "name": "typeName", "role": "type_name" },
+              { "name": "memberName", "role": "property_name" }
+            ],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.7,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "typeName" }, "adjustedProbability": 0.85, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "typeName" }, "adjustedProbability": 0.3, "traceDepth": "none", "traceTarget": "same_file" },
+              { "check": { "type": "is_external", "target": "typeName" }, "adjustedProbability": 0.95, "traceDepth": "none", "traceTarget": "external_package" },
+              { "check": { "type": "is_inherited", "target": "typeName" }, "adjustedProbability": 0.8, "traceDepth": "transitive", "traceTarget": "inherited_parent" }
+            ],
+            "fixHint": { "primaryStrategy": "add_property", "requiresCrossFileEdit": true, "typicalScope": "type_definition" },
+            "coOccurrence": [
+              { "code": "CS0246", "relationship": "caused_by_this", "sharedCapture": "typeName", "resolution": "fix_other_first" },
+              { "code": "CS0117", "relationship": "same_root_cause", "sharedCapture": "memberName", "resolution": "fix_either" }
+            ],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The type '{typeName}' does not have a member called '{memberName}', and no extension method for this type is in scope. This can mean: (1) the member name is misspelled, (2) the member needs to be added to the type definition, (3) an extension method's namespace is not imported, or (4) the type was recently modified and the member removed.",
+            "prescription": "1. Check for typos in '{memberName}'.\n2. Add '{memberName}' to the '{typeName}' type definition.\n3. If '{memberName}' is an extension method, add the 'using' directive for its namespace (e.g., 'using System.Linq;' for LINQ methods).\n4. If '{typeName}' is from a NuGet package, check if the API changed in a newer version.",
+            "codeBlock": "// BEFORE (wrong)\nvar list = new List<int> { 1, 2, 3 };\nvar first = list.FirstItem(); // CS1061\n\n// AFTER (correct — extension method)\nusing System.Linq;\nvar list = new List<int> { 1, 2, 3 };\nvar first = list.First();",
+            "conditions": [
+              {
+                "when": "memberName equals Select",
+                "rootCause": "The LINQ method 'Select' is not found because the System.Linq namespace is not imported.",
+                "prescription": "Add 'using System.Linq;' at the top of the file.",
+                "codeBlock": "using System.Linq;\n\nvar names = users.Select(u => u.Name);"
+              },
+              {
+                "when": "memberName equals Where",
+                "rootCause": "The LINQ method 'Where' is not found because the System.Linq namespace is not imported.",
+                "prescription": "Add 'using System.Linq;' at the top of the file.",
+                "codeBlock": null
+              },
+              {
+                "when": "memberName equals ToList",
+                "rootCause": "The LINQ method 'ToList' is not found because the System.Linq namespace is not imported.",
+                "prescription": "Add 'using System.Linq;' at the top of the file.",
+                "codeBlock": null
+              },
+              {
+                "when": "memberName equals AddRange",
+                "rootCause": "The method 'AddRange' does not exist on this collection type. It is available on List<T> but not on IList<T> or ICollection<T>.",
+                "prescription": "Cast to List<T> or use a loop to add items individually. Alternatively, check if you're working with the correct collection type.",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "CS0019",
+            "category": "member_access",
+            "severity": "error",
+            "messagePattern": "Operator '(?<operator>.+?)' cannot be applied to operands of type '(?<leftType>.+?)' and '(?<rightType>.+?)'",
+            "match": "CS0019:.*Operator '(?<operator>.+?)' cannot be applied to operands of type '(?<leftType>.+?)' and '(?<rightType>.+?)'",
+            "captures": [
+              { "name": "operator", "role": "literal_value" },
+              { "name": "leftType", "role": "type_name" },
+              { "name": "rightType", "role": "type_name" }
+            ],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.4,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "leftType" }, "adjustedProbability": 0.7, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "leftType" }, "adjustedProbability": 0.2, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": { "primaryStrategy": "cast_type", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The operator '{operator}' cannot be used between types '{leftType}' and '{rightType}'. Either the types are incompatible for this operator, or a custom operator overload is needed.",
+            "prescription": "1. Cast one operand to a compatible type.\n2. Use a conversion method (e.g., .ToString(), int.Parse()).\n3. Implement operator overloading on the custom type.\n4. Use .Equals() instead of == for reference type comparison when appropriate.",
+            "codeBlock": "// BEFORE (wrong)\nstring s = \"5\";\nif (s == 5) { } // CS0019: cannot apply == to string and int\n\n// AFTER (correct)\nif (int.Parse(s) == 5) { }\n// or\nif (s == \"5\") { }",
+            "conditions": [
+              {
+                "when": "operator equals ==",
+                "rootCause": "The == operator cannot compare '{leftType}' and '{rightType}'. These types don't have a built-in or user-defined equality operator.",
+                "prescription": "Use .Equals() method, implement IEquatable<T>, or add an explicit operator== overload to your type. For enum-to-int comparisons, cast the enum.",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "CS0428",
+            "category": "member_access",
+            "severity": "error",
+            "messagePattern": "Cannot convert method group '(?<methodName>.+?)' to non-delegate type '(?<typeName>.+?)'\\. Did you intend to invoke the method\\?",
+            "match": "CS0428:.*Cannot convert method group '(?<methodName>.+?)' to non-delegate type '(?<typeName>.+?)'",
+            "captures": [
+              { "name": "methodName", "role": "symbol_name" },
+              { "name": "typeName", "role": "type_name" }
+            ],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.2,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "typeName" }, "adjustedProbability": 0.5, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "You referenced a method '{methodName}' without calling it (missing parentheses). The compiler sees a method group where it expects a value of type '{typeName}'.",
+            "prescription": "Add parentheses '()' after '{methodName}' to invoke the method. If you intended to pass the method as a delegate, change the target type to an appropriate delegate type (Action, Func<T>, etc.).",
+            "codeBlock": "// BEFORE (wrong)\nstring name = user.GetName; // CS0428 — missing ()\n\n// AFTER (correct)\nstring name = user.GetName();",
+            "conditions": []
+          },
+          {
+            "code": "CS0176",
+            "category": "member_access",
+            "severity": "error",
+            "messagePattern": "Member '(?<memberName>.+?)' cannot be accessed with an instance reference; qualify it with a type name instead",
+            "match": "CS0176:.*Member '(?<memberName>.+?)' cannot be accessed with an instance reference",
+            "captures": [{ "name": "memberName", "role": "symbol_name" }],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "memberName" }, "adjustedProbability": 0.6, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The member '{memberName}' is static and cannot be accessed through an instance reference. Static members must be accessed through the type name.",
+            "prescription": "Replace the instance reference with the type name. For example, change 'obj.StaticMethod()' to 'ClassName.StaticMethod()'.",
+            "codeBlock": "// BEFORE (wrong)\nvar obj = new MyClass();\nobj.StaticMethod(); // CS0176\n\n// AFTER (correct)\nMyClass.StaticMethod();",
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "type_conversion",
+        "name": "Type Conversion and Assignment Errors",
+        "description": "Errors about implicit/explicit conversions, type mismatches, and assignments",
+        "defaultTracingBehavior": "trace_type_definition",
+        "errors": [
+          {
+            "code": "CS0029",
+            "category": "type_conversion",
+            "severity": "error",
+            "messagePattern": "Cannot implicitly convert type '(?<actualType>.+?)' to '(?<expectedType>.+?)'",
+            "match": "CS0029:.*Cannot implicitly convert type '(?<actualType>.+?)' to '(?<expectedType>.+?)'",
+            "captures": [
+              { "name": "actualType", "role": "actual_type" },
+              { "name": "expectedType", "role": "expected_type" }
+            ],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "actualType" }, "adjustedProbability": 0.7, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_imported", "target": "expectedType" }, "adjustedProbability": 0.7, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "actualType" }, "adjustedProbability": 0.2, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": { "primaryStrategy": "cast_type", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "CS0266", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" },
+              { "code": "CS1503", "relationship": "sometimes_together", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "Cannot implicitly convert '{actualType}' to '{expectedType}'. The compiler cannot automatically convert between these types because there is no implicit conversion defined.",
+            "prescription": "1. Add an explicit cast: ({expectedType})expression.\n2. Use a conversion method (Convert.ToInt32(), .ToString(), etc.).\n3. Fix the type of the variable or return type to match the actual type.\n4. If both are custom types, implement an implicit/explicit conversion operator.",
+            "codeBlock": "// BEFORE (wrong)\nint x = 3.14; // CS0029: cannot convert double to int\n\n// AFTER (correct)\nint x = (int)3.14;\n// or\ndouble x = 3.14;",
+            "conditions": [
+              {
+                "when": "actualType equals void",
+                "rootCause": "A void method's return value cannot be assigned to a variable. Void methods do not return a value.",
+                "prescription": "Either change the method to return a value, or remove the assignment. Check if you meant to call a different method that returns a value.",
+                "codeBlock": null
+              },
+              {
+                "when": "expectedType contains Task",
+                "rootCause": "The method is expected to return a Task but is returning a non-Task type. The method may need the 'async' modifier.",
+                "prescription": "Add 'async' to the method signature and use 'await' for asynchronous calls, or wrap the return value in Task.FromResult().",
+                "codeBlock": "// BEFORE (wrong)\npublic Task<int> GetValue() { return 42; }\n\n// AFTER (correct)\npublic Task<int> GetValue() { return Task.FromResult(42); }\n// or\npublic async Task<int> GetValue() { return 42; }"
+              },
+              {
+                "when": "actualType contains IEnumerable",
+                "rootCause": "An IEnumerable<T> is being assigned where a more specific collection type is expected.",
+                "prescription": "Call .ToList(), .ToArray(), or .ToDictionary() to materialize the enumerable into the expected collection type. Add 'using System.Linq;' if needed.",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "CS0266",
+            "category": "type_conversion",
+            "severity": "error",
+            "messagePattern": "Cannot implicitly convert type '(?<actualType>.+?)' to '(?<expectedType>.+?)'\\. An explicit conversion exists \\(are you missing a cast\\?\\)",
+            "match": "CS0266:.*Cannot implicitly convert type '(?<actualType>.+?)' to '(?<expectedType>.+?)'.*explicit conversion exists",
+            "captures": [
+              { "name": "actualType", "role": "actual_type" },
+              { "name": "expectedType", "role": "expected_type" }
+            ],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.4,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "actualType" }, "adjustedProbability": 0.7, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "actualType" }, "adjustedProbability": 0.2, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": { "primaryStrategy": "cast_type", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "CS0029", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "Cannot implicitly convert '{actualType}' to '{expectedType}', but an explicit conversion (cast) exists. This means the conversion is possible but may lose data or precision.",
+            "prescription": "Add an explicit cast: ({expectedType})value. Be aware that explicit casts can lose data (e.g., casting double to int truncates the decimal). Consider if this data loss is acceptable.",
+            "codeBlock": "// BEFORE (wrong)\nint x = someDouble; // CS0266\n\n// AFTER (correct)\nint x = (int)someDouble;\n// or more safely:\nint x = Convert.ToInt32(someDouble);",
+            "conditions": [
+              {
+                "when": "actualType equals long",
+                "rootCause": "A 'long' value cannot be implicitly converted to 'int' because this may lose data (overflow).",
+                "prescription": "Use an explicit cast (int)value if overflow is not a concern, or use checked((int)value) to throw on overflow, or change the target variable to 'long'.",
+                "codeBlock": null
+              },
+              {
+                "when": "actualType equals object",
+                "rootCause": "An 'object' reference cannot be implicitly converted to a specific type. The actual runtime type is unknown at compile time.",
+                "prescription": "Use an explicit cast (Type)value, or use 'as' operator with null check, or use pattern matching: if (obj is Type t) { ... }.",
+                "codeBlock": "// AFTER (correct — pattern matching)\nif (obj is string s)\n{\n    Console.WriteLine(s.Length);\n}"
+              }
+            ]
+          },
+          {
+            "code": "CS1503",
+            "category": "type_conversion",
+            "severity": "error",
+            "messagePattern": "Argument (?<argNum>\\d+): cannot convert from '(?<actualType>.+?)' to '(?<expectedType>.+?)'",
+            "match": "CS1503:.*Argument (?<argNum>\\d+): cannot convert from '(?<actualType>.+?)' to '(?<expectedType>.+?)'",
+            "captures": [
+              { "name": "argNum", "role": "literal_value" },
+              { "name": "actualType", "role": "actual_type" },
+              { "name": "expectedType", "role": "expected_type" }
+            ],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "expectedType" }, "adjustedProbability": 0.75, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "expectedType" }, "adjustedProbability": 0.2, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": { "primaryStrategy": "cast_type", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "CS0029", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" },
+              { "code": "CS7036", "relationship": "sometimes_together", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "Argument {argNum} has type '{actualType}' but the method parameter expects '{expectedType}'. The types are not compatible for implicit conversion.",
+            "prescription": "1. Cast the argument: ({expectedType})argument.\n2. Convert the argument using an appropriate method.\n3. Check if you're calling the right overload of the method.\n4. Verify the argument order is correct.\n5. If both types are custom, check if a conversion operator or constructor accepting the source type exists.",
+            "codeBlock": "// BEFORE (wrong)\nvoid Process(int value) { }\nProcess(\"42\"); // CS1503: cannot convert from string to int\n\n// AFTER (correct)\nProcess(int.Parse(\"42\"));\n// or\nProcess(42);",
+            "conditions": [
+              {
+                "when": "actualType contains lambda",
+                "rootCause": "A lambda expression cannot be converted to the expected delegate or expression type.",
+                "prescription": "Ensure the lambda's parameter types and return type match the expected delegate signature. You may need to specify parameter types explicitly.",
+                "codeBlock": null
+              },
+              {
+                "when": "expectedType contains CancellationToken",
+                "rootCause": "A CancellationToken is required but a different type was passed.",
+                "prescription": "Pass CancellationToken.None or a CancellationToken from the calling context. In ASP.NET Core controllers, use the CancellationToken parameter from the action method.",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "CS0305",
+            "category": "type_conversion",
+            "severity": "error",
+            "messagePattern": "Using the generic type '(?<typeName>.+?)' requires (?<count>\\d+) type arguments",
+            "match": "CS0305:.*Using the generic type '(?<typeName>.+?)' requires (?<count>\\d+) type arguments",
+            "captures": [
+              { "name": "typeName", "role": "type_name" },
+              { "name": "count", "role": "literal_value" }
+            ],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.6,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "typeName" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_external", "target": "typeName" }, "adjustedProbability": 0.9, "traceDepth": "none", "traceTarget": "external_package" }
+            ],
+            "fixHint": { "primaryStrategy": "fix_generic_constraint", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The generic type '{typeName}' requires {count} type argument(s) but none or the wrong number were provided. Generic types must be fully specified with their type parameters.",
+            "prescription": "Add the required type arguments. For example, change 'List' to 'List<string>' or 'Dictionary' to 'Dictionary<string, int>'. Check the type definition for the correct number and constraints of type parameters.",
+            "codeBlock": "// BEFORE (wrong)\nList items = new List(); // CS0305\n\n// AFTER (correct)\nList<string> items = new List<string>();",
+            "conditions": [
+              {
+                "when": "typeName contains Dictionary",
+                "rootCause": "Dictionary requires 2 type arguments: the key type and the value type.",
+                "prescription": "Specify both type arguments: Dictionary<TKey, TValue>, e.g., Dictionary<string, int>.",
+                "codeBlock": null
+              },
+              {
+                "when": "typeName contains Nullable",
+                "rootCause": "Nullable<T> requires 1 type argument for the underlying value type.",
+                "prescription": "Use Nullable<int> or the shorthand 'int?' syntax.",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "CS0030",
+            "category": "type_conversion",
+            "severity": "error",
+            "messagePattern": "Cannot convert type '(?<actualType>.+?)' to '(?<expectedType>.+?)'",
+            "match": "CS0030:.*Cannot convert type '(?<actualType>.+?)' to '(?<expectedType>.+?)'",
+            "captures": [
+              { "name": "actualType", "role": "actual_type" },
+              { "name": "expectedType", "role": "expected_type" }
+            ],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "actualType" }, "adjustedProbability": 0.7, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "cast_type", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "No conversion exists between '{actualType}' and '{expectedType}' — neither implicit, explicit, nor user-defined. These types are fundamentally incompatible.",
+            "prescription": "1. Reconsider the type relationship — perhaps an intermediate conversion is needed.\n2. Implement an explicit conversion operator in your custom type.\n3. Use a mapping/adapter pattern to convert between the types.\n4. Check if you're using the correct types.",
+            "codeBlock": null,
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "nullable_reference",
+        "name": "Nullable Reference Type Errors",
+        "description": "Nullable reference type warnings and errors (CS8600-CS8605, CS8618, CS8625)",
+        "defaultTracingBehavior": "trace_type_definition",
+        "errors": [
+          {
+            "code": "CS8600",
+            "category": "nullable_reference",
+            "severity": "warning",
+            "messagePattern": "Converting null literal or possible null value to non-nullable type",
+            "match": "CS8600:.*Converting null literal or possible null value to non-nullable type",
+            "captures": [],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.2,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "typeName" }, "adjustedProbability": 0.5, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "add_null_check", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "CS8602", "relationship": "caused_by_this", "sharedCapture": null, "resolution": "fix_this_first" },
+              { "code": "CS8601", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" },
+              { "code": "CS8603", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "A possibly-null value is being assigned to a non-nullable reference type variable. With nullable reference types enabled, the compiler tracks null state and warns when a null value could flow into a non-nullable location.",
+            "prescription": "1. Make the target variable nullable by adding '?' (e.g., string? instead of string).\n2. Add a null check before the assignment.\n3. Use the null-forgiving operator '!' if you're certain the value is not null.\n4. Use the null-coalescing operator '??' to provide a default value.",
+            "codeBlock": "// BEFORE (warning)\nstring name = someObject?.Name; // CS8600\n\n// AFTER (correct — make nullable)\nstring? name = someObject?.Name;\n\n// AFTER (correct — null coalescing)\nstring name = someObject?.Name ?? \"default\";\n\n// AFTER (correct — null check)\nif (someObject?.Name is string name)\n{\n    // use name safely\n}",
+            "conditions": []
+          },
+          {
+            "code": "CS8601",
+            "category": "nullable_reference",
+            "severity": "warning",
+            "messagePattern": "Possible null reference assignment",
+            "match": "CS8601:.*Possible null reference assignment",
+            "captures": [],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.2,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "typeName" }, "adjustedProbability": 0.5, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "add_null_check", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "CS8600", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" },
+              { "code": "CS8602", "relationship": "caused_by_this", "sharedCapture": null, "resolution": "fix_this_first" }
+            ],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "A value that may be null is being assigned to a non-nullable reference type. The compiler cannot guarantee the value is not null based on its flow analysis.",
+            "prescription": "1. Change the target type to nullable (add '?').\n2. Add a null guard before the assignment.\n3. Use the null-coalescing operator (??) to provide a fallback.\n4. Use '!' if you're certain the value is not null at runtime.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "CS8602",
+            "category": "nullable_reference",
+            "severity": "warning",
+            "messagePattern": "Dereference of a possibly null reference",
+            "match": "CS8602:.*Dereference of a possibly null reference",
+            "captures": [],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.2,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "typeName" }, "adjustedProbability": 0.5, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "add_null_check", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [
+              { "code": "CS8600", "relationship": "caused_by_this", "sharedCapture": null, "resolution": "fix_other_first" }
+            ],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "You are accessing a member (property, method, indexer) on a reference that may be null. This could cause a NullReferenceException at runtime.",
+            "prescription": "1. Add a null check: if (obj != null) { obj.Method(); }\n2. Use the null-conditional operator: obj?.Method();\n3. Use pattern matching: if (obj is Type t) { t.Method(); }\n4. Ensure the variable is assigned a non-null value before use.\n5. Use the '!' operator only if you are certain it cannot be null.",
+            "codeBlock": "// BEFORE (warning)\nstring upper = name.ToUpper(); // CS8602 if name could be null\n\n// AFTER (correct — null conditional)\nstring? upper = name?.ToUpper();\n\n// AFTER (correct — null check)\nif (name is not null)\n{\n    string upper = name.ToUpper();\n}",
+            "conditions": []
+          },
+          {
+            "code": "CS8603",
+            "category": "nullable_reference",
+            "severity": "warning",
+            "messagePattern": "Possible null reference return",
+            "match": "CS8603:.*Possible null reference return",
+            "captures": [],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.2,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "add_null_check", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [
+              { "code": "CS8600", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "A method with a non-nullable return type might return null on some code paths. The compiler cannot guarantee all return paths provide a non-null value.",
+            "prescription": "1. Change the return type to nullable (e.g., string? instead of string).\n2. Ensure all code paths return a non-null value.\n3. Throw an exception instead of returning null.\n4. Use '!' if you're certain the value is never null at this point.",
+            "codeBlock": "// BEFORE (warning)\npublic string FindName(int id)\n{\n    return _names.GetValueOrDefault(id); // may return null, CS8603\n}\n\n// AFTER (correct — nullable return)\npublic string? FindName(int id)\n{\n    return _names.GetValueOrDefault(id);\n}\n\n// AFTER (correct — guarantee non-null)\npublic string FindName(int id)\n{\n    return _names.GetValueOrDefault(id) ?? throw new KeyNotFoundException();\n}",
+            "conditions": []
+          },
+          {
+            "code": "CS8604",
+            "category": "nullable_reference",
+            "severity": "warning",
+            "messagePattern": "Possible null reference argument for parameter '(?<paramName>.+?)' in '(?<methodName>.+?)'",
+            "match": "CS8604:.*Possible null reference argument for parameter '(?<paramName>.+?)' in '(?<methodName>.+?)'",
+            "captures": [
+              { "name": "paramName", "role": "symbol_name" },
+              { "name": "methodName", "role": "symbol_name" }
+            ],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.4,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "methodName" }, "adjustedProbability": 0.7, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "add_null_check", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [
+              { "code": "CS8602", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "A possibly-null value is being passed as argument to parameter '{paramName}' of method '{methodName}', which does not accept null.",
+            "prescription": "1. Add a null check before calling the method.\n2. Use the null-coalescing operator (??) to provide a default value.\n3. Change the parameter to accept nullable (add '?') if appropriate.\n4. Use '!' operator if you're certain the value is not null.",
+            "codeBlock": "// BEFORE (warning)\nstring? name = GetName();\nProcess(name); // CS8604: name might be null\n\n// AFTER (correct)\nstring? name = GetName();\nif (name is not null)\n{\n    Process(name);\n}\n\n// AFTER (correct — null coalescing)\nProcess(name ?? \"default\");",
+            "conditions": []
+          },
+          {
+            "code": "CS8605",
+            "category": "nullable_reference",
+            "severity": "warning",
+            "messagePattern": "Unboxing a possibly null value",
+            "match": "CS8605:.*Unboxing a possibly null value",
+            "captures": [],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.1,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "add_null_check", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "A boxed value that may be null is being unboxed to a value type. Unboxing null throws a NullReferenceException at runtime.",
+            "prescription": "1. Check for null before unboxing: if (obj is int i) { ... }.\n2. Use a nullable value type: int? value = obj as int?.\n3. Ensure the boxed value is never null before this point.",
+            "codeBlock": "// BEFORE (warning)\nobject? obj = GetValue();\nint value = (int)obj; // CS8605\n\n// AFTER (correct)\nif (obj is int value)\n{\n    // use value\n}",
+            "conditions": []
+          },
+          {
+            "code": "CS8618",
+            "category": "nullable_reference",
+            "severity": "warning",
+            "messagePattern": "Non-nullable (?:property|field|event) '(?<memberName>.+?)' must contain a non-null value when exiting constructor\\. Consider declaring the (?:property|field|event) as nullable",
+            "match": "CS8618:.*Non-nullable (?:property|field|event) '(?<memberName>.+?)' must contain a non-null value when exiting constructor",
+            "captures": [{ "name": "memberName", "role": "symbol_name" }],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.1,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "initialize_variable", "requiresCrossFileEdit": false, "typicalScope": "type_definition" },
+            "coOccurrence": [
+              { "code": "CS8625", "relationship": "sometimes_together", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The non-nullable property/field '{memberName}' is not initialized in the constructor. With nullable reference types enabled, all non-nullable reference type members must be assigned before the constructor exits.",
+            "prescription": "1. Initialize the member in the constructor.\n2. Initialize with a default value at declaration: public string Name { get; set; } = string.Empty;\n3. Make the member nullable: public string? Name { get; set; }\n4. Use the 'required' keyword (C# 11+): public required string Name { get; set; }\n5. Suppress with '= null!' if initialization happens elsewhere (e.g., EF Core, DI).",
+            "codeBlock": "// BEFORE (warning)\npublic class User\n{\n    public string Name { get; set; } // CS8618\n    public string Email { get; set; } // CS8618\n}\n\n// AFTER (correct — initialize in constructor)\npublic class User\n{\n    public string Name { get; set; }\n    public string Email { get; set; }\n    public User(string name, string email)\n    {\n        Name = name;\n        Email = email;\n    }\n}\n\n// AFTER (correct — default values)\npublic class User\n{\n    public string Name { get; set; } = string.Empty;\n    public string Email { get; set; } = string.Empty;\n}\n\n// AFTER (correct — required keyword, C# 11+)\npublic class User\n{\n    public required string Name { get; set; }\n    public required string Email { get; set; }\n}",
+            "conditions": []
+          },
+          {
+            "code": "CS8625",
+            "category": "nullable_reference",
+            "severity": "warning",
+            "messagePattern": "Cannot convert null literal to non-nullable reference type",
+            "match": "CS8625:.*Cannot convert null literal to non-nullable reference type",
+            "captures": [],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.1,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "update_type_annotation", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "CS8618", "relationship": "sometimes_together", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "A null literal is being assigned to or used as a non-nullable reference type. The compiler requires that non-nullable types are never assigned null.",
+            "prescription": "1. Make the target type nullable by adding '?'.\n2. Use a non-null default value instead of null.\n3. Use the null-forgiving operator '!' if you have a reason to suppress this warning.\n4. Reconsider the design — should this value legitimately be null?",
+            "codeBlock": "// BEFORE (warning)\nstring name = null; // CS8625\n\n// AFTER (correct)\nstring? name = null;\n// or\nstring name = string.Empty;",
+            "conditions": []
+          },
+          {
+            "code": "CS8619",
+            "category": "nullable_reference",
+            "severity": "warning",
+            "messagePattern": "Nullability of reference types in value of type '(?<actualType>.+?)' doesn't match target type '(?<expectedType>.+?)'",
+            "match": "CS8619:.*Nullability of reference types in value of type '(?<actualType>.+?)' doesn't match target type '(?<expectedType>.+?)'",
+            "captures": [
+              { "name": "actualType", "role": "actual_type" },
+              { "name": "expectedType", "role": "expected_type" }
+            ],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.4,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "expectedType" }, "adjustedProbability": 0.7, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "update_type_annotation", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The nullable annotations on '{actualType}' do not match '{expectedType}'. For example, assigning a List<string?> to a List<string> or vice versa.",
+            "prescription": "Align the nullable annotations between source and target types. Either make both nullable or both non-nullable. Check generic type argument nullability carefully.",
+            "codeBlock": null,
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "interface_implementation",
+        "name": "Interface and Abstract Member Implementation Errors",
+        "description": "Errors about implementing interfaces, abstract classes, and method overrides",
+        "defaultTracingBehavior": "trace_type_definition",
+        "errors": [
+          {
+            "code": "CS0535",
+            "category": "interface_implementation",
+            "severity": "error",
+            "messagePattern": "'(?<className>.+?)' does not implement interface member '(?<memberName>.+?)'",
+            "match": "CS0535:.*'(?<className>.+?)' does not implement interface member '(?<memberName>.+?)'",
+            "captures": [
+              { "name": "className", "role": "type_name" },
+              { "name": "memberName", "role": "symbol_name" }
+            ],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.7,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "className" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_interface_member", "target": "memberName" }, "adjustedProbability": 0.85, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "implement_interface", "requiresCrossFileEdit": false, "typicalScope": "type_definition" },
+            "coOccurrence": [
+              { "code": "CS0534", "relationship": "same_root_cause", "sharedCapture": "className", "resolution": "fix_either" }
+            ],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The class '{className}' declares that it implements an interface but is missing the implementation for member '{memberName}'.",
+            "prescription": "1. Add the missing member implementation to '{className}'.\n2. Use your IDE to auto-implement the interface members.\n3. If the implementation is not appropriate, consider using explicit interface implementation.\n4. Check if the member signature matches exactly (including return type, parameters, and generic constraints).",
+            "codeBlock": "// BEFORE (wrong)\npublic interface IService\n{\n    Task<Result> ProcessAsync(Request request);\n}\n\npublic class MyService : IService\n{\n    // CS0535: Missing ProcessAsync\n}\n\n// AFTER (correct)\npublic class MyService : IService\n{\n    public async Task<Result> ProcessAsync(Request request)\n    {\n        // implementation\n        return new Result();\n    }\n}",
+            "conditions": []
+          },
+          {
+            "code": "CS0534",
+            "category": "interface_implementation",
+            "severity": "error",
+            "messagePattern": "'(?<className>.+?)' does not implement inherited abstract member '(?<memberName>.+?)'",
+            "match": "CS0534:.*'(?<className>.+?)' does not implement inherited abstract member '(?<memberName>.+?)'",
+            "captures": [
+              { "name": "className", "role": "type_name" },
+              { "name": "memberName", "role": "symbol_name" }
+            ],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.8,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_inherited", "target": "memberName" }, "adjustedProbability": 0.9, "traceDepth": "transitive", "traceTarget": "inherited_parent" }
+            ],
+            "fixHint": { "primaryStrategy": "add_override", "requiresCrossFileEdit": false, "typicalScope": "type_definition" },
+            "coOccurrence": [
+              { "code": "CS0535", "relationship": "same_root_cause", "sharedCapture": "className", "resolution": "fix_either" }
+            ],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The class '{className}' inherits from an abstract base class but does not implement the abstract member '{memberName}'. Non-abstract classes must implement all inherited abstract members.",
+            "prescription": "1. Override the abstract member with the 'override' keyword.\n2. If the class should also be abstract, add the 'abstract' modifier to '{className}'.\n3. Ensure the override signature matches exactly.",
+            "codeBlock": "// BEFORE (wrong)\npublic abstract class BaseHandler\n{\n    public abstract void Handle(Request request);\n}\n\npublic class MyHandler : BaseHandler\n{\n    // CS0534: Missing Handle override\n}\n\n// AFTER (correct)\npublic class MyHandler : BaseHandler\n{\n    public override void Handle(Request request)\n    {\n        // implementation\n    }\n}",
+            "conditions": []
+          },
+          {
+            "code": "CS0115",
+            "category": "interface_implementation",
+            "severity": "error",
+            "messagePattern": "'(?<memberName>.+?)': no suitable method found to override",
+            "match": "CS0115:.*'(?<memberName>.+?)': no suitable method found to override",
+            "captures": [{ "name": "memberName", "role": "symbol_name" }],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.7,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_inherited", "target": "memberName" }, "adjustedProbability": 0.9, "traceDepth": "direct", "traceTarget": "inherited_parent" }
+            ],
+            "fixHint": { "primaryStrategy": "change_signature", "requiresCrossFileEdit": false, "typicalScope": "type_definition" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The method '{memberName}' is marked with 'override' but no matching virtual, abstract, or override method exists in the base class chain. This can happen because: (1) the method signature doesn't match, (2) the method name is misspelled, (3) the base class was changed, or (4) the method was not marked virtual/abstract in the base.",
+            "prescription": "1. Check the base class for the exact method signature (name, parameters, return type).\n2. Ensure the base method is marked 'virtual' or 'abstract'.\n3. Fix any typos in the method name.\n4. Match parameter types exactly, including generic type arguments.\n5. If this is a new method, remove the 'override' keyword.",
+            "codeBlock": "// BEFORE (wrong — parameter mismatch)\npublic class Base\n{\n    public virtual void Process(string input) { }\n}\npublic class Derived : Base\n{\n    public override void Process(int input) { } // CS0115 — wrong parameter type\n}\n\n// AFTER (correct)\npublic class Derived : Base\n{\n    public override void Process(string input) { }\n}",
+            "conditions": []
+          },
+          {
+            "code": "CS0111",
+            "category": "interface_implementation",
+            "severity": "error",
+            "messagePattern": "Type '(?<typeName>.+?)' already defines a member called '(?<memberName>.+?)' with the same parameter types",
+            "match": "CS0111:.*Type '(?<typeName>.+?)' already defines a member called '(?<memberName>.+?)' with the same parameter types",
+            "captures": [
+              { "name": "typeName", "role": "type_name" },
+              { "name": "memberName", "role": "symbol_name" }
+            ],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_local", "target": "typeName" }, "adjustedProbability": 0.1, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": { "primaryStrategy": "remove_duplicate", "requiresCrossFileEdit": false, "typicalScope": "type_definition" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The type '{typeName}' has two or more members named '{memberName}' with identical parameter types. C# does not allow duplicate member definitions with the same signature. Note: overloads with different parameter types are allowed.",
+            "prescription": "1. Remove the duplicate member.\n2. Rename one of the members.\n3. Change parameter types to create a valid overload.\n4. For partial classes, check other files for conflicting definitions.",
+            "codeBlock": null,
+            "conditions": [
+              {
+                "when": "typeName contains partial",
+                "rootCause": "A partial class split across files has duplicate member definitions in different files.",
+                "prescription": "Check all partial class files for '{typeName}' and remove the duplicate definition of '{memberName}'. Use 'find in files' to locate all partial declarations.",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "CS0738",
+            "category": "interface_implementation",
+            "severity": "error",
+            "messagePattern": "'(?<className>.+?)' does not implement interface member '(?<memberName>.+?)'\\. '(?<existingMember>.+?)' cannot implement '(?<interfaceMember>.+?)' because it does not have the matching return type of '(?<returnType>.+?)'",
+            "match": "CS0738:.*does not implement interface member.*cannot implement.*does not have the matching return type",
+            "captures": [
+              { "name": "className", "role": "type_name" },
+              { "name": "memberName", "role": "symbol_name" },
+              { "name": "returnType", "role": "expected_type" }
+            ],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.7,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_interface_member", "target": "memberName" }, "adjustedProbability": 0.85, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "change_signature", "requiresCrossFileEdit": false, "typicalScope": "type_definition" },
+            "coOccurrence": [
+              { "code": "CS0535", "relationship": "same_root_cause", "sharedCapture": "className", "resolution": "fix_either" }
+            ],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The class '{className}' has a method that matches the interface member '{memberName}' by name and parameters, but the return type '{returnType}' does not match.",
+            "prescription": "Change the return type of the implementing method to match the interface definition. The return type must be exactly '{returnType}'.",
+            "codeBlock": null,
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "method_signature",
+        "name": "Method Signature and Parameter Errors",
+        "description": "Errors about method parameters, return types, and calling conventions",
+        "defaultTracingBehavior": "trace_type_definition",
+        "errors": [
+          {
+            "code": "CS7036",
+            "category": "method_signature",
+            "severity": "error",
+            "messagePattern": "There is no argument given that corresponds to the required parameter '(?<paramName>.+?)' of '(?<methodName>.+?)'",
+            "match": "CS7036:.*There is no argument given that corresponds to the required parameter '(?<paramName>.+?)' of '(?<methodName>.+?)'",
+            "captures": [
+              { "name": "paramName", "role": "symbol_name" },
+              { "name": "methodName", "role": "symbol_name" }
+            ],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "methodName" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "methodName" }, "adjustedProbability": 0.1, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": { "primaryStrategy": "change_signature", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "CS1503", "relationship": "sometimes_together", "sharedCapture": "methodName", "resolution": "fix_either" }
+            ],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The method '{methodName}' requires a parameter '{paramName}' but it was not provided in the call. This happens when: (1) you forgot to pass an argument, (2) the method signature was changed to add a new required parameter, or (3) you're calling the wrong overload.",
+            "prescription": "1. Add the missing argument for '{paramName}' in the method call.\n2. If the parameter should be optional, add a default value in the method definition.\n3. Check if you're calling the correct overload.\n4. For constructor calls, provide all required parameters.",
+            "codeBlock": "// BEFORE (wrong)\nvar user = new User(\"Alice\"); // CS7036: missing 'email' parameter\n\n// AFTER (correct)\nvar user = new User(\"Alice\", \"alice@example.com\");\n\n// Or make the parameter optional in the constructor:\npublic User(string name, string email = \"\") { }",
+            "conditions": []
+          },
+          {
+            "code": "CS0161",
+            "category": "method_signature",
+            "severity": "error",
+            "messagePattern": "'(?<methodName>.+?)': not all code paths return a value",
+            "match": "CS0161:.*'(?<methodName>.+?)': not all code paths return a value",
+            "captures": [{ "name": "methodName", "role": "symbol_name" }],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.1,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "add_missing_return", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The method '{methodName}' has a non-void return type but some execution paths do not return a value. Every possible code path through the method must end with a return statement.",
+            "prescription": "1. Add a return statement at the end of the method.\n2. Ensure all branches of if/else/switch return a value.\n3. Add a default return after switch statements.\n4. Consider if the method should return void instead.",
+            "codeBlock": "// BEFORE (wrong)\npublic int GetValue(bool flag)\n{\n    if (flag)\n        return 1;\n    // CS0161: missing return for else branch\n}\n\n// AFTER (correct)\npublic int GetValue(bool flag)\n{\n    if (flag)\n        return 1;\n    return 0;\n}",
+            "conditions": []
+          },
+          {
+            "code": "CS0127",
+            "category": "method_signature",
+            "severity": "error",
+            "messagePattern": "Since '(?<methodName>.+?)' returns void, a return keyword must not be followed by an object expression",
+            "match": "CS0127:.*Since '(?<methodName>.+?)' returns void, a return keyword must not be followed by an object expression",
+            "captures": [{ "name": "methodName", "role": "symbol_name" }],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.1,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "change_signature", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The method '{methodName}' has a void return type, but a return statement is trying to return a value.",
+            "prescription": "Either: (1) change the method's return type to the type of the expression being returned, or (2) remove the value from the return statement.",
+            "codeBlock": "// BEFORE (wrong)\npublic void GetName()\n{\n    return \"Alice\"; // CS0127\n}\n\n// AFTER (correct)\npublic string GetName()\n{\n    return \"Alice\";\n}",
+            "conditions": []
+          },
+          {
+            "code": "CS0200",
+            "category": "method_signature",
+            "severity": "error",
+            "messagePattern": "Property or indexer '(?<propertyName>.+?)' cannot be assigned to -- it is read only",
+            "match": "CS0200:.*Property or indexer '(?<propertyName>.+?)' cannot be assigned to -- it is read only",
+            "captures": [{ "name": "propertyName", "role": "symbol_name" }],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "propertyName" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": true, "typicalScope": "type_definition" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The property '{propertyName}' is read-only (has no setter, or only an init setter) and cannot be assigned a value outside its constructor or init context.",
+            "prescription": "1. Add a 'set' accessor to the property.\n2. Use an 'init' accessor and set the value during object initialization.\n3. Assign the value in the constructor.\n4. For records, use the 'with' expression to create a modified copy.",
+            "codeBlock": "// BEFORE (wrong)\npublic class Config\n{\n    public string Name { get; } // read-only\n}\nvar c = new Config();\nc.Name = \"test\"; // CS0200\n\n// AFTER (correct — add init)\npublic class Config\n{\n    public string Name { get; init; }\n}\nvar c = new Config { Name = \"test\" };",
+            "conditions": []
+          },
+          {
+            "code": "CS1501",
+            "category": "method_signature",
+            "severity": "error",
+            "messagePattern": "No overload for method '(?<methodName>.+?)' takes (?<argCount>\\d+) arguments",
+            "match": "CS1501:.*No overload for method '(?<methodName>.+?)' takes (?<argCount>\\d+) arguments",
+            "captures": [
+              { "name": "methodName", "role": "symbol_name" },
+              { "name": "argCount", "role": "literal_value" }
+            ],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "methodName" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "change_signature", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "CS7036", "relationship": "same_root_cause", "sharedCapture": "methodName", "resolution": "fix_either" }
+            ],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The method '{methodName}' has no overload that accepts {argCount} argument(s). Either too many or too few arguments were provided.",
+            "prescription": "1. Check the method signature for the correct number of parameters.\n2. Remove extra arguments or add missing ones.\n3. Check if you're calling the correct overload.\n4. Named arguments may help if the order is wrong.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "CS0128",
+            "category": "method_signature",
+            "severity": "error",
+            "messagePattern": "A local variable or function named '(?<varName>.+?)' is already defined in this scope",
+            "match": "CS0128:.*A local variable or function named '(?<varName>.+?)' is already defined in this scope",
+            "captures": [{ "name": "varName", "role": "symbol_name" }],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "rename_symbol", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "A local variable named '{varName}' is declared more than once in the same scope. C# does not allow duplicate variable names within the same block or overlapping scopes.",
+            "prescription": "Rename one of the duplicate variables, or remove the duplicate declaration and reuse the existing one.",
+            "codeBlock": "// BEFORE (wrong)\nint count = 0;\nint count = 5; // CS0128\n\n// AFTER (correct)\nint count = 0;\ncount = 5;",
+            "conditions": []
+          },
+          {
+            "code": "CS0136",
+            "category": "method_signature",
+            "severity": "error",
+            "messagePattern": "A local or parameter named '(?<varName>.+?)' cannot be declared in this scope because that name is used in an enclosing local scope",
+            "match": "CS0136:.*A local or parameter named '(?<varName>.+?)' cannot be declared in this scope",
+            "captures": [{ "name": "varName", "role": "symbol_name" }],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "rename_symbol", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "A variable named '{varName}' is being declared in an inner scope but the same name is already used in an enclosing scope. C# does not allow shadowing of local variables.",
+            "prescription": "Rename the inner variable to a different name to avoid the naming conflict.",
+            "codeBlock": null,
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "generics_constraints",
+        "name": "Generics and Constraint Errors",
+        "description": "Errors related to generic types, constraints, and type parameters",
+        "defaultTracingBehavior": "trace_type_definition",
+        "errors": [
+          {
+            "code": "CS0311",
+            "category": "generics_constraints",
+            "severity": "error",
+            "messagePattern": "The type '(?<actualType>.+?)' cannot be used as type parameter '(?<typeParam>.+?)' in the generic type or method '(?<genericName>.+?)'\\. There is no implicit reference conversion from '(?<actualType2>.+?)' to '(?<constraintType>.+?)'",
+            "match": "CS0311:.*The type '(?<actualType>.+?)' cannot be used as type parameter '(?<typeParam>.+?)' in the generic type or method '(?<genericName>.+?)'",
+            "captures": [
+              { "name": "actualType", "role": "actual_type" },
+              { "name": "typeParam", "role": "type_name" },
+              { "name": "genericName", "role": "symbol_name" },
+              { "name": "constraintType", "role": "expected_type" }
+            ],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.6,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "genericName" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_imported", "target": "actualType" }, "adjustedProbability": 0.7, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "fix_generic_constraint", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The type '{actualType}' does not satisfy the generic constraint on type parameter '{typeParam}' of '{genericName}'. The constraint requires the type to be convertible to '{constraintType}'.",
+            "prescription": "1. Make '{actualType}' implement or inherit from '{constraintType}'.\n2. Use a different type that satisfies the constraint.\n3. If you control the generic definition, relax the constraint.\n4. Check if the constraint requires a class/struct (where T : class / where T : struct).",
+            "codeBlock": "// BEFORE (wrong)\npublic class Repo<T> where T : IEntity { }\npublic class MyClass { } // doesn't implement IEntity\nvar repo = new Repo<MyClass>(); // CS0311\n\n// AFTER (correct)\npublic class MyClass : IEntity { }\nvar repo = new Repo<MyClass>();",
+            "conditions": []
+          },
+          {
+            "code": "CS0310",
+            "category": "generics_constraints",
+            "severity": "error",
+            "messagePattern": "'(?<typeName>.+?)' must be a non-abstract type with a public parameterless constructor in order to use it as parameter '(?<typeParam>.+?)' in the generic type or method '(?<genericName>.+?)'",
+            "match": "CS0310:.*'(?<typeName>.+?)' must be a non-abstract type with a public parameterless constructor",
+            "captures": [
+              { "name": "typeName", "role": "type_name" },
+              { "name": "typeParam", "role": "type_name" },
+              { "name": "genericName", "role": "symbol_name" }
+            ],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.6,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "typeName" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "change_signature", "requiresCrossFileEdit": true, "typicalScope": "type_definition" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The type '{typeName}' does not satisfy the 'new()' constraint on '{typeParam}' in '{genericName}'. The constraint requires a non-abstract type with a public parameterless constructor.",
+            "prescription": "1. Add a public parameterless constructor to '{typeName}'.\n2. Make sure '{typeName}' is not abstract.\n3. Use a different type that has a parameterless constructor.\n4. If you control the generic definition, consider removing the 'new()' constraint and using a factory pattern instead.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "CS0314",
+            "category": "generics_constraints",
+            "severity": "error",
+            "messagePattern": "The type '(?<typeName>.+?)' cannot be used as type parameter '(?<typeParam>.+?)' in the generic type or method '(?<genericName>.+?)'\\. There is no boxing conversion or type parameter conversion from '(?<typeName2>.+?)' to '(?<constraintType>.+?)'",
+            "match": "CS0314:.*The type '(?<typeName>.+?)' cannot be used as type parameter '(?<typeParam>.+?)'.*no boxing conversion",
+            "captures": [
+              { "name": "typeName", "role": "type_name" },
+              { "name": "typeParam", "role": "type_name" },
+              { "name": "genericName", "role": "symbol_name" },
+              { "name": "constraintType", "role": "expected_type" }
+            ],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.6,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "typeName" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "fix_generic_constraint", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "CS0311", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The type '{typeName}' cannot satisfy the constraint for '{typeParam}' because there is no boxing or type parameter conversion to '{constraintType}'. This commonly occurs when a value type is used where a 'class' constraint exists.",
+            "prescription": "Implement the required interface on the type, or use a different type that satisfies the constraint. For value types, the constraint may need 'struct' instead of 'class'.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "CS0452",
+            "category": "generics_constraints",
+            "severity": "error",
+            "messagePattern": "The type '(?<typeName>.+?)' must be a reference type in order to use it as parameter '(?<typeParam>.+?)' in the generic type or method '(?<genericName>.+?)'",
+            "match": "CS0452:.*The type '(?<typeName>.+?)' must be a reference type",
+            "captures": [
+              { "name": "typeName", "role": "type_name" },
+              { "name": "typeParam", "role": "type_name" },
+              { "name": "genericName", "role": "symbol_name" }
+            ],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "typeName" }, "adjustedProbability": 0.7, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "update_type_annotation", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The type '{typeName}' is a value type (struct) but the generic constraint on '{typeParam}' requires a reference type ('where T : class').",
+            "prescription": "Use a reference type (class) instead of a value type, or change the struct to a class, or modify the generic constraint if you control it.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "CS0453",
+            "category": "generics_constraints",
+            "severity": "error",
+            "messagePattern": "The type '(?<typeName>.+?)' must be a non-nullable value type in order to use it as parameter '(?<typeParam>.+?)' in the generic type or method '(?<genericName>.+?)'",
+            "match": "CS0453:.*The type '(?<typeName>.+?)' must be a non-nullable value type",
+            "captures": [
+              { "name": "typeName", "role": "type_name" },
+              { "name": "typeParam", "role": "type_name" },
+              { "name": "genericName", "role": "symbol_name" }
+            ],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "typeName" }, "adjustedProbability": 0.7, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "update_type_annotation", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The type '{typeName}' is a reference type (class) but the generic constraint requires a non-nullable value type ('where T : struct'). This commonly occurs with Nullable<T> which requires T to be a struct.",
+            "prescription": "Use a value type (struct, int, double, etc.) instead of a reference type. If you need nullability for a reference type, use 'Type?' syntax directly instead of Nullable<Type>.",
+            "codeBlock": null,
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "async_await",
+        "name": "Async/Await Errors",
+        "description": "Errors related to asynchronous programming",
+        "defaultTracingBehavior": "trace_type_definition",
+        "errors": [
+          {
+            "code": "CS4033",
+            "category": "async_await",
+            "severity": "error",
+            "messagePattern": "The 'await' operator can only be used within an async method\\. Consider marking this method with the 'async' modifier and changing its return type to 'Task'",
+            "match": "CS4033:.*The 'await' operator can only be used within an async method",
+            "captures": [],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.1,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "wrap_async", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The 'await' keyword is used inside a method that is not marked as 'async'. The 'await' operator requires the enclosing method to have the 'async' modifier.",
+            "prescription": "1. Add the 'async' modifier to the method.\n2. Change the return type: void -> async Task, T -> async Task<T>.\n3. If the method is an event handler, use 'async void' (but avoid this pattern elsewhere).",
+            "codeBlock": "// BEFORE (wrong)\npublic Task<string> GetDataAsync()\n{\n    var result = await httpClient.GetStringAsync(url); // CS4033\n    return result;\n}\n\n// AFTER (correct)\npublic async Task<string> GetDataAsync()\n{\n    var result = await httpClient.GetStringAsync(url);\n    return result;\n}",
+            "conditions": []
+          },
+          {
+            "code": "CS4034",
+            "category": "async_await",
+            "severity": "error",
+            "messagePattern": "The 'await' operator can only be used within an async lambda expression",
+            "match": "CS4034:.*The 'await' operator can only be used within an async lambda expression",
+            "captures": [],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "wrap_async", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The 'await' keyword is used inside a lambda expression that is not marked as 'async'.",
+            "prescription": "Add the 'async' modifier before the lambda parameters: change '() => ...' to 'async () => ...'.",
+            "codeBlock": "// BEFORE (wrong)\nitems.ForEach(item => await ProcessAsync(item)); // CS4034\n\n// AFTER (correct)\nitems.ForEach(async item => await ProcessAsync(item));",
+            "conditions": []
+          },
+          {
+            "code": "CS1998",
+            "category": "async_await",
+            "severity": "warning",
+            "messagePattern": "This async method lacks 'await' operators and will run synchronously",
+            "match": "CS1998:.*This async method lacks 'await' operators and will run synchronously",
+            "captures": [],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.1,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "A method is marked as 'async' but does not contain any 'await' expressions. The method will execute synchronously, and the async state machine overhead is unnecessary.",
+            "prescription": "1. Remove the 'async' modifier and return Task.CompletedTask or Task.FromResult<T>().\n2. Add 'await' calls if the method should be asynchronous.\n3. If overriding an async interface method synchronously, use Task.FromResult().",
+            "codeBlock": "// BEFORE (warning)\npublic async Task<int> GetValue() // CS1998\n{\n    return 42;\n}\n\n// AFTER (correct — remove async)\npublic Task<int> GetValue()\n{\n    return Task.FromResult(42);\n}",
+            "conditions": []
+          },
+          {
+            "code": "CS0815",
+            "category": "async_await",
+            "severity": "error",
+            "messagePattern": "Cannot assign (?<expression>.+?) to an implicitly-typed variable",
+            "match": "CS0815:.*Cannot assign .+? to an implicitly-typed variable",
+            "captures": [{ "name": "expression", "role": "literal_value" }],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "update_type_annotation", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "An expression that does not have a type (like a method group, null, or lambda) cannot be assigned to a 'var' variable because the compiler cannot infer the type.",
+            "prescription": "Use an explicit type instead of 'var'. For lambdas, specify the delegate type (Func<T>, Action, etc.). For null, specify the nullable type.",
+            "codeBlock": "// BEFORE (wrong)\nvar action = DoSomething; // CS0815 — method group\n\n// AFTER (correct)\nAction action = DoSomething;",
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "inheritance",
+        "name": "Inheritance and Class Hierarchy Errors",
+        "description": "Errors related to class inheritance, sealed/abstract classes, and virtual methods",
+        "defaultTracingBehavior": "trace_type_definition",
+        "errors": [
+          {
+            "code": "CS0509",
+            "category": "inheritance",
+            "severity": "error",
+            "messagePattern": "'(?<derivedClass>.+?)': cannot derive from sealed type '(?<baseClass>.+?)'",
+            "match": "CS0509:.*'(?<derivedClass>.+?)': cannot derive from sealed type '(?<baseClass>.+?)'",
+            "captures": [
+              { "name": "derivedClass", "role": "type_name" },
+              { "name": "baseClass", "role": "type_name" }
+            ],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.7,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "baseClass" }, "adjustedProbability": 0.85, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": true, "typicalScope": "type_definition" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The class '{derivedClass}' is trying to inherit from '{baseClass}', but '{baseClass}' is marked as 'sealed' and cannot be inherited.",
+            "prescription": "1. Remove the 'sealed' modifier from '{baseClass}' if you control it.\n2. Use composition instead of inheritance (have a field of type '{baseClass}').\n3. Use an interface that '{baseClass}' implements.\n4. Use a wrapper/decorator pattern.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "CS0060",
+            "category": "inheritance",
+            "severity": "error",
+            "messagePattern": "Inconsistent accessibility: base class '(?<baseClass>.+?)' is less accessible than class '(?<derivedClass>.+?)'",
+            "match": "CS0060:.*Inconsistent accessibility: base class '(?<baseClass>.+?)' is less accessible than class '(?<derivedClass>.+?)'",
+            "captures": [
+              { "name": "baseClass", "role": "type_name" },
+              { "name": "derivedClass", "role": "type_name" }
+            ],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.6,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "baseClass" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "fix_access_modifier", "requiresCrossFileEdit": true, "typicalScope": "type_definition" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The base class '{baseClass}' has a more restrictive access modifier than the derived class '{derivedClass}'. A public class cannot inherit from an internal class.",
+            "prescription": "Make the base class at least as accessible as the derived class. If the derived class is public, the base class must also be public.",
+            "codeBlock": "// BEFORE (wrong)\ninternal class Base { }\npublic class Derived : Base { } // CS0060\n\n// AFTER (correct)\npublic class Base { }\npublic class Derived : Base { }",
+            "conditions": []
+          },
+          {
+            "code": "CS0506",
+            "category": "inheritance",
+            "severity": "error",
+            "messagePattern": "'(?<memberName>.+?)': cannot override inherited member '(?<baseMember>.+?)' because it is not marked virtual, abstract, or override",
+            "match": "CS0506:.*'(?<memberName>.+?)': cannot override inherited member '(?<baseMember>.+?)' because it is not marked virtual",
+            "captures": [
+              { "name": "memberName", "role": "symbol_name" },
+              { "name": "baseMember", "role": "symbol_name" }
+            ],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.7,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_inherited", "target": "baseMember" }, "adjustedProbability": 0.9, "traceDepth": "direct", "traceTarget": "inherited_parent" }
+            ],
+            "fixHint": { "primaryStrategy": "add_override", "requiresCrossFileEdit": true, "typicalScope": "type_definition" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "You're trying to override '{baseMember}' but it is not marked as 'virtual', 'abstract', or 'override' in the base class.",
+            "prescription": "1. Add the 'virtual' keyword to the base class member.\n2. Use 'new' instead of 'override' to hide the base member (not recommended — hides rather than overrides).\n3. If you don't control the base class, use a different approach (composition, wrapper).",
+            "codeBlock": "// BEFORE (wrong)\npublic class Base\n{\n    public void Method() { } // not virtual\n}\npublic class Derived : Base\n{\n    public override void Method() { } // CS0506\n}\n\n// AFTER (correct — make base virtual)\npublic class Base\n{\n    public virtual void Method() { }\n}\npublic class Derived : Base\n{\n    public override void Method() { }\n}",
+            "conditions": []
+          },
+          {
+            "code": "CS0263",
+            "category": "inheritance",
+            "severity": "error",
+            "messagePattern": "Partial declarations of '(?<typeName>.+?)' must not specify different base classes",
+            "match": "CS0263:.*Partial declarations of '(?<typeName>.+?)' must not specify different base classes",
+            "captures": [{ "name": "typeName", "role": "type_name" }],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.9,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": true, "typicalScope": "type_definition" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "Multiple partial class declarations for '{typeName}' specify different base classes. All partial declarations must agree on the base class (or only one should specify it).",
+            "prescription": "Specify the base class in only one partial class file, or ensure all partial declarations use the same base class.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "CS0144",
+            "category": "inheritance",
+            "severity": "error",
+            "messagePattern": "Cannot create an instance of the abstract type or interface '(?<typeName>.+?)'",
+            "match": "CS0144:.*Cannot create an instance of the abstract type or interface '(?<typeName>.+?)'",
+            "captures": [{ "name": "typeName", "role": "type_name" }],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "typeName" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "You're trying to create an instance of '{typeName}' which is either abstract or an interface. Abstract types and interfaces cannot be instantiated directly.",
+            "prescription": "1. Create an instance of a concrete class that derives from/implements '{typeName}'.\n2. Use dependency injection to resolve the interface.\n3. Use a factory method or pattern.",
+            "codeBlock": "// BEFORE (wrong)\nILogger logger = new ILogger(); // CS0144\n\n// AFTER (correct)\nILogger logger = new ConsoleLogger();\n// or with DI\nILogger logger = serviceProvider.GetRequiredService<ILogger>();",
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "misc_common",
+        "name": "Miscellaneous Common Errors",
+        "description": "Other frequently encountered compilation errors",
+        "defaultTracingBehavior": "local_only",
+        "errors": [
+          {
+            "code": "CS0162",
+            "category": "misc_common",
+            "severity": "warning",
+            "messagePattern": "Unreachable code detected",
+            "match": "CS0162:.*Unreachable code detected",
+            "captures": [],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "Code exists after a statement that always exits the method (return, throw, break, continue, goto). The code can never be reached during execution.",
+            "prescription": "Remove the unreachable code, or fix the control flow so the code is reachable. Check if a return or throw statement is in the wrong place.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "CS0168",
+            "category": "misc_common",
+            "severity": "warning",
+            "messagePattern": "The variable '(?<varName>.+?)' is declared but never used",
+            "match": "CS0168:.*The variable '(?<varName>.+?)' is declared but never used",
+            "captures": [{ "name": "varName", "role": "symbol_name" }],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The variable '{varName}' is declared but never read or used anywhere in its scope. This is dead code.",
+            "prescription": "Remove the unused variable, or use it. If it's in a catch block, use a discard: catch (Exception _).",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "CS0219",
+            "category": "misc_common",
+            "severity": "warning",
+            "messagePattern": "The variable '(?<varName>.+?)' is assigned but its value is never used",
+            "match": "CS0219:.*The variable '(?<varName>.+?)' is assigned but its value is never used",
+            "captures": [{ "name": "varName", "role": "symbol_name" }],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The variable '{varName}' is assigned a value but that value is never read. This may indicate incomplete code or a logic error.",
+            "prescription": "Either use the variable's value, remove the assignment, or use a discard (_) if the side effect of the right-hand side is needed.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "CS0105",
+            "category": "misc_common",
+            "severity": "warning",
+            "messagePattern": "The using directive for '(?<namespaceName>.+?)' appeared previously in this namespace",
+            "match": "CS0105:.*The using directive for '(?<namespaceName>.+?)' appeared previously",
+            "captures": [{ "name": "namespaceName", "role": "target_module" }],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "remove_import", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The 'using {namespaceName};' directive appears more than once in the file. Duplicate using directives are unnecessary.",
+            "prescription": "Remove the duplicate 'using' directive. Keep only one instance.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "CS0414",
+            "category": "misc_common",
+            "severity": "warning",
+            "messagePattern": "The field '(?<fieldName>.+?)' is assigned but its value is never used",
+            "match": "CS0414:.*The field '(?<fieldName>.+?)' is assigned but its value is never used",
+            "captures": [{ "name": "fieldName", "role": "symbol_name" }],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "type_definition" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The private field '{fieldName}' is assigned a value but never read. It may be leftover code or an incomplete implementation.",
+            "prescription": "Remove the unused field, or add code that reads its value. If it's used by serialization/reflection, suppress the warning with #pragma or [SuppressMessage].",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "CS0649",
+            "category": "misc_common",
+            "severity": "warning",
+            "messagePattern": "Field '(?<fieldName>.+?)' is never assigned to, and will always have its default value (?<defaultValue>.+)",
+            "match": "CS0649:.*Field '(?<fieldName>.+?)' is never assigned to",
+            "captures": [
+              { "name": "fieldName", "role": "symbol_name" },
+              { "name": "defaultValue", "role": "literal_value" }
+            ],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.1,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "initialize_variable", "requiresCrossFileEdit": false, "typicalScope": "type_definition" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The field '{fieldName}' is never assigned a value and will always be its default ({defaultValue}). This may indicate an incomplete constructor or unused field.",
+            "prescription": "1. Assign a value in the constructor or at declaration.\n2. Remove the field if it's unused.\n3. If assigned via reflection/serialization, suppress the warning.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "CS0012",
+            "category": "misc_common",
+            "severity": "error",
+            "messagePattern": "The type '(?<typeName>.+?)' is defined in an assembly that is not referenced\\. You must add a reference to assembly '(?<assemblyName>.+?)'",
+            "match": "CS0012:.*The type '(?<typeName>.+?)' is defined in an assembly that is not referenced.*add a reference to assembly '(?<assemblyName>.+?)'",
+            "captures": [
+              { "name": "typeName", "role": "type_name" },
+              { "name": "assemblyName", "role": "package_name" }
+            ],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 1.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "install_package", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [
+              { "code": "CS0246", "relationship": "same_root_cause", "sharedCapture": "typeName", "resolution": "fix_either" }
+            ],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The type '{typeName}' exists in assembly '{assemblyName}' which is not referenced by the current project.",
+            "prescription": "Add a reference to the assembly. For NuGet packages: 'dotnet add package {assemblyName}'. For project references: add <ProjectReference> in the .csproj file.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "CS0104",
+            "category": "misc_common",
+            "severity": "error",
+            "messagePattern": "'(?<symbolName>.+?)' is an ambiguous reference between '(?<type1>.+?)' and '(?<type2>.+?)'",
+            "match": "CS0104:.*'(?<symbolName>.+?)' is an ambiguous reference between '(?<type1>.+?)' and '(?<type2>.+?)'",
+            "captures": [
+              { "name": "symbolName", "role": "symbol_name" },
+              { "name": "type1", "role": "type_name" },
+              { "name": "type2", "role": "type_name" }
+            ],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "add_import", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The name '{symbolName}' is ambiguous because it exists in both '{type1}' and '{type2}'. Multiple using directives bring types with the same name into scope.",
+            "prescription": "1. Use the fully qualified name (e.g., System.Threading.Timer instead of Timer).\n2. Add a using alias: using MyTimer = System.Threading.Timer;\n3. Remove one of the conflicting 'using' directives if it's not needed.",
+            "codeBlock": "// BEFORE (wrong)\nusing System.Threading;\nusing System.Timers;\n\nTimer t = new Timer(); // CS0104: ambiguous\n\n// AFTER (correct — fully qualified)\nSystem.Threading.Timer t = new System.Threading.Timer(callback, null, 0, 1000);\n\n// AFTER (correct — alias)\nusing ThreadTimer = System.Threading.Timer;\nThreadTimer t = new ThreadTimer(callback, null, 0, 1000);",
+            "conditions": []
+          },
+          {
+            "code": "CS0826",
+            "category": "misc_common",
+            "severity": "error",
+            "messagePattern": "No best type found for implicitly-typed array",
+            "match": "CS0826:.*No best type found for implicitly-typed array",
+            "captures": [],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.1,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "update_type_annotation", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "An implicitly-typed array initializer (new[] { ... }) contains elements of incompatible types, and the compiler cannot determine a common type.",
+            "prescription": "Explicitly specify the array type, or cast elements to a common type.",
+            "codeBlock": "// BEFORE (wrong)\nvar arr = new[] { 1, \"two\", 3.0 }; // CS0826\n\n// AFTER (correct)\nobject[] arr = new object[] { 1, \"two\", 3.0 };",
+            "conditions": []
+          },
+          {
+            "code": "CS0173",
+            "category": "misc_common",
+            "severity": "error",
+            "messagePattern": "Type of conditional expression cannot be determined because there is no implicit conversion between '(?<type1>.+?)' and '(?<type2>.+?)'",
+            "match": "CS0173:.*Type of conditional expression cannot be determined.*no implicit conversion between '(?<type1>.+?)' and '(?<type2>.+?)'",
+            "captures": [
+              { "name": "type1", "role": "type_name" },
+              { "name": "type2", "role": "type_name" }
+            ],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "cast_type", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "A ternary expression (condition ? a : b) has branches with types '{type1}' and '{type2}' that have no common type.",
+            "prescription": "Cast one or both branches to a common type, or use an explicit variable with the desired type.",
+            "codeBlock": "// BEFORE (wrong)\nvar result = flag ? new Cat() : new Dog(); // CS0173 if no common base\n\n// AFTER (correct)\nAnimal result = flag ? (Animal)new Cat() : new Dog();",
+            "conditions": []
+          },
+          {
+            "code": "CS0518",
+            "category": "misc_common",
+            "severity": "error",
+            "messagePattern": "Predefined type '(?<typeName>.+?)' is not defined or imported",
+            "match": "CS0518:.*Predefined type '(?<typeName>.+?)' is not defined or imported",
+            "captures": [{ "name": "typeName", "role": "type_name" }],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 1.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "install_package", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "A fundamental .NET type '{typeName}' (like System.Object, System.String) cannot be found. This typically means the project is misconfigured or missing a framework reference.",
+            "prescription": "Check the .csproj TargetFramework setting. Ensure the .NET SDK is properly installed. Try 'dotnet restore'. This error usually indicates a broken project configuration rather than a code issue.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "CS0246_USING",
+            "category": "misc_common",
+            "severity": "error",
+            "messagePattern": "The type or namespace name '(?<namespaceName>.+?)' could not be found \\(are you missing a using directive or an assembly reference\\?\\)",
+            "match": "CS0246:.*The type or namespace name '(?<namespaceName>.+?)' could not be found",
+            "captures": [{ "name": "namespaceName", "role": "target_module" }],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.9,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "install_package", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The namespace '{namespaceName}' is not recognized, indicating a missing NuGet package or project reference.",
+            "prescription": "Install the required NuGet package with 'dotnet add package <PackageName>', or add a ProjectReference for local dependencies.",
+            "codeBlock": null,
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "stylecop",
+        "name": "StyleCop Analyzer Warnings",
+        "description": "Code style and formatting warnings from StyleCop Analyzers",
+        "defaultTracingBehavior": "local_only",
+        "errors": [
+          {
+            "code": "SA1000",
+            "category": "stylecop",
+            "severity": "warning",
+            "messagePattern": "Keywords should be spaced correctly",
+            "match": "SA1000:.*Keywords should be spaced correctly",
+            "captures": [],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_indentation", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "A C# keyword does not have the correct spacing around it (e.g., missing space after 'if', 'for', 'while', or extra space before '(').",
+            "prescription": "Add or remove spaces around the keyword to match standard formatting: 'if (condition)' not 'if(condition)'.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "SA1101",
+            "category": "stylecop",
+            "severity": "warning",
+            "messagePattern": "Prefix local calls with this",
+            "match": "SA1101:.*Prefix local calls with this",
+            "captures": [],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "A call to an instance member does not use the 'this.' prefix. StyleCop requires explicit 'this.' for clarity.",
+            "prescription": "Add 'this.' before the member access, or suppress this rule if your team doesn't follow this convention.",
+            "codeBlock": "// BEFORE (SA1101)\nName = \"test\";\n\n// AFTER (correct)\nthis.Name = \"test\";",
+            "conditions": []
+          },
+          {
+            "code": "SA1200",
+            "category": "stylecop",
+            "severity": "warning",
+            "messagePattern": "Using directives should be placed correctly",
+            "match": "SA1200:.*Using directives should be placed correctly",
+            "captures": [],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "Using directives are placed outside the namespace declaration. StyleCop prefers them inside the namespace (or with file-scoped namespaces, at the top of the file).",
+            "prescription": "Move using directives inside the namespace declaration, or switch to file-scoped namespaces (namespace MyApp;) where usings naturally come first.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "SA1309",
+            "category": "stylecop",
+            "severity": "warning",
+            "messagePattern": "Field names should not begin with underscore",
+            "match": "SA1309:.*Field names should not begin with underscore",
+            "captures": [],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "rename_symbol", "requiresCrossFileEdit": false, "typicalScope": "type_definition" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "A field name starts with an underscore, which violates StyleCop naming conventions. Note: many .NET teams DO use underscore prefixes for private fields — this rule is often suppressed.",
+            "prescription": "Remove the underscore prefix, or suppress this rule in .editorconfig or stylecop.json if your team uses underscore naming for private fields.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "SA1633",
+            "category": "stylecop",
+            "severity": "warning",
+            "messagePattern": "File should have header",
+            "match": "SA1633:.*File should have header",
+            "captures": [],
+
+            "__comment_part_a": "=== DEPENDENCY ANALYSIS (fix ordering engine) ===",
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [],
+
+            "__comment_part_b": "=== PRESCRIPTION (LLM fix guidance) ===",
+            "rootCause": "The file does not have the required copyright/license header at the top.",
+            "prescription": "Add a file header comment as configured in stylecop.json, or suppress this rule if file headers are not required by your project.",
+            "codeBlock": null,
+            "conditions": []
+          }
+        ]
+      }
+    ]
+  },
+
+  "importSystem": {
+    "importPatterns": [
+      {
+        "type": "using_namespace",
+        "regex": "using\\s+(?<namespace>[\\w.]+)\\s*;",
+        "captures": [
+          { "name": "namespace", "index": 1, "isList": false }
+        ],
+        "example": "using System.Collections.Generic;",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "using_alias",
+        "regex": "using\\s+(?<alias>[\\w]+)\\s*=\\s*(?<target>[\\w.<>]+)\\s*;",
+        "captures": [
+          { "name": "alias", "index": 1, "isList": false },
+          { "name": "target", "index": 2, "isList": false }
+        ],
+        "example": "using StringList = System.Collections.Generic.List<string>;",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "using_static",
+        "regex": "using\\s+static\\s+(?<type>[\\w.]+)\\s*;",
+        "captures": [
+          { "name": "type", "index": 1, "isList": false }
+        ],
+        "example": "using static System.Math;",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "global_using",
+        "regex": "global\\s+using\\s+(?<namespace>[\\w.]+)\\s*;",
+        "captures": [
+          { "name": "namespace", "index": 1, "isList": false }
+        ],
+        "example": "global using System.Text.Json;",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "global_using_static",
+        "regex": "global\\s+using\\s+static\\s+(?<type>[\\w.]+)\\s*;",
+        "captures": [
+          { "name": "type", "index": 1, "isList": false }
+        ],
+        "example": "global using static System.Console;",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "global_using_alias",
+        "regex": "global\\s+using\\s+(?<alias>[\\w]+)\\s*=\\s*(?<target>[\\w.<>]+)\\s*;",
+        "captures": [
+          { "name": "alias", "index": 1, "isList": false },
+          { "name": "target", "index": 2, "isList": false }
+        ],
+        "example": "global using Env = System.Environment;",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      }
+    ],
+    "exportPatterns": [
+      {
+        "type": "public_class",
+        "regex": "(?:public|internal)\\s+(?:partial\\s+)?(?:static\\s+)?(?:sealed\\s+)?(?:abstract\\s+)?class\\s+(?<name>[\\w]+)",
+        "captures": [{ "name": "name", "index": 1 }],
+        "isReExport": false,
+        "example": "public class UserService"
+      },
+      {
+        "type": "public_interface",
+        "regex": "(?:public|internal)\\s+(?:partial\\s+)?interface\\s+(?<name>[\\w]+)",
+        "captures": [{ "name": "name", "index": 1 }],
+        "isReExport": false,
+        "example": "public interface IUserRepository"
+      },
+      {
+        "type": "public_struct",
+        "regex": "(?:public|internal)\\s+(?:readonly\\s+)?(?:ref\\s+)?(?:partial\\s+)?struct\\s+(?<name>[\\w]+)",
+        "captures": [{ "name": "name", "index": 1 }],
+        "isReExport": false,
+        "example": "public readonly struct Point"
+      },
+      {
+        "type": "public_record",
+        "regex": "(?:public|internal)\\s+(?:sealed\\s+)?(?:abstract\\s+)?record\\s+(?:class\\s+|struct\\s+)?(?<name>[\\w]+)",
+        "captures": [{ "name": "name", "index": 1 }],
+        "isReExport": false,
+        "example": "public record UserDto(string Name, string Email)"
+      },
+      {
+        "type": "public_enum",
+        "regex": "(?:public|internal)\\s+enum\\s+(?<name>[\\w]+)",
+        "captures": [{ "name": "name", "index": 1 }],
+        "isReExport": false,
+        "example": "public enum UserRole { Admin, User, Guest }"
+      },
+      {
+        "type": "public_delegate",
+        "regex": "(?:public|internal)\\s+delegate\\s+[\\w<>?]+\\s+(?<name>[\\w]+)",
+        "captures": [{ "name": "name", "index": 1 }],
+        "isReExport": false,
+        "example": "public delegate void EventHandler<T>(object sender, T args)"
+      },
+      {
+        "type": "namespace",
+        "regex": "namespace\\s+(?<name>[\\w.]+)\\s*[{;]",
+        "captures": [{ "name": "name", "index": 1 }],
+        "isReExport": false,
+        "example": "namespace MyApp.Services;"
+      }
+    ],
+    "moduleResolution": {
+      "strategy": "dotnet",
+      "extensions": [".cs", ".razor", ".cshtml"],
+      "indexFiles": [],
+      "aliasConfig": {
+        "file": ".csproj",
+        "path": "Project.PropertyGroup.RootNamespace",
+        "format": "RootNamespace defines the default namespace for files in the project. Implicit usings are enabled via <ImplicitUsings>enable</ImplicitUsings>. Path aliases via <Using Include=\"Namespace\" Alias=\"Alias\" /> in csproj."
+      },
+      "packageEntryPoints": ["lib/net8.0", "lib/netstandard2.0", "lib/netstandard2.1"],
+      "relativeImportRules": "C# does not have relative imports. All namespaces are absolute. Types in the same namespace are automatically accessible without 'using' directives.",
+      "absoluteImportRules": "All 'using' directives reference absolute namespaces. The compiler resolves types by searching all referenced assemblies for the specified namespace + type combination. Project references and NuGet packages contribute assemblies."
+    }
+  },
+
+  "typeTracing": {
+    "definitionPatterns": [
+      {
+        "kind": "class",
+        "regex": "(?:public|internal|private|protected)?\\s*(?:partial\\s+)?(?:static\\s+)?(?:sealed\\s+)?(?:abstract\\s+)?class\\s+(?<name>[\\w]+)(?:<[^>]+>)?",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "public class UserService"
+      },
+      {
+        "kind": "interface",
+        "regex": "(?:public|internal|private|protected)?\\s*(?:partial\\s+)?interface\\s+(?<name>[\\w]+)(?:<[^>]+>)?",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "public interface IRepository<T>"
+      },
+      {
+        "kind": "struct",
+        "regex": "(?:public|internal|private|protected)?\\s*(?:readonly\\s+)?(?:ref\\s+)?(?:partial\\s+)?struct\\s+(?<name>[\\w]+)(?:<[^>]+>)?",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "public readonly struct Vector3"
+      },
+      {
+        "kind": "record",
+        "regex": "(?:public|internal|private|protected)?\\s*(?:sealed\\s+)?(?:abstract\\s+)?record\\s+(?:class\\s+|struct\\s+)?(?<name>[\\w]+)(?:<[^>]+>)?",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "public record Person(string FirstName, string LastName)"
+      },
+      {
+        "kind": "enum",
+        "regex": "(?:public|internal|private|protected)?\\s*enum\\s+(?<name>[\\w]+)",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "public enum Color { Red, Green, Blue }"
+      },
+      {
+        "kind": "type_alias",
+        "regex": "using\\s+(?<name>[\\w]+)\\s*=\\s*[\\w.<>]+\\s*;",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": false,
+        "example": "using StringMap = Dictionary<string, string>;"
+      },
+      {
+        "kind": "delegate",
+        "regex": "(?:public|internal|private|protected)?\\s*delegate\\s+[\\w<>?]+\\s+(?<name>[\\w]+)(?:<[^>]+>)?\\s*\\(",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "public delegate Task<T> AsyncFactory<T>();"
+      },
+      {
+        "kind": "function",
+        "regex": "(?:public|private|protected|internal)?\\s*(?:static\\s+)?(?:virtual\\s+)?(?:override\\s+)?(?:abstract\\s+)?(?:async\\s+)?[\\w<>?\\[\\]]+\\s+(?<name>[\\w]+)\\s*(?:<[^>]+>)?\\s*\\(",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "public async Task<User> GetUserAsync(int id)"
+      },
+      {
+        "kind": "variable",
+        "regex": "(?:public|private|protected|internal)?\\s*(?:static\\s+)?(?:readonly\\s+)?(?:const\\s+)?(?<typeAnnotation>[\\w<>?\\[\\]]+)\\s+(?<name>[\\w]+)\\s*[=;{]",
+        "captures": [
+          { "name": "name", "index": 2 },
+          { "name": "typeAnnotation", "index": 1 }
+        ],
+        "canBeExported": true,
+        "example": "public static readonly string DefaultName = \"User\";"
+      }
+    ],
+    "inheritancePatterns": [
+      {
+        "kind": "extends",
+        "regex": "class\\s+(?<child>[\\w]+)(?:<[^>]+>)?\\s*:\\s*(?<parents>[\\w.<>, ]+?)(?:\\s+where\\b|\\s*\\{)",
+        "captures": [
+          { "name": "child", "index": 1, "isList": false },
+          { "name": "parents", "index": 2, "isList": true, "listSeparator": "," }
+        ],
+        "traceConfidence": 0.95,
+        "example": "class AdminService : BaseService, IAdminService {"
+      },
+      {
+        "kind": "implements",
+        "regex": "(?:class|struct|record)\\s+(?<child>[\\w]+)(?:<[^>]+>)?\\s*:\\s*(?<parents>[\\w.<>, ]+?)(?:\\s+where\\b|\\s*\\{)",
+        "captures": [
+          { "name": "child", "index": 1, "isList": false },
+          { "name": "parents", "index": 2, "isList": true, "listSeparator": "," }
+        ],
+        "traceConfidence": 0.90,
+        "example": "class UserRepository : IRepository<User>, IDisposable {"
+      },
+      {
+        "kind": "interface_extends",
+        "regex": "interface\\s+(?<child>[\\w]+)(?:<[^>]+>)?\\s*:\\s*(?<parents>[\\w.<>, ]+?)\\s*\\{",
+        "captures": [
+          { "name": "child", "index": 1, "isList": false },
+          { "name": "parents", "index": 2, "isList": true, "listSeparator": "," }
+        ],
+        "traceConfidence": 0.95,
+        "example": "interface IUserService : IService, IDisposable {"
+      },
+      {
+        "kind": "record_extends",
+        "regex": "record\\s+(?:class\\s+|struct\\s+)?(?<child>[\\w]+)(?:<[^>]+>)?\\s*(?:\\([^)]*\\))?\\s*:\\s*(?<parents>[\\w.<>, ]+?)(?:\\s*\\{|\\s*;)",
+        "captures": [
+          { "name": "child", "index": 1, "isList": false },
+          { "name": "parents", "index": 2, "isList": true, "listSeparator": "," }
+        ],
+        "traceConfidence": 0.95,
+        "example": "record Admin(string Name) : User(Name), IAdmin {"
+      }
+    ],
+    "compositionPatterns": [
+      {
+        "kind": "generic_instantiation",
+        "regex": "(?<name>[\\w]+)<(?<typeArgs>[\\w.<>?, ]+)>",
+        "captures": [
+          { "name": "name", "index": 1 },
+          { "name": "typeArgs", "index": 2 }
+        ],
+        "decomposable": true,
+        "traceConfidence": 0.80,
+        "example": "Dictionary<string, List<User>>"
+      },
+      {
+        "kind": "nullable_reference",
+        "regex": "(?<baseType>[\\w.]+)\\?",
+        "captures": [
+          { "name": "baseType", "index": 1 }
+        ],
+        "decomposable": true,
+        "traceConfidence": 0.90,
+        "example": "User? currentUser"
+      },
+      {
+        "kind": "tuple",
+        "regex": "\\((?<types>[\\w.<>?, ]+)\\)",
+        "captures": [
+          { "name": "types", "index": 1 }
+        ],
+        "decomposable": true,
+        "traceConfidence": 0.70,
+        "example": "(string Name, int Age) GetUserInfo()"
+      },
+      {
+        "kind": "generic_constraint",
+        "regex": "where\\s+(?<typeParam>[\\w]+)\\s*:\\s*(?<constraints>[\\w.<>, ()]+?)(?:\\s+where\\b|\\s*\\{|$)",
+        "captures": [
+          { "name": "typeParam", "index": 1 },
+          { "name": "constraints", "index": 2 }
+        ],
+        "decomposable": false,
+        "traceConfidence": 0.85,
+        "example": "where T : class, IEntity, new()"
+      }
+    ],
+    "confidenceTiers": {
+      "direct_import": 0.95,
+      "re_export_one_hop": 0.85,
+      "re_export_multi_hop": 0.70,
+      "inheritance_direct": 0.95,
+      "inheritance_chain": 0.80,
+      "generic_resolution": 0.55,
+      "inferred_type": 0.35,
+      "dynamic_type": 0.10,
+      "partial_class_other_file": 0.90,
+      "source_generated": 0.40,
+      "extension_method_resolution": 0.70
+    }
+  },
+
+  "externalDependencies": {
+    "pathIndicators": ["packages/", "~/.nuget/packages/"],
+    "packageManifest": ".csproj",
+    "lockFile": "packages.lock.json",
+    "typesPackagePattern": null,
+    "typeDeclarationLocations": [
+      {
+        "description": "NuGet package assemblies in the global cache",
+        "path": "~/.nuget/packages/{package}/{version}/lib/{tfm}/{package}.dll",
+        "fallback": "~/.nuget/packages/{package}/{version}/lib/netstandard2.0/{package}.dll",
+        "entryPointField": "PackageReference in .csproj"
+      },
+      {
+        "description": "ProjectReference assemblies in the output directory",
+        "path": "bin/Debug/{tfm}/{project}.dll",
+        "fallback": "bin/Release/{tfm}/{project}.dll",
+        "entryPointField": "ProjectReference in .csproj"
+      }
+    ],
+    "detectionRules": [
+      {
+        "signal": "package_not_installed",
+        "condition": "A using directive references a namespace that belongs to a NuGet package not listed in the .csproj",
+        "errorCodes": ["CS0246", "CS0234"],
+        "suggestedActions": ["Run 'dotnet add package <PackageName>'", "Check NuGet.org for the correct package name"],
+        "autoFixable": true,
+        "autoFixCommand": "dotnet add package {package}"
+      },
+      {
+        "signal": "project_reference_missing",
+        "condition": "A type is in a sibling project that is not referenced via ProjectReference",
+        "errorCodes": ["CS0246", "CS0234", "CS0012"],
+        "suggestedActions": ["Add <ProjectReference Include=\"../{project}/{project}.csproj\" /> to the .csproj"],
+        "autoFixable": true,
+        "autoFixCommand": "dotnet add reference ../{project}/{project}.csproj"
+      },
+      {
+        "signal": "framework_version_mismatch",
+        "condition": "A type exists in a newer .NET version than the project targets",
+        "errorCodes": ["CS0246", "CS0234", "CS0518"],
+        "suggestedActions": ["Update TargetFramework in .csproj", "Use a compatibility NuGet package"],
+        "autoFixable": false,
+        "autoFixCommand": null
+      },
+      {
+        "signal": "implicit_usings_disabled",
+        "condition": "Common types (Console, List, Task) are not found because ImplicitUsings is disabled",
+        "errorCodes": ["CS0246", "CS0103"],
+        "suggestedActions": ["Add 'using System;' and other necessary usings", "Enable <ImplicitUsings>enable</ImplicitUsings> in .csproj"],
+        "autoFixable": false,
+        "autoFixCommand": null
+      },
+      {
+        "signal": "restore_needed",
+        "condition": "NuGet packages are referenced but not yet restored",
+        "errorCodes": ["CS0246", "CS0234", "CS0012"],
+        "suggestedActions": ["Run 'dotnet restore'"],
+        "autoFixable": true,
+        "autoFixCommand": "dotnet restore"
+      }
+    ],
+    "commonBreakingPatterns": [
+      {
+        "description": "Major version bump removed or renamed API members",
+        "errorCodes": ["CS1061", "CS0117", "CS0246", "CS0234"],
+        "resolution": "Check the package's release notes and migration guide. Use 'dotnet list package --outdated' to see version changes."
+      },
+      {
+        "description": "Package dropped support for target framework",
+        "errorCodes": ["NU1202", "CS0246"],
+        "resolution": "Either update the project's TargetFramework or pin the package to an older version that supports it."
+      },
+      {
+        "description": "Nullable reference types enabled in new package version",
+        "errorCodes": ["CS8600", "CS8601", "CS8602", "CS8603", "CS8604", "CS8618"],
+        "resolution": "Add null checks, use '?' annotations, or disable nullable reference types with <Nullable>disable</Nullable> in .csproj."
+      },
+      {
+        "description": "Source generator output changed after package update",
+        "errorCodes": ["CS0246", "CS1061", "CS0103"],
+        "resolution": "Rebuild the project completely. Check if the source generator requires new partial class structures. Review generated files in obj/Debug/generated/."
+      }
+    ]
+  },
+
+  "quirks": [
+    {
+      "id": "partial_classes",
+      "name": "Partial Classes Across Files",
+      "description": "A class can be split across multiple .cs files using the 'partial' keyword. Each file contributes members, but the compiler combines them into one type. This means a member access error may require looking at ALL partial files for the type definition. Source generators also create partial classes.",
+      "affectsTracing": true,
+      "affectsResolution": true,
+      "workaround": "When tracing a type definition, search ALL .cs files in the project for 'partial class TypeName' or 'partial struct TypeName'. Merge the member lists from all partials before checking for missing members.",
+      "example": "// File1.cs\npublic partial class User\n{\n    public string Name { get; set; }\n}\n\n// File2.cs\npublic partial class User\n{\n    public string Email { get; set; }\n}\n\n// Both files together define the full User class",
+      "relatedErrorCodes": ["CS0111", "CS0263", "CS0535", "CS0534"]
+    },
+    {
+      "id": "source_generators",
+      "name": "Source Generators",
+      "description": "Source generators (Roslyn analyzers with ISourceGenerator/IIncrementalGenerator) produce C# code at compile time. The generated files are in obj/Debug/{tfm}/generated/ and may define partial classes, methods, or entire types. Libraries like System.Text.Json, AutoMapper, MediatR use source generators.",
+      "affectsTracing": true,
+      "affectsResolution": true,
+      "workaround": "Check obj/Debug/{tfm}/generated/ for source-generated files. These contribute members to partial classes. If a type seems incomplete, it may have source-generated parts. After code changes, a rebuild may be needed to regenerate.",
+      "example": "// User declares partial method\npublic partial class MyDbContext : DbContext\n{\n    // EF Core source generator fills in OnModelCreating\n}\n\n// Generated: obj/Debug/net8.0/generated/EFCore/.../MyDbContext.g.cs\npublic partial class MyDbContext\n{\n    partial void OnModelCreating(ModelBuilder builder) { /* generated */ }\n}",
+      "relatedErrorCodes": ["CS0246", "CS1061", "CS0103", "CS0535"]
+    },
+    {
+      "id": "global_usings",
+      "name": "Global Usings and Implicit Usings",
+      "description": "C# 10+ supports 'global using' directives that apply to all files in the project. Additionally, .NET 6+ projects with <ImplicitUsings>enable</ImplicitUsings> automatically include using directives for common namespaces (System, System.Collections.Generic, System.Linq, System.Threading.Tasks, etc.). This means types may be accessible without any visible 'using' in the file.",
+      "affectsTracing": false,
+      "affectsResolution": true,
+      "workaround": "When resolving imports, also check: (1) files with 'global using' directives (often GlobalUsings.cs or a Usings.cs file), (2) the .csproj for <ImplicitUsings>enable</ImplicitUsings> and <Using> items, (3) the SDK default implicit usings for the project type (Console, Web, Worker have different defaults).",
+      "example": "// GlobalUsings.cs\nglobal using System.Text.Json;\nglobal using Microsoft.Extensions.Logging;\n\n// Now ALL .cs files in the project can use JsonSerializer and ILogger without a using directive",
+      "relatedErrorCodes": ["CS0246", "CS0103"]
+    },
+    {
+      "id": "extension_methods",
+      "name": "Extension Methods via Using Directives",
+      "description": "Extension methods are static methods in static classes that appear as instance methods on the extended type. They are only available when the containing namespace is imported via 'using'. This means adding or removing a 'using' directive can make methods appear or disappear from types.",
+      "affectsTracing": true,
+      "affectsResolution": true,
+      "workaround": "When CS1061 (no member) is reported, check if the missing member is an extension method. Search the project and NuGet packages for 'public static ... {memberName}(this {typeName} ...)'. Common cases: LINQ methods need 'using System.Linq;', EF Core async methods need 'using Microsoft.EntityFrameworkCore;'.",
+      "example": "// Without using System.Linq:\nvar list = new List<int> { 1, 2, 3 };\nvar first = list.First(); // CS1061 — First is an extension method from System.Linq\n\n// Fix: add\nusing System.Linq;",
+      "relatedErrorCodes": ["CS1061"]
+    },
+    {
+      "id": "nuget_vs_project_reference",
+      "name": "NuGet vs ProjectReference",
+      "description": "In multi-project solutions, dependencies between projects use <ProjectReference> (source reference) while third-party dependencies use <PackageReference> (NuGet). If a project is changed to a NuGet package or vice versa, all references must be updated. Also, transitive dependencies work differently between the two.",
+      "affectsTracing": true,
+      "affectsResolution": true,
+      "workaround": "Check the .csproj file for both <PackageReference> and <ProjectReference> entries. Transitive PackageReferences are automatically available, but transitive ProjectReferences may need explicit references depending on the dependency graph.",
+      "example": "<!-- .csproj -->\n<ItemGroup>\n  <PackageReference Include=\"Newtonsoft.Json\" Version=\"13.0.3\" />\n  <ProjectReference Include=\"..\\MyLib\\MyLib.csproj\" />\n</ItemGroup>",
+      "relatedErrorCodes": ["CS0246", "CS0234", "CS0012"]
+    },
+    {
+      "id": "circular_project_references",
+      "name": "Circular Project References",
+      "description": "Unlike some languages, .NET does NOT allow circular project references. If Project A references Project B, Project B cannot reference Project A. Attempting to add such a reference results in a build error. This forces architectural layering.",
+      "affectsTracing": true,
+      "affectsResolution": true,
+      "workaround": "If circular references are needed, extract the shared types into a third project that both can reference. Use interfaces in the shared project and implement them in the dependent projects.",
+      "example": "// NOT ALLOWED:\n// ProjectA.csproj references ProjectB.csproj\n// ProjectB.csproj references ProjectA.csproj\n//\n// Solution: Create ProjectShared.csproj with interfaces\n// ProjectA -> ProjectShared\n// ProjectB -> ProjectShared",
+      "relatedErrorCodes": ["CS0246", "CS0012"]
+    },
+    {
+      "id": "nullable_context_per_file",
+      "name": "Per-File Nullable Context",
+      "description": "Nullable reference types can be enabled/disabled at the project level (<Nullable>enable</Nullable>) or per-file using #nullable enable/disable/restore directives. This means different files in the same project can have different nullable behavior, causing confusing CS8600-series warnings at boundaries.",
+      "affectsTracing": false,
+      "affectsResolution": true,
+      "workaround": "Check both the .csproj <Nullable> setting and any #nullable directives in individual files. When tracing nullable warnings across files, consider the nullable context of each file independently.",
+      "example": "// File with nullable enabled\n#nullable enable\npublic string? GetName() => null; // valid\n\n// File with nullable disabled\n#nullable disable\nstring name = GetName(); // no warning even though GetName returns string?",
+      "relatedErrorCodes": ["CS8600", "CS8601", "CS8602", "CS8603", "CS8604", "CS8618"]
+    },
+    {
+      "id": "implicit_usings_by_sdk",
+      "name": "Implicit Usings Vary by Project SDK",
+      "description": "Different .NET SDK project types include different sets of implicit usings. Microsoft.NET.Sdk (console) includes System, System.Collections.Generic, System.IO, System.Linq, System.Threading, System.Threading.Tasks. Microsoft.NET.Sdk.Web adds Microsoft.AspNetCore.*, System.Net.Http.Json, etc. Microsoft.NET.Sdk.Worker adds Microsoft.Extensions.* namespaces.",
+      "affectsTracing": false,
+      "affectsResolution": true,
+      "workaround": "Read the <Project Sdk=\"...\"> attribute in the .csproj to determine which SDK is used, then apply the corresponding implicit usings. The full list is documented in the .NET docs and can be viewed in obj/Debug/{tfm}/{project}.GlobalUsings.g.cs after a build.",
+      "example": "<!-- Console app SDK -->\n<Project Sdk=\"Microsoft.NET.Sdk\">\n  <!-- Implicit: System, System.Collections.Generic, System.IO, System.Linq, etc. -->\n\n<!-- Web app SDK -->\n<Project Sdk=\"Microsoft.NET.Sdk.Web\">\n  <!-- Adds: Microsoft.AspNetCore.Builder, Microsoft.AspNetCore.Http, etc. -->",
+      "relatedErrorCodes": ["CS0246", "CS0103"]
+    },
+    {
+      "id": "directory_build_props",
+      "name": "Directory.Build.props Shared Configuration",
+      "description": "Directory.Build.props files in parent directories are automatically imported by all .csproj files in child directories. They can set shared properties like <Nullable>, <ImplicitUsings>, <TargetFramework>, and add shared <PackageReference> or <Using> items. This affects resolution invisibly.",
+      "affectsTracing": false,
+      "affectsResolution": true,
+      "workaround": "When resolving project configuration, walk up the directory tree to find any Directory.Build.props or Directory.Build.targets files. Merge their settings with the individual .csproj settings.",
+      "example": "<!-- Directory.Build.props (in solution root) -->\n<Project>\n  <PropertyGroup>\n    <Nullable>enable</Nullable>\n    <ImplicitUsings>enable</ImplicitUsings>\n  </PropertyGroup>\n  <ItemGroup>\n    <PackageReference Include=\"Microsoft.Extensions.Logging.Abstractions\" Version=\"8.0.0\" />\n  </ItemGroup>\n</Project>",
+      "relatedErrorCodes": ["CS0246", "CS8600", "CS8618"]
+    },
+    {
+      "id": "conditional_compilation",
+      "name": "Conditional Compilation (#if directives)",
+      "description": "C# supports preprocessor directives (#if, #elif, #else, #endif) with symbols like DEBUG, RELEASE, NET8_0, NET7_0, WINDOWS, etc. Code inside inactive #if blocks is not compiled and won't produce errors, but removing a symbol can make previously-hidden errors appear.",
+      "affectsTracing": true,
+      "affectsResolution": true,
+      "workaround": "Check for #if directives around the error location. The active compilation symbols are set in the .csproj (<DefineConstants>) and by the TargetFramework. A type might only exist under certain conditions.",
+      "example": "#if NET8_0_OR_GREATER\npublic required string Name { get; set; }\n#else\npublic string Name { get; set; } = string.Empty;\n#endif",
+      "relatedErrorCodes": ["CS0246", "CS0103", "CS1061"]
+    }
+  ],
+
+  "buildTools": [
+    {
+      "name": "dotnet-build",
+      "detectFiles": ["*.csproj", "*.sln"],
+      "buildCommand": "dotnet build --no-incremental 2>&1",
+      "watchCommand": "dotnet watch build",
+      "errorStream": "stdout",
+      "supportsJsonOutput": false,
+      "jsonOutputFlag": null,
+      "commonConfigs": ["*.csproj", "*.sln", "Directory.Build.props", "Directory.Build.targets", "global.json", "nuget.config"]
+    },
+    {
+      "name": "dotnet-run",
+      "detectFiles": ["*.csproj"],
+      "buildCommand": "dotnet run 2>&1",
+      "watchCommand": "dotnet watch run",
+      "errorStream": "stdout",
+      "supportsJsonOutput": false,
+      "jsonOutputFlag": null,
+      "commonConfigs": ["*.csproj", "appsettings.json", "appsettings.Development.json"]
+    },
+    {
+      "name": "dotnet-test",
+      "detectFiles": ["*.csproj"],
+      "buildCommand": "dotnet test --no-build 2>&1",
+      "watchCommand": "dotnet watch test",
+      "errorStream": "stdout",
+      "supportsJsonOutput": true,
+      "jsonOutputFlag": "--logger \"trx\"",
+      "commonConfigs": ["*.csproj", "xunit.runner.json", ".runsettings"]
+    },
+    {
+      "name": "roslyn-analyzers",
+      "detectFiles": [".editorconfig"],
+      "buildCommand": "dotnet build -warnaserror 2>&1",
+      "watchCommand": null,
+      "errorStream": "stdout",
+      "supportsJsonOutput": false,
+      "jsonOutputFlag": null,
+      "commonConfigs": [".editorconfig", "stylecop.json", "*.ruleset"]
+    }
+  ]
+}

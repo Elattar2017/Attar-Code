@@ -1,0 +1,406 @@
+{
+  "technology": "python",
+  "version": 1,
+  "patterns": [
+    {
+      "id": "PY_NAME_ERROR",
+      "match": "NameError:\\s+name\\s+'(\\w+)'\\s+is\\s+not\\s+defined",
+      "captures": ["varName"],
+      "rootCause": "Variable or function '{varName}' is referenced but was never defined in the current scope.",
+      "prescription": "Check for typos in the name '{varName}'. Ensure it is defined before use, imported if from another module, or declared in the correct scope.",
+      "codeBlock": null
+    },
+    {
+      "id": "PY_IMPORT_ERROR",
+      "match": "ImportError:\\s+cannot\\s+import\\s+name\\s+'(\\w+)'\\s+from\\s+'([\\w.]+)'",
+      "captures": ["importName", "moduleName"],
+      "rootCause": "The name '{importName}' does not exist in module '{moduleName}'. It may have been removed, renamed, or is not exported.",
+      "prescription": "Verify that '{importName}' is defined in '{moduleName}'. Check for version changes that may have renamed or removed it. Use dir({moduleName}) to list available exports.",
+      "codeBlock": "from {moduleName} import {importName}  # verify this name exists"
+    },
+    {
+      "id": "PY_MODULE_NOT_FOUND",
+      "match": "ModuleNotFoundError:\\s+No\\s+module\\s+named\\s+'([\\w.]+)'",
+      "captures": ["moduleName"],
+      "rootCause": "The module '{moduleName}' is not installed in the current Python environment.",
+      "prescription": "Install the module with pip install {moduleName}. Ensure you are using the correct virtual environment. Check for typos in the module name.",
+      "codeBlock": "pip install {moduleName}"
+    },
+    {
+      "id": "PY_ATTRIBUTE_ERROR",
+      "match": "AttributeError:\\s+'(\\w+)'\\s+object\\s+has\\s+no\\s+attribute\\s+'(\\w+)'",
+      "captures": ["objectType", "attrName"],
+      "rootCause": "An object of type '{objectType}' does not have an attribute or method named '{attrName}'.",
+      "prescription": "Check for typos in '{attrName}'. Verify the object is of the expected type. Use dir(obj) or hasattr(obj, '{attrName}') to inspect available attributes.",
+      "codeBlock": null
+    },
+    {
+      "id": "PY_TYPE_ERROR_ARGS",
+      "match": "TypeError:\\s+(\\w+)\\(\\)\\s+takes\\s+(\\d+)\\s+positional\\s+argument[s]?\\s+but\\s+(\\d+)\\s+(?:was|were)\\s+given",
+      "captures": ["funcName", "expectedArgs", "givenArgs"],
+      "rootCause": "Function '{funcName}' expects {expectedArgs} positional argument(s) but received {givenArgs}.",
+      "prescription": "Review the function signature of '{funcName}' and adjust the call to pass the correct number of arguments. Check if 'self' is missing from a method definition.",
+      "codeBlock": null
+    },
+    {
+      "id": "PY_TYPE_ERROR_SUBSCRIPT",
+      "match": "TypeError:\\s+'(\\w+)'\\s+object\\s+is\\s+not\\s+subscriptable",
+      "captures": ["objectType"],
+      "rootCause": "Attempted to use indexing or key access on a '{objectType}' object, which does not support [] notation.",
+      "prescription": "Verify the object is the expected type (list, dict, etc.) before indexing. A '{objectType}' may have resulted from a function returning None or another non-subscriptable value.",
+      "codeBlock": null
+    },
+    {
+      "id": "PY_TYPE_ERROR_CALLABLE",
+      "match": "TypeError:\\s+'(\\w+)'\\s+object\\s+is\\s+not\\s+callable",
+      "captures": ["objectType"],
+      "rootCause": "Attempted to call a '{objectType}' object as if it were a function using () syntax.",
+      "prescription": "Ensure you are not accidentally shadowing a function name with a variable of type '{objectType}'. Check for missing operators (e.g., multiplication requires *).",
+      "codeBlock": null
+    },
+    {
+      "id": "PY_TYPE_ERROR_ITERABLE",
+      "match": "TypeError:\\s+'(\\w+)'\\s+object\\s+is\\s+not\\s+iterable",
+      "captures": ["objectType"],
+      "rootCause": "Attempted to iterate over a '{objectType}' object, which does not support iteration.",
+      "prescription": "Verify the object is a collection type (list, tuple, dict, set, etc.) before iterating. A '{objectType}' may indicate a function returned None instead of an iterable.",
+      "codeBlock": null
+    },
+    {
+      "id": "PY_TYPE_ERROR_CONCAT",
+      "match": "TypeError:\\s+can\\s+only\\s+concatenate\\s+(\\w+)(?:\\s+\\(not\\s+\"(\\w+)\"\\))?\\s+to\\s+(\\w+)",
+      "captures": ["typeA", "typeB", "typeC"],
+      "rootCause": "Attempted to concatenate incompatible types '{typeA}' and '{typeB}'.",
+      "prescription": "Convert one of the operands to match the other's type before concatenation. Use str() for string conversion or appropriate type casting.",
+      "codeBlock": "result = str(value_a) + str(value_b)  # explicit conversion"
+    },
+    {
+      "id": "PY_TYPE_ERROR_UNPACK",
+      "match": "TypeError:\\s+cannot\\s+unpack\\s+non-iterable\\s+(\\w+)\\s+object",
+      "captures": ["objectType"],
+      "rootCause": "Attempted to unpack a '{objectType}' object into multiple variables, but it is not iterable.",
+      "prescription": "Ensure the right-hand side of the unpacking assignment returns an iterable with the expected number of elements. A '{objectType}' often indicates a function returned None.",
+      "codeBlock": null
+    },
+    {
+      "id": "PY_KEY_ERROR",
+      "match": "KeyError:\\s+'(\\w+)'",
+      "captures": ["keyName"],
+      "rootCause": "Key '{keyName}' does not exist in the dictionary.",
+      "prescription": "Use dict.get('{keyName}', default_value) for safe access, or check membership with 'if \"{keyName}\" in dict' before accessing.",
+      "codeBlock": "value = my_dict.get('{keyName}', None)  # safe access with default"
+    },
+    {
+      "id": "PY_INDEX_ERROR",
+      "match": "IndexError:\\s+list\\s+index\\s+out\\s+of\\s+range",
+      "captures": [],
+      "rootCause": "Attempted to access a list element at an index that exceeds the list's length.",
+      "prescription": "Check the list length with len() before accessing by index. Use try/except IndexError or conditional checks to handle edge cases with empty or short lists.",
+      "codeBlock": "if index < len(my_list):\n    value = my_list[index]"
+    },
+    {
+      "id": "PY_VALUE_ERROR",
+      "match": "ValueError:\\s+invalid\\s+literal\\s+for\\s+(\\w+)\\(\\)\\s+with\\s+base\\s+(\\d+):\\s+'([^']*)'",
+      "captures": ["funcName", "base", "literal"],
+      "rootCause": "Cannot convert the string '{literal}' to a number using {funcName}() with base {base}.",
+      "prescription": "Validate or sanitize the input string '{literal}' before conversion. Use try/except ValueError to handle invalid input gracefully.",
+      "codeBlock": "try:\n    value = {funcName}('{literal}', {base})\nexcept ValueError:\n    value = None  # handle invalid input"
+    },
+    {
+      "id": "PY_ZERO_DIVISION",
+      "match": "ZeroDivisionError:\\s+(division\\s+by\\s+zero|integer\\s+division\\s+or\\s+modulo\\s+by\\s+zero)",
+      "captures": ["detail"],
+      "rootCause": "Attempted to divide by zero.",
+      "prescription": "Add a check for zero before performing division. Use a conditional guard or try/except to handle the zero-denominator case.",
+      "codeBlock": "if denominator != 0:\n    result = numerator / denominator\nelse:\n    result = 0  # or raise a custom error"
+    },
+    {
+      "id": "PY_FILE_NOT_FOUND",
+      "match": "FileNotFoundError:\\s+\\[Errno\\s+2\\]\\s+No\\s+such\\s+file\\s+or\\s+directory:\\s+'([^']+)'",
+      "captures": ["filePath"],
+      "rootCause": "The file or directory '{filePath}' does not exist on disk.",
+      "prescription": "Verify the path '{filePath}' is correct. Use os.path.exists() or pathlib.Path.exists() to check before access. Ensure relative paths are resolved from the correct working directory.",
+      "codeBlock": "from pathlib import Path\nif Path('{filePath}').exists():\n    # proceed with file operation"
+    },
+    {
+      "id": "PY_PERMISSION_ERROR",
+      "match": "PermissionError:\\s+\\[Errno\\s+13\\]\\s+Permission\\s+denied:\\s+'([^']+)'",
+      "captures": ["filePath"],
+      "rootCause": "The process does not have permission to access '{filePath}'.",
+      "prescription": "Check file permissions on '{filePath}' with ls -la. Ensure the user running the script has read/write access. On Windows, check if the file is locked by another process.",
+      "codeBlock": null
+    },
+    {
+      "id": "PY_OS_ERROR",
+      "match": "OSError:\\s+\\[Errno\\s+(\\d+)\\]\\s+(.+?):\\s+'([^']+)'",
+      "captures": ["errno", "message", "path"],
+      "rootCause": "OS-level error (errno {errno}): {message} for path '{path}'.",
+      "prescription": "Check file system state for '{path}'. Error {errno} ({message}) typically indicates a file system or OS-level issue. Verify disk space, permissions, and path validity.",
+      "codeBlock": null
+    },
+    {
+      "id": "PY_RECURSION_ERROR",
+      "match": "RecursionError:\\s+maximum\\s+recursion\\s+depth\\s+exceeded(?:\\s+in\\s+(\\w+))?",
+      "captures": ["context"],
+      "rootCause": "Infinite or excessively deep recursion detected, exceeding Python's default limit of 1000 frames.",
+      "prescription": "Add a proper base case to the recursive function. Consider converting to an iterative approach. If deeper recursion is genuinely needed, use sys.setrecursionlimit() cautiously.",
+      "codeBlock": "import sys\nsys.setrecursionlimit(2000)  # use with caution"
+    },
+    {
+      "id": "PY_STOP_ITERATION",
+      "match": "StopIteration",
+      "captures": [],
+      "rootCause": "An iterator was exhausted when next() was called with no more items available.",
+      "prescription": "Use next(iterator, default_value) to provide a default when the iterator is exhausted. Alternatively, use a for loop which handles StopIteration automatically.",
+      "codeBlock": "value = next(iterator, None)  # returns None instead of raising"
+    },
+    {
+      "id": "PY_UNICODE_ERROR",
+      "match": "UnicodeDecodeError:\\s+'(\\w+)'\\s+codec\\s+can't\\s+decode\\s+byte\\s+(0x[\\da-fA-F]+)\\s+in\\s+position\\s+(\\d+)",
+      "captures": ["codec", "byte", "position"],
+      "rootCause": "Cannot decode byte {byte} at position {position} using the '{codec}' codec. The file likely uses a different encoding.",
+      "prescription": "Specify the correct encoding when opening the file. Common alternatives: 'utf-8', 'latin-1', 'cp1252'. Use errors='replace' or errors='ignore' for fault tolerance.",
+      "codeBlock": "with open(filepath, 'r', encoding='utf-8', errors='replace') as f:\n    content = f.read()"
+    },
+    {
+      "id": "PY_ASSERTION_ERROR",
+      "match": "AssertionError(?::\\s+(.+))?",
+      "captures": ["message"],
+      "rootCause": "An assert statement failed. The asserted condition evaluated to False.",
+      "prescription": "Review the assertion condition and the values being tested. Assertions should be used for debugging invariants, not for input validation. Use proper error handling for runtime checks.",
+      "codeBlock": null
+    },
+    {
+      "id": "PY_RUNTIME_ERROR",
+      "match": "RuntimeError:\\s+(.+)",
+      "captures": ["message"],
+      "rootCause": "A runtime error occurred: {message}.",
+      "prescription": "Review the error message '{message}' for context. RuntimeError is a generic exception; check the code that raised it for specific handling instructions.",
+      "codeBlock": null
+    },
+    {
+      "id": "PY_OVERFLOW_ERROR",
+      "match": "OverflowError:\\s+(.+)",
+      "captures": ["message"],
+      "rootCause": "A numerical operation produced a result too large to represent: {message}.",
+      "prescription": "Check for extremely large numbers in calculations. Use Python's arbitrary-precision integers where possible, or use the decimal module for controlled precision.",
+      "codeBlock": "from decimal import Decimal\nresult = Decimal(large_number) / Decimal(divisor)"
+    },
+    {
+      "id": "PY_MEMORY_ERROR",
+      "match": "MemoryError",
+      "captures": [],
+      "rootCause": "The Python process ran out of available memory while trying to allocate an object.",
+      "prescription": "Reduce memory usage by processing data in chunks, using generators instead of lists, or streaming large files. Consider increasing system memory or using memory-mapped files.",
+      "codeBlock": "# Use a generator instead of loading everything into memory\ndef read_chunks(filepath, chunk_size=8192):\n    with open(filepath, 'rb') as f:\n        while chunk := f.read(chunk_size):\n            yield chunk"
+    },
+    {
+      "id": "PY_CONNECTION_ERROR",
+      "match": "(?:ConnectionRefusedError|ConnectionError):\\s+\\[Errno\\s+(\\d+)\\]\\s+(.+)",
+      "captures": ["errno", "message"],
+      "rootCause": "Network connection failed (errno {errno}): {message}.",
+      "prescription": "Verify the target service is running and accessible. Check hostname, port, firewall rules, and network connectivity. Implement retry logic with exponential backoff for transient failures.",
+      "codeBlock": "import time\nfor attempt in range(3):\n    try:\n        response = make_request()\n        break\n    except ConnectionError:\n        time.sleep(2 ** attempt)"
+    },
+    {
+      "id": "PY_INDENT_UNEXPECTED",
+      "match": "IndentationError:\\s+unexpected\\s+indent",
+      "captures": [],
+      "rootCause": "A line is indented more than expected by the parser.",
+      "prescription": "Check for extra spaces or tabs at the beginning of the flagged line. Ensure consistent indentation (use 4 spaces per level, never mix tabs and spaces). Configure your editor to display whitespace characters.",
+      "codeBlock": null
+    },
+    {
+      "id": "PY_INDENT_EXPECTED",
+      "match": "IndentationError:\\s+expected\\s+an\\s+indented\\s+block(?:\\s+after\\s+'(\\w+)'\\s+statement\\s+on\\s+line\\s+(\\d+))?",
+      "captures": ["statement", "lineNum"],
+      "rootCause": "An indented block is expected after a compound statement (if, for, def, class, etc.) but none was found.",
+      "prescription": "Add an indented body after the statement. If intentionally empty, use 'pass' as a placeholder.",
+      "codeBlock": "def placeholder_function():\n    pass  # TODO: implement"
+    },
+    {
+      "id": "PY_SYNTAX_INVALID",
+      "match": "SyntaxError:\\s+invalid\\s+syntax",
+      "captures": [],
+      "rootCause": "The Python parser encountered a token it did not expect at the indicated location.",
+      "prescription": "Check the indicated line and the line before it for: missing colons, unmatched parentheses/brackets, missing operators, or Python 2 syntax used in Python 3 (e.g., print without parentheses).",
+      "codeBlock": null
+    },
+    {
+      "id": "PY_SYNTAX_EOL",
+      "match": "SyntaxError:\\s+EOL\\s+while\\s+scanning\\s+string\\s+literal",
+      "captures": [],
+      "rootCause": "A string literal was not properly closed before the end of the line.",
+      "prescription": "Ensure all string literals have matching opening and closing quotes. For multi-line strings, use triple quotes (''' or \"\"\"). Check for unescaped quotes within the string.",
+      "codeBlock": null
+    },
+    {
+      "id": "PY_SYNTAX_EOF",
+      "match": "SyntaxError:\\s+unexpected\\s+EOF\\s+while\\s+parsing",
+      "captures": [],
+      "rootCause": "The file ended before the parser found closing brackets, parentheses, or a complete statement.",
+      "prescription": "Check for unmatched parentheses (), brackets [], or braces {}. Ensure all block statements (if, for, def, class) have a body. Use an editor with bracket matching to find the mismatch.",
+      "codeBlock": null
+    },
+    {
+      "id": "PY_SYNTAX_COLON",
+      "match": "SyntaxError:\\s+expected\\s+':'",
+      "captures": [],
+      "rootCause": "A colon is expected after a compound statement header (if, for, def, class, etc.) but was not found.",
+      "prescription": "Add a colon at the end of the statement header. For example: 'if condition:', 'def func():', 'class MyClass:'.",
+      "codeBlock": null
+    },
+    {
+      "id": "PY_SYNTAX_RETURN",
+      "match": "SyntaxError:\\s+'return'\\s+outside\\s+function",
+      "captures": [],
+      "rootCause": "A 'return' statement was used outside of a function definition.",
+      "prescription": "Move the return statement inside a function body, or replace it with sys.exit() if you intend to exit the script. Check indentation to ensure the return is properly nested inside a def block.",
+      "codeBlock": null
+    },
+    {
+      "id": "PY_SYNTAX_BREAK",
+      "match": "SyntaxError:\\s+'break'\\s+outside\\s+loop",
+      "captures": [],
+      "rootCause": "A 'break' statement was used outside of a for or while loop.",
+      "prescription": "Move the break statement inside a loop body. Check indentation to ensure the break is properly nested inside a for or while block.",
+      "codeBlock": null
+    },
+    {
+      "id": "PY_SYNTAX_FSTRING",
+      "match": "SyntaxError:\\s+f-string\\s+expression\\s+part\\s+cannot\\s+include\\s+a?\\s*backslash",
+      "captures": [],
+      "rootCause": "Backslash characters are not allowed inside the expression portion of an f-string.",
+      "prescription": "Assign the expression containing the backslash to a variable first, then reference that variable in the f-string.",
+      "codeBlock": "newline = '\\n'\nresult = f\"Lines: {newline.join(items)}\"  # instead of f\"{'\\n'.join(items)}\""
+    },
+    {
+      "id": "PY_TAB_ERROR",
+      "match": "TabError:\\s+inconsistent\\s+use\\s+of\\s+tabs\\s+and\\s+spaces\\s+in\\s+indentation",
+      "captures": [],
+      "rootCause": "The file mixes tabs and spaces for indentation, which Python 3 does not allow.",
+      "prescription": "Convert all indentation to spaces (4 spaces per level is the PEP 8 standard). Most editors have a 'Convert Indentation to Spaces' command. Run: python -tt script.py to check.",
+      "codeBlock": null
+    },
+    {
+      "id": "PY_DJANGO_IMPORT",
+      "match": "django\\.core\\.exceptions\\.ImproperlyConfigured:\\s+(.+)",
+      "captures": ["message"],
+      "rootCause": "Django configuration error: {message}.",
+      "prescription": "Ensure DJANGO_SETTINGS_MODULE is set correctly. Verify that all required apps are in INSTALLED_APPS, database settings are correct, and all dependencies are installed.",
+      "codeBlock": "import os\nos.environ.setdefault('DJANGO_SETTINGS_MODULE', 'myproject.settings')"
+    },
+    {
+      "id": "PY_DJANGO_DOES_NOT_EXIST",
+      "match": "(\\w+)\\.DoesNotExist",
+      "captures": ["modelName"],
+      "rootCause": "No {modelName} record was found matching the query.",
+      "prescription": "Use {modelName}.objects.filter().first() instead of .get() for queries that may return no results, or wrap in try/except {modelName}.DoesNotExist.",
+      "codeBlock": "try:\n    obj = {modelName}.objects.get(pk=pk)\nexcept {modelName}.DoesNotExist:\n    obj = None  # handle missing object"
+    },
+    {
+      "id": "PY_DJANGO_MIGRATION",
+      "match": "django\\.db\\.utils\\.OperationalError:\\s+(.+)",
+      "captures": ["message"],
+      "rootCause": "Django database operational error: {message}. This often indicates unapplied migrations or database schema mismatch.",
+      "prescription": "Run 'python manage.py makemigrations' followed by 'python manage.py migrate'. If the database is out of sync, check for conflicting migrations.",
+      "codeBlock": "python manage.py makemigrations\npython manage.py migrate"
+    },
+    {
+      "id": "PY_FLASK_404",
+      "match": "werkzeug\\.exceptions\\.NotFound:\\s+404\\s+Not\\s+Found:\\s+(.+)",
+      "captures": ["message"],
+      "rootCause": "Flask route not found: {message}. The requested URL does not match any registered route.",
+      "prescription": "Verify the URL matches a defined route. Check for typos in the route decorator. Ensure the blueprint is registered with the app. Use app.url_map to debug routes.",
+      "codeBlock": "# List all registered routes\nfor rule in app.url_map.iter_rules():\n    print(f\"{rule.endpoint}: {rule.rule}\")"
+    },
+    {
+      "id": "PY_FLASK_IMPORT",
+      "match": "Error:\\s+Could\\s+not\\s+import\\s+'([\\w.]+)'",
+      "captures": ["modulePath"],
+      "rootCause": "Flask could not import the application module '{modulePath}'.",
+      "prescription": "Verify FLASK_APP environment variable points to the correct module. Ensure the module '{modulePath}' exists and has no import errors. Check your working directory.",
+      "codeBlock": "export FLASK_APP={modulePath}\nflask run"
+    },
+    {
+      "id": "PY_FASTAPI_VALIDATION",
+      "match": "fastapi\\.exceptions\\.RequestValidationError|pydantic\\.error_wrappers\\.ValidationError:\\s+(\\d+)\\s+validation\\s+error",
+      "captures": ["errorCount"],
+      "rootCause": "FastAPI/Pydantic validation failed with {errorCount} error(s). Request data does not match the expected schema.",
+      "prescription": "Check the request body, query parameters, or path parameters against the Pydantic model definition. Review the validation error details for specific field failures.",
+      "codeBlock": null
+    },
+    {
+      "id": "PY_FASTAPI_DEPENDS",
+      "match": "fastapi\\.exceptions\\.FastAPIError.*[Dd]epend",
+      "captures": [],
+      "rootCause": "FastAPI dependency injection error. A dependency function failed or is misconfigured.",
+      "prescription": "Verify all Depends() functions have correct signatures, return the expected types, and handle their own exceptions. Check for circular dependencies.",
+      "codeBlock": "from fastapi import Depends\n\nasync def get_db():\n    db = SessionLocal()\n    try:\n        yield db\n    finally:\n        db.close()"
+    },
+    {
+      "id": "PY_SQLALCHEMY_ERROR",
+      "match": "sqlalchemy\\.exc\\.OperationalError:\\s+\\(([^)]+)\\)\\s+(.+)",
+      "captures": ["driver", "message"],
+      "rootCause": "SQLAlchemy operational error via {driver}: {message}.",
+      "prescription": "Check database connection settings (host, port, credentials). Verify the database server is running and accessible. Review the SQL query for syntax errors. Ensure the database schema matches the models.",
+      "codeBlock": null
+    },
+    {
+      "id": "PY_PYTEST_ERROR",
+      "match": "ERROR\\s+collecting\\s+([\\w/.]+\\.py)(?:::\\s*(.+))?",
+      "captures": ["testFile", "detail"],
+      "rootCause": "Pytest failed to collect tests from '{testFile}'. The file may contain import errors or invalid test definitions.",
+      "prescription": "Run 'python -c \"import {testFile}\"' to check for import errors. Ensure test functions start with 'test_' and test classes start with 'Test'. Check conftest.py for errors.",
+      "codeBlock": null
+    },
+    {
+      "id": "PY_PYTEST_FIXTURE",
+      "match": "fixture\\s+'(\\w+)'\\s+not\\s+found",
+      "captures": ["fixtureName"],
+      "rootCause": "Pytest fixture '{fixtureName}' is not defined or not accessible in the current test scope.",
+      "prescription": "Define the fixture '{fixtureName}' in conftest.py or in the test file. Ensure the fixture is decorated with @pytest.fixture. Check conftest.py files in parent directories.",
+      "codeBlock": "@pytest.fixture\ndef {fixtureName}():\n    # setup\n    yield value\n    # teardown"
+    },
+    {
+      "id": "PY_PIP_ERROR",
+      "match": "(?:ERROR|error):\\s+(?:Could\\s+not\\s+install\\s+packages|No\\s+matching\\s+distribution\\s+found\\s+for)\\s+([\\w.-]+)",
+      "captures": ["packageName"],
+      "rootCause": "pip could not install the package '{packageName}'. It may not exist on PyPI, or is incompatible with the current Python version/platform.",
+      "prescription": "Verify the package name '{packageName}' is correct. Check Python version compatibility. Try upgrading pip: pip install --upgrade pip. Check for platform-specific wheels.",
+      "codeBlock": "pip install --upgrade pip\npip install {packageName}"
+    },
+    {
+      "id": "PY_VENV_ERROR",
+      "match": "(?:Error:\\s+)?(?:The\\s+virtual\\s+environment\\s+was\\s+not\\s+created|No\\s+module\\s+named\\s+venv)",
+      "captures": [],
+      "rootCause": "Failed to create or activate a Python virtual environment. The venv module may not be installed.",
+      "prescription": "Install the venv module: sudo apt install python3-venv (Debian/Ubuntu). On Windows, ensure Python was installed with the standard library. Alternatively, use virtualenv: pip install virtualenv.",
+      "codeBlock": "python3 -m venv .venv\nsource .venv/bin/activate  # Linux/macOS\n# .venv\\Scripts\\activate  # Windows"
+    },
+    {
+      "id": "PY_TYPING_ERROR",
+      "match": "TypeError:\\s+(?:Protocols\\s+can\\s+only\\s+inherit|A\\s+Protocol\\s+cannot|TypeVar\\s+(.+))",
+      "captures": ["detail"],
+      "rootCause": "A typing construct (Protocol or TypeVar) is being used incorrectly.",
+      "prescription": "Review the typing module documentation. Ensure Protocols only inherit from other Protocols. TypeVars should be defined at module level with proper constraints.",
+      "codeBlock": "from typing import TypeVar, Protocol\n\nT = TypeVar('T', bound='MyBase')\n\nclass MyProtocol(Protocol):\n    def method(self) -> None: ..."
+    },
+    {
+      "id": "PY_DATACLASS_ERROR",
+      "match": "TypeError:\\s+non-default\\s+argument\\s+'(\\w+)'\\s+follows\\s+default\\s+argument",
+      "captures": ["fieldName"],
+      "rootCause": "In a dataclass, field '{fieldName}' without a default value is declared after a field with a default value.",
+      "prescription": "Reorder the dataclass fields so all fields without defaults come before fields with defaults. Alternatively, use field(default_factory=...) or make all fields have defaults.",
+      "codeBlock": "from dataclasses import dataclass, field\n\n@dataclass\nclass MyClass:\n    required_field: str          # no default - must come first\n    optional_field: str = ''     # has default - must come after"
+    },
+    {
+      "id": "PY_ASYNCIO_ERROR",
+      "match": "RuntimeError:\\s+(?:This\\s+event\\s+loop\\s+is\\s+already\\s+running|There\\s+is\\s+no\\s+current\\s+event\\s+loop|cannot\\s+schedule\\s+new\\s+futures\\s+after\\s+(?:shutdown|interpreter))",
+      "captures": [],
+      "rootCause": "An asyncio event loop error occurred, typically from calling asyncio.run() inside an already-running loop or using the event loop after shutdown.",
+      "prescription": "Use 'await' instead of asyncio.run() inside async functions. In Jupyter notebooks, use 'await' directly or nest_asyncio. Ensure proper cleanup of async resources before shutdown.",
+      "codeBlock": "import asyncio\n\nasync def main():\n    result = await some_coroutine()\n    return result\n\nasyncio.run(main())  # only call from synchronous code"
+    }
+  ]
+}

@@ -1,0 +1,319 @@
+{
+  "technology": "nodejs",
+  "version": 1,
+  "patterns": [
+    {
+      "id": "ERR_REQUIRE_ESM",
+      "match": "(?:ERR_REQUIRE_ESM|require\\(\\) of ES Module).*?([\\w@/.\\-]+)",
+      "captures": ["module"],
+      "rootCause": "Cannot use require() to load ES module {module}. The module uses ESM (import/export) syntax and cannot be loaded with CommonJS require().",
+      "prescription": "Either switch your project to ESM by adding `\"type\": \"module\"` to package.json, use dynamic `import()` instead of `require()`, or downgrade {module} to a version that still supports CommonJS.",
+      "codeBlock": "// Option 1: Use dynamic import\nconst module = await import('{module}');\n\n// Option 2: Add to package.json\n// { \"type\": \"module\" }\n\n// Option 3: Rename file to .mjs",
+      "conditions": [
+        {
+          "when": "module contains node-fetch",
+          "rootCause": "node-fetch v3+ is ESM-only. require() cannot load it.",
+          "prescription": "Either downgrade to node-fetch@2 which supports CommonJS, or switch to the built-in `fetch()` available in Node.js 18+.",
+          "codeBlock": "npm install node-fetch@2\n\n// Or use built-in fetch (Node.js 18+)\nconst response = await fetch('https://example.com');"
+        },
+        {
+          "when": "module contains chalk",
+          "rootCause": "chalk v5+ is ESM-only. require() cannot load it.",
+          "prescription": "Downgrade to chalk@4 for CommonJS support, or switch your project to ESM.",
+          "codeBlock": "npm install chalk@4"
+        }
+      ]
+    },
+    {
+      "id": "ERR_MODULE_NOT_FOUND",
+      "match": "(?:ERR_MODULE_NOT_FOUND|Cannot find module)\\s+['\"]?([\\w@/.\\-]+)['\"]?",
+      "captures": ["module"],
+      "rootCause": "Module {module} cannot be found. It may not be installed, the path may be wrong, or the module specifier may be missing a file extension (required in ESM).",
+      "prescription": "Install the module with `npm install {module}`. If it's a local file, verify the path and add the file extension (ESM requires explicit extensions like `.js`).",
+      "codeBlock": "npm install {module}\n\n// For ESM local imports, include extension:\nimport { foo } from './utils.js';  // not './utils'",
+      "conditions": [
+        {
+          "when": "module contains @types",
+          "rootCause": "Missing TypeScript type declarations package {module}.",
+          "prescription": "Install the type declarations as a dev dependency: `npm install -D {module}`.",
+          "codeBlock": "npm install -D {module}"
+        }
+      ]
+    },
+    {
+      "id": "ERR_UNKNOWN_FILE_EXTENSION",
+      "match": "ERR_UNKNOWN_FILE_EXTENSION.*?['\"]?(\\.[\\w]+)['\"]?.*?([\\w/.\\-]+)",
+      "captures": ["extension", "file"],
+      "rootCause": "Node.js does not recognize the file extension {extension} for {file}. This commonly happens when running TypeScript (.ts) files directly with Node.js without a loader.",
+      "prescription": "Use a compatible loader: `tsx` for TypeScript, or register a loader with `--loader`. For .ts files, use `npx tsx {file}` or `ts-node`.",
+      "codeBlock": "# Use tsx (recommended)\nnpx tsx {file}\n\n# Or use ts-node with ESM\nnode --loader ts-node/esm {file}\n\n# Or compile first\nnpx tsc && node dist/{file}",
+      "conditions": [
+        {
+          "when": "extension contains .ts",
+          "rootCause": "Cannot run TypeScript file {file} directly with Node.js. A TypeScript loader or compiler is required.",
+          "prescription": "Install and use tsx: `npm install -D tsx` then `npx tsx {file}`. Alternatively, compile with `tsc` first.",
+          "codeBlock": "npm install -D tsx\nnpx tsx {file}"
+        }
+      ]
+    },
+    {
+      "id": "EADDRINUSE",
+      "match": "(?:EADDRINUSE|address already in use).*?(?:::|0\\.0\\.0\\.0:)?(\\d+)",
+      "captures": ["port"],
+      "rootCause": "Port {port} is already in use. Another process is already listening on this port.",
+      "prescription": "Find and kill the process using port {port}, or start your server on a different port.",
+      "codeBlock": "# Find process on port (macOS/Linux)\nlsof -i :{port}\nkill -9 $(lsof -t -i :{port})\n\n# Windows\nnetstat -ano | findstr :{port}\ntaskkill /PID <PID> /F\n\n# Use different port\nPORT={port} node server.js",
+      "conditions": []
+    },
+    {
+      "id": "ECONNREFUSED",
+      "match": "(?:connect )?ECONNREFUSED.*?([\\d.]+|localhost|[\\w.-]+):(\\d+)",
+      "captures": ["host", "port"],
+      "rootCause": "Connection refused to {host}:{port}. The target service is not running or not accepting connections on that port.",
+      "prescription": "Ensure the service at {host}:{port} is running. Check firewall rules and verify the connection string in your configuration.",
+      "codeBlock": "# Verify the service is running\ncurl -v http://{host}:{port}\n\n# Check if port is listening\nnetstat -tlnp | grep {port}",
+      "conditions": [
+        {
+          "when": "port contains 5432",
+          "rootCause": "PostgreSQL connection refused at {host}:{port}. The database server is not running.",
+          "prescription": "Start PostgreSQL: `sudo systemctl start postgresql` or check your DATABASE_URL environment variable.",
+          "codeBlock": "sudo systemctl start postgresql\nsudo systemctl status postgresql"
+        },
+        {
+          "when": "port contains 3306",
+          "rootCause": "MySQL connection refused at {host}:{port}. The MySQL server is not running.",
+          "prescription": "Start MySQL: `sudo systemctl start mysql` or `brew services start mysql`.",
+          "codeBlock": "sudo systemctl start mysql"
+        }
+      ]
+    },
+    {
+      "id": "ENOENT",
+      "match": "ENOENT.*?no such file or directory.*?['\"]?([\\w/.\\-]+)['\"]?",
+      "captures": ["path"],
+      "rootCause": "File or directory not found: {path}. The path does not exist or contains a typo.",
+      "prescription": "Verify the path {path} exists. Check for typos, case sensitivity, and ensure prerequisite build steps have run. Create the directory with `mkdir -p` if needed.",
+      "codeBlock": "# Check if path exists\nls -la {path}\n\n# Create directory if needed\nmkdir -p $(dirname {path})",
+      "conditions": [
+        {
+          "when": "path contains .env",
+          "rootCause": "Environment file {path} not found. The application expects a .env file that has not been created.",
+          "prescription": "Create the .env file from the example template: `cp .env.example .env` and fill in the required values.",
+          "codeBlock": "cp .env.example .env\n# Edit .env with your values"
+        },
+        {
+          "when": "path contains dist",
+          "rootCause": "Build output directory {path} not found. The project has not been built yet.",
+          "prescription": "Run the build step first: `npm run build`.",
+          "codeBlock": "npm run build"
+        }
+      ]
+    },
+    {
+      "id": "ERR_HTTP_HEADERS_SENT",
+      "match": "ERR_HTTP_HEADERS_SENT|Cannot set headers after they are sent to the client",
+      "captures": [],
+      "rootCause": "Attempted to send response headers after the response was already sent. This means `res.send()`, `res.json()`, or `res.end()` was called more than once for the same request.",
+      "prescription": "Ensure each request handler sends only one response. Add `return` before or after `res.send()`/`res.json()` to prevent code from continuing to execute. Check for missing `else` clauses and async callback issues.",
+      "codeBlock": "// Wrong - missing return\napp.get('/api', (req, res) => {\n  if (error) {\n    res.status(400).json({ error });\n    // Missing return! Code continues...\n  }\n  res.json({ data });\n});\n\n// Correct\napp.get('/api', (req, res) => {\n  if (error) {\n    return res.status(400).json({ error });\n  }\n  return res.json({ data });\n});",
+      "conditions": []
+    },
+    {
+      "id": "ERR_INVALID_ARG_TYPE",
+      "match": "ERR_INVALID_ARG_TYPE.*?['\"]([\\w]+)['\"].*?(?:type|must be)\\s+(?:an? )?['\"]?([\\w|\\s]+)['\"]?.*?Received\\s+([\\w]+)",
+      "captures": ["argument", "expected", "received"],
+      "rootCause": "Invalid argument type for \"{argument}\": expected {expected} but received {received}.",
+      "prescription": "Ensure the argument \"{argument}\" is of type {expected}. Add type checking or conversion before passing the value.",
+      "codeBlock": "// Validate argument type\nif (typeof {argument} !== '{expected}') {\n  throw new TypeError(`Expected {expected}, got ${typeof {argument}}`);\n}",
+      "conditions": [
+        {
+          "when": "expected contains string",
+          "rootCause": "Argument \"{argument}\" must be a string but received {received}. A Buffer, number, or undefined was passed where a string was expected.",
+          "prescription": "Convert the value to a string: `String(value)` or `value.toString()`. Check for undefined/null values.",
+          "codeBlock": "const strValue = String({argument});\n// or\nconst strValue = {argument}?.toString() ?? '';"
+        }
+      ]
+    },
+    {
+      "id": "MAX_CALL_STACK",
+      "match": "(?:Maximum call stack size exceeded|RangeError.*?call stack)",
+      "captures": [],
+      "rootCause": "Maximum call stack size exceeded. This is caused by infinite recursion — a function calling itself (directly or indirectly) without a proper base case.",
+      "prescription": "Find the recursive function causing the stack overflow. Add or fix the base case that stops the recursion. Consider converting deep recursion to iteration.",
+      "codeBlock": "// Wrong - infinite recursion\nfunction process(data) {\n  return process(data); // no base case!\n}\n\n// Correct - add base case\nfunction process(data) {\n  if (data.length === 0) return []; // base case\n  return [data[0], ...process(data.slice(1))];\n}\n\n// Better - use iteration for large data\nfunction process(data) {\n  const result = [];\n  for (const item of data) {\n    result.push(item);\n  }\n  return result;\n}",
+      "conditions": []
+    },
+    {
+      "id": "UNHANDLED_REJECTION",
+      "match": "(?:UnhandledPromiseRejection|unhandled promise rejection|Unhandled rejection).*?(?:Error: )?(.+?)(?:\\n|$)",
+      "captures": ["error"],
+      "rootCause": "Unhandled promise rejection: {error}. A promise was rejected but no .catch() handler or try/catch block was present.",
+      "prescription": "Add error handling to all promises. Use try/catch with async/await or .catch() with promise chains. Add a global handler: `process.on('unhandledRejection', handler)`.",
+      "codeBlock": "// Add try/catch to async functions\nasync function doWork() {\n  try {\n    await riskyOperation();\n  } catch (error) {\n    console.error('Operation failed:', error);\n  }\n}\n\n// Global handler (catch-all)\nprocess.on('unhandledRejection', (reason, promise) => {\n  console.error('Unhandled Rejection at:', promise, 'reason:', reason);\n});",
+      "conditions": []
+    },
+    {
+      "id": "DEPRECATION_WARNING",
+      "match": "\\[?DEP(\\d+)\\]? DeprecationWarning: (.+?)(?:\\.|$)",
+      "captures": ["code", "message"],
+      "rootCause": "Deprecation warning DEP{code}: {message}. A deprecated API or feature is being used that may be removed in a future version.",
+      "prescription": "Update your code to use the recommended replacement for DEP{code}. Check the Node.js documentation for migration guidance.",
+      "codeBlock": "// Suppress specific deprecation warnings (not recommended for production)\nprocess.noDeprecation = true;\n\n// Or use the --no-deprecation flag\n// node --no-deprecation app.js",
+      "conditions": [
+        {
+          "when": "code contains 0005",
+          "rootCause": "DEP0005: The Buffer() constructor is deprecated. Use Buffer.alloc(), Buffer.from(), or Buffer.allocUnsafe() instead.",
+          "prescription": "Replace `new Buffer()` with `Buffer.from()` for strings/arrays, `Buffer.alloc(size)` for zero-filled buffers, or `Buffer.allocUnsafe(size)` for uninitialized buffers.",
+          "codeBlock": "// Old (deprecated)\nconst buf = new Buffer('hello');\nconst buf2 = new Buffer(10);\n\n// New\nconst buf = Buffer.from('hello');\nconst buf2 = Buffer.alloc(10);"
+        }
+      ]
+    },
+    {
+      "id": "ERR_SOCKET_TIMEOUT",
+      "match": "(?:ERR_SOCKET_TIMEOUT|ESOCKETTIMEDOUT|socket hang up|socket timeout).*?(?:([\\w./-]+))?",
+      "captures": ["target"],
+      "rootCause": "Socket timeout when communicating with {target}. The remote server did not respond within the expected time.",
+      "prescription": "Increase the socket timeout, check network connectivity, or verify the remote service is responsive. Consider adding retry logic for transient failures.",
+      "codeBlock": "// Increase HTTP timeout\nconst http = require('http');\nconst req = http.get(url, { timeout: 30000 }, (res) => {\n  // handle response\n});\nreq.on('timeout', () => {\n  req.destroy();\n  console.error('Request timed out');\n});",
+      "conditions": []
+    },
+    {
+      "id": "ERR_STREAM_DESTROYED",
+      "match": "ERR_STREAM_DESTROYED|Cannot call write after a stream was destroyed|stream\\.push\\(\\) after EOF",
+      "captures": [],
+      "rootCause": "Attempted to write to or read from a stream that has already been destroyed or ended. This often happens when error handling destroys a stream but later code still tries to use it.",
+      "prescription": "Check `stream.destroyed` or `stream.writable` before writing. Ensure error handlers don't leave dangling references to destroyed streams.",
+      "codeBlock": "// Check before writing\nif (!stream.destroyed && stream.writable) {\n  stream.write(data);\n}\n\n// Proper stream error handling\nstream.on('error', (err) => {\n  console.error('Stream error:', err);\n  // Don't try to use the stream after this\n});",
+      "conditions": []
+    },
+    {
+      "id": "ERR_BUFFER_TOO_LARGE",
+      "match": "(?:ERR_BUFFER_TOO_LARGE|Cannot create a Buffer larger than|buffer too large).*?(?:(\\d+))?",
+      "captures": ["size"],
+      "rootCause": "Buffer allocation too large ({size} bytes). Node.js has a maximum buffer size limit (typically ~2GB on 64-bit systems).",
+      "prescription": "Process data in chunks using streams instead of loading everything into a single buffer. Use `fs.createReadStream()` for file processing.",
+      "codeBlock": "// Instead of reading entire file into buffer\n// const data = fs.readFileSync('huge-file.dat');\n\n// Use streams\nconst stream = fs.createReadStream('huge-file.dat');\nstream.on('data', (chunk) => {\n  // Process chunk by chunk\n  processChunk(chunk);\n});",
+      "conditions": []
+    },
+    {
+      "id": "SYNTAX_ERROR_JSON",
+      "match": "SyntaxError:.*?Unexpected token.*?(?:in JSON|JSON\\.parse).*?(?:position (\\d+))?",
+      "captures": ["position"],
+      "rootCause": "Failed to parse JSON at position {position}. The input contains invalid JSON syntax — possibly an HTML error page, trailing commas, comments, or truncated data.",
+      "prescription": "Log the raw input before parsing to see what was actually received. Check for HTML error pages being returned instead of JSON. Validate the JSON with a linter.",
+      "codeBlock": "// Debug JSON parse errors\nasync function safeFetch(url) {\n  const res = await fetch(url);\n  const text = await res.text();\n  try {\n    return JSON.parse(text);\n  } catch (e) {\n    console.error('Failed to parse JSON. Raw response:', text.substring(0, 500));\n    throw e;\n  }\n}",
+      "conditions": []
+    },
+    {
+      "id": "ERR_INVALID_URL",
+      "match": "(?:ERR_INVALID_URL|Invalid URL).*?['\"]?([^'\"\\s]+)['\"]?",
+      "captures": ["url"],
+      "rootCause": "Invalid URL: {url}. The URL string is malformed — possibly missing a protocol, containing spaces, or using invalid characters.",
+      "prescription": "Ensure the URL includes a protocol (http:// or https://). Use the URL constructor to validate and normalize URLs. Encode special characters with encodeURIComponent().",
+      "codeBlock": "// Validate URL\ntry {\n  const url = new URL('{url}');\n  console.log('Valid URL:', url.href);\n} catch (e) {\n  console.error('Invalid URL:', e.message);\n}\n\n// Build URL safely\nconst base = 'https://api.example.com';\nconst path = encodeURIComponent(userInput);\nconst url = new URL(`/api/${path}`, base);",
+      "conditions": []
+    },
+    {
+      "id": "ERR_ASSERTION",
+      "match": "(?:AssertionError|ERR_ASSERTION).*?(?:expected (.+?) (?:to (?:equal|be|match|have|include|deep))? ?(.+?))?(?:\\n|$)",
+      "captures": ["actual", "expected"],
+      "rootCause": "Assertion failed: expected {expected} but got {actual}. A runtime assertion or test assertion did not hold.",
+      "prescription": "Check the logic that produces the actual value. If this is a test failure, review the test expectations and the code under test. If this is a runtime assertion, add proper error handling.",
+      "codeBlock": "// Use assert with descriptive messages\nconst assert = require('assert');\nassert.strictEqual(actual, expected, 'Values should match: got ' + actual);",
+      "conditions": []
+    },
+    {
+      "id": "ERR_MISSING_ENV",
+      "match": "(?:missing|undefined|required).*?(?:environment variable|env var|env|config).*?['\"]?([A-Z_][A-Z0-9_]+)['\"]?",
+      "captures": ["variable"],
+      "rootCause": "Required environment variable {variable} is not set. The application cannot start or function without it.",
+      "prescription": "Set the environment variable {variable} in your .env file or system environment. Check .env.example for the expected format.",
+      "codeBlock": "# Add to .env file\n{variable}=your_value_here\n\n# Or set inline\n{variable}=value node app.js\n\n# Or export\nexport {variable}=value",
+      "conditions": [
+        {
+          "when": "variable contains DATABASE_URL",
+          "rootCause": "DATABASE_URL environment variable is not set. The application cannot connect to the database.",
+          "prescription": "Set DATABASE_URL in your .env file with the appropriate connection string for your database.",
+          "codeBlock": "# PostgreSQL\nDATABASE_URL=postgresql://user:password@localhost:5432/dbname\n\n# MySQL\nDATABASE_URL=mysql://user:password@localhost:3306/dbname"
+        }
+      ]
+    },
+    {
+      "id": "WORKER_THREAD_ERROR",
+      "match": "(?:Worker thread|worker_threads).*?(?:error|failed|exited|terminated).*?(?:code (\\d+))?",
+      "captures": ["exitCode"],
+      "rootCause": "Worker thread exited with code {exitCode}. The worker encountered an unhandled error or was terminated.",
+      "prescription": "Add error handling to your worker thread. Listen for 'error' and 'exit' events on the Worker instance. Ensure the worker script handles exceptions properly.",
+      "codeBlock": "const { Worker } = require('worker_threads');\n\nconst worker = new Worker('./worker.js');\n\nworker.on('error', (error) => {\n  console.error('Worker error:', error);\n});\n\nworker.on('exit', (code) => {\n  if (code !== 0) {\n    console.error(`Worker stopped with exit code ${code}`);\n  }\n});",
+      "conditions": []
+    },
+    {
+      "id": "CLUSTER_WORKER_DIED",
+      "match": "(?:cluster|worker).*?(?:died|disconnected|exited unexpectedly).*?(?:pid (\\d+))?.*?(?:code (\\d+))?",
+      "captures": ["pid", "exitCode"],
+      "rootCause": "Cluster worker (PID {pid}) died with exit code {exitCode}. The worker process crashed or was killed.",
+      "prescription": "Implement automatic worker restart in the cluster master. Investigate the root cause of the worker crash — check for unhandled exceptions, memory leaks, or OOM kills.",
+      "codeBlock": "const cluster = require('cluster');\n\nif (cluster.isPrimary) {\n  cluster.on('exit', (worker, code, signal) => {\n    console.error(`Worker ${worker.process.pid} died (code: ${code}, signal: ${signal})`);\n    console.log('Starting a new worker...');\n    cluster.fork(); // Auto-restart\n  });\n}",
+      "conditions": []
+    },
+    {
+      "id": "ERR_USE_AFTER_CLOSE",
+      "match": "(?:ERR_USE_AFTER_CLOSE|use after close|pool is closed|connection is closed|client has already been closed)",
+      "captures": [],
+      "rootCause": "Attempted to use a resource (connection, pool, or client) after it has been closed. This typically happens when cleanup code runs prematurely or connections are shared incorrectly.",
+      "prescription": "Ensure resources are not closed while still in use. Check the lifecycle of connection pools and database clients. Use connection pooling properly — don't close the pool between requests.",
+      "codeBlock": "// Wrong - closing pool after each query\nasync function query(sql) {\n  const pool = new Pool();\n  const result = await pool.query(sql);\n  await pool.end(); // Closes pool!\n  return result;\n}\n\n// Correct - reuse pool\nconst pool = new Pool();\n\nasync function query(sql) {\n  return pool.query(sql);\n}\n\n// Close pool only on app shutdown\nprocess.on('SIGTERM', () => pool.end());",
+      "conditions": []
+    },
+    {
+      "id": "ERR_TLS_CERT",
+      "match": "(?:ERR_TLS_CERT_ALTNAME_INVALID|UNABLE_TO_VERIFY_LEAF_SIGNATURE|CERT_HAS_EXPIRED|DEPTH_ZERO_SELF_SIGNED_CERT|SELF_SIGNED_CERT_IN_CHAIN|ERR_TLS).*?(?:([\\w.-]+))?",
+      "captures": ["host"],
+      "rootCause": "TLS certificate error when connecting to {host}. The certificate may be expired, self-signed, or the hostname does not match the certificate's Subject Alternative Name.",
+      "prescription": "Verify the server certificate at {host}. For self-signed certs in development, set NODE_EXTRA_CA_CERTS. Never set NODE_TLS_REJECT_UNAUTHORIZED=0 in production.",
+      "codeBlock": "# Check certificate\nopenssl s_client -connect {host}:443 -servername {host} 2>/dev/null | openssl x509 -noout -dates -subject -issuer\n\n# Development only - trust self-signed CA\nNODE_EXTRA_CA_CERTS=./ca-cert.pem node app.js",
+      "conditions": [
+        {
+          "when": "host contains localhost",
+          "rootCause": "TLS certificate error on localhost. The local development server is using a self-signed or misconfigured certificate.",
+          "prescription": "Generate a proper local development certificate using mkcert: `mkcert -install && mkcert localhost`.",
+          "codeBlock": "# Install mkcert\nbrew install mkcert  # macOS\nmkcert -install\nmkcert localhost 127.0.0.1 ::1"
+        }
+      ]
+    },
+    {
+      "id": "ERR_DNS_RESOLUTION",
+      "match": "(?:getaddrinfo ENOTFOUND|EAI_AGAIN|DNS resolution failed|querySrv ENOTFOUND).*?([\\w.-]+)",
+      "captures": ["hostname"],
+      "rootCause": "DNS resolution failed for {hostname}. The hostname could not be resolved to an IP address.",
+      "prescription": "Verify the hostname {hostname} is correct. Check DNS configuration, /etc/resolv.conf, and network connectivity. Try `nslookup {hostname}` to test DNS resolution.",
+      "codeBlock": "# Test DNS resolution\nnslookup {hostname}\ndig {hostname}\n\n# Check /etc/resolv.conf\ncat /etc/resolv.conf\n\n# Try alternative DNS\nnslookup {hostname} 8.8.8.8",
+      "conditions": [
+        {
+          "when": "hostname contains cluster",
+          "rootCause": "DNS resolution failed for database cluster hostname {hostname}. The cluster may be in a private network requiring VPN or peering.",
+          "prescription": "Ensure you are connected to the correct VPN or network. Verify the hostname in your database connection string is correct and accessible from your environment.",
+          "codeBlock": null
+        }
+      ]
+    },
+    {
+      "id": "ERR_PACKAGE_PATH",
+      "match": "(?:ERR_PACKAGE_PATH_NOT_EXPORTED|Package subpath ['\"]([\\w/.\\-]+)['\"] is not (?:defined|exported)).*?(?:package ([\\w@/.\\-]+))?",
+      "captures": ["subpath", "package"],
+      "rootCause": "Package subpath '{subpath}' is not exported by {package}. The package's exports map in package.json does not include this path.",
+      "prescription": "Check the package's documentation for the correct import path. The package may have changed its export structure in a new version. Use the package's public API as defined in its exports field.",
+      "codeBlock": "// Check available exports\n// Look at node_modules/{package}/package.json \"exports\" field\n\n// Use a valid export path\nimport something from '{package}';  // main export\nimport something from '{package}/submodule';  // check docs for valid paths",
+      "conditions": []
+    },
+    {
+      "id": "ERR_INVALID_PACKAGE",
+      "match": "(?:ERR_INVALID_PACKAGE_CONFIG|Invalid package config).*?([\\w/.\\-]+(?:package\\.json)?)",
+      "captures": ["packagePath"],
+      "rootCause": "Invalid package.json at {packagePath}. The package.json file contains syntax errors or invalid configuration.",
+      "prescription": "Validate and fix the package.json at {packagePath}. Check for JSON syntax errors, invalid field values, or malformed exports/imports maps.",
+      "codeBlock": "# Validate package.json\nnpx --yes package-json-validator {packagePath}\n\n# Or check with node\nnode -e \"console.log(JSON.parse(require('fs').readFileSync('{packagePath}', 'utf8')))\"",
+      "conditions": []
+    }
+  ]
+}

@@ -1,0 +1,338 @@
+// kb-engine/store.js — ChunkStore: add, search, hybrid search via Qdrant
+// Unified dense embedding (Qwen3-Embedding-4B, 2560-dim) + BM25 sparse vectors.
+// Hybrid search uses Reciprocal Rank Fusion (RRF) to merge dense + sparse results.
+"use strict";
+
+const { randomUUID } = require("crypto");
+const { QdrantClient } = require("@qdrant/js-client-rest");
+const { UnifiedEmbedder } = require("./embedder");
+const { SparseVectorizer } = require("./sparse-vectors");
+const { CollectionManager } = require("./collections");
+const {
+  QDRANT_URL,
+  EMBED_DIM,
+  DEFAULT_SEARCH_LIMIT,
+  BATCH_SIZE,
+  RRF_K,
+} = require("./config");
+
+// ─── ChunkStore ───────────────────────────────────────────────────────────────
+
+class ChunkStore {
+  /**
+   * @param {object} [opts]
+   * @param {string} [opts.url]  Qdrant base URL override (e.g. for testing)
+   */
+  constructor(opts = {}) {
+    const url = opts.url ?? QDRANT_URL;
+    this._client     = new QdrantClient({ url, checkCompatibility: false });
+    this._embedder   = new UnifiedEmbedder();
+    this._collections = new CollectionManager({ url });
+
+    /**
+     * Per-collection SparseVectorizer instances.
+     * Map<collectionName, SparseVectorizer>
+     * @type {Map<string, SparseVectorizer>}
+     */
+    this._vectorizers = new Map();
+  }
+
+  // ─── Collection lifecycle ─────────────────────────────────────────────────
+
+  /**
+   * Create the named collection if it does not already exist.
+   * @param {string} name
+   * @returns {Promise<void>}
+   */
+  async ensureCollection(name) {
+    return this._collections.ensureCollection(name);
+  }
+
+  /**
+   * Delete a collection. No-op if it does not exist.
+   * @param {string} name
+   * @returns {Promise<void>}
+   */
+  async deleteCollection(name) {
+    this._vectorizers.delete(name);
+    return this._collections.deleteCollection(name);
+  }
+
+  // ─── addChunks ────────────────────────────────────────────────────────────
+
+  /**
+   * Embed and upsert an array of chunks into the named collection.
+   *
+   * Each chunk:
+   *   { content: string, metadata: { language, framework, doc_type, ... } }
+   *
+   * Returns an array of UUID strings (one per chunk, same order).
+   *
+   * @param {string} collection
+   * @param {Array<{ content: string, metadata: object }>} chunks
+   * @returns {Promise<string[]>}
+   */
+  async addChunks(collection, chunks) {
+    if (!Array.isArray(chunks) || chunks.length === 0) return [];
+
+    // ── 1. Build / update BM25 vectorizer for this collection ────────────────
+    if (!this._vectorizers.has(collection)) {
+      this._vectorizers.set(collection, new SparseVectorizer());
+    }
+    const vectorizer = this._vectorizers.get(collection);
+
+    // Add every chunk as a document (IDs are positional strings — only used
+    // by the vectorizer internally for its own accounting).
+    for (let i = 0; i < chunks.length; i++) {
+      vectorizer.addDocument(String(i), chunks[i].content);
+    }
+    vectorizer.build();
+
+    // ── 2. Generate dense embeddings (batched, no prefix — storage mode) ─────
+    const texts = chunks.map((c) => c.content);
+    const vecs = await this._embedder.embedBatch(texts);
+
+    // ── 3. Generate sparse vectors (BM25 has no token limit) ──────────────────
+    const sparseVecs = texts.map((t) => vectorizer.computeSparseVector(t));
+
+    // ── 4. Assemble Qdrant points ─────────────────────────────────────────────
+    const ids = chunks.map(() => randomUUID());
+
+    const points = chunks.map((chunk, i) => ({
+      id: ids[i],
+      vector: {
+        dense: vecs[i],
+        bm25: sparseVecs[i],
+      },
+      payload: {
+        content: chunk.content,
+        ...(chunk.metadata ?? {}),
+      },
+    }));
+
+    // ── 5. Batch upsert ───────────────────────────────────────────────────────
+    for (let offset = 0; offset < points.length; offset += BATCH_SIZE) {
+      const batch = points.slice(offset, offset + BATCH_SIZE);
+      await this._client.upsert(collection, { points: batch, wait: true });
+    }
+
+    return ids;
+  }
+
+  // ─── search (dense) ───────────────────────────────────────────────────────
+
+  /**
+   * Dense vector search against the named collection.
+   *
+   * @param {string} collection
+   * @param {string} query
+   * @param {object} [opts]
+   * @param {number}  [opts.limit]      Max results (default: DEFAULT_SEARCH_LIMIT)
+   * @param {string}  [opts.queryType]  'general' | 'error' | 'code' | 'structural' (default: 'general')
+   * @param {Array<{ key: string, value: string }>} [opts.filter]
+   *   Payload filter conditions, e.g. [{ key: "language", value: "python" }]
+   * @returns {Promise<Array<{ id: string, score: number, content: string, metadata: object }>>}
+   */
+  async search(collection, query, opts = {}) {
+    const limit = opts.limit ?? DEFAULT_SEARCH_LIMIT;
+
+    // Embed query with instruction prefix based on queryType
+    const queryVec = await this._embedder.embedForQuery(query, opts.queryType || "general");
+
+    // Build optional payload filter
+    const filter = this._buildFilter(opts.filter);
+
+    const searchParams = {
+      vector:       { name: "dense", vector: queryVec },
+      limit,
+      with_payload: true,
+    };
+    if (filter) searchParams.filter = filter;
+
+    const raw = await this._client.search(collection, searchParams);
+    return raw.map(this._formatResult);
+  }
+
+  // ─── hybridSearch (dense + sparse + RRF) ─────────────────────────────────
+
+  /**
+   * Hybrid search: dense vector search + BM25 sparse search merged with RRF.
+   *
+   * @param {string} collection
+   * @param {string} query
+   * @param {object} [opts]
+   * @param {number}  [opts.limit]      Final result count after merging (default: DEFAULT_SEARCH_LIMIT)
+   * @param {string}  [opts.queryType]  'general' | 'error' | 'code' | 'structural' (default: 'general')
+   * @param {Array<{ key: string, value: string }>} [opts.filter]
+   * @returns {Promise<Array<{ id: string, score: number, content: string, metadata: object }>>}
+   */
+  async hybridSearch(collection, query, opts = {}) {
+    const limit = opts.limit ?? DEFAULT_SEARCH_LIMIT;
+    const queryType = opts.queryType || "general";
+
+    // Retrieve more candidates before RRF to get better coverage
+    const candidateLimit = Math.max(limit * 3, 20);
+
+    // ── Parallel: embed for dense search + compute sparse vector ─────────────
+    const [denseVec, sparseVec] = await Promise.all([
+      this._embedder.embedForQuery(query, queryType),
+      this._getSparseQueryVec(collection, query),
+    ]);
+
+    const filter = this._buildFilter(opts.filter);
+
+    // ── Parallel dense + sparse searches ────────────────────────────────────
+    const denseParams = {
+      vector:       { name: "dense", vector: denseVec },
+      limit:        candidateLimit,
+      with_payload: true,
+    };
+    if (filter) {
+      denseParams.filter = filter;
+    }
+
+    // Build sparse search params — only run if the vectorizer has vocabulary
+    const sparsePromise =
+      sparseVec.indices.length > 0
+        ? this._client.search(collection, {
+            vector:       { name: "bm25", vector: sparseVec },
+            limit:        candidateLimit,
+            with_payload: true,
+            ...(filter ? { filter } : {}),
+          }).catch(() => [])
+        : Promise.resolve([]);
+
+    const [denseResults, sparseResults] = await Promise.all([
+      this._client.search(collection, denseParams).catch(() => []),
+      sparsePromise,
+    ]);
+
+    // ── Reciprocal Rank Fusion (2 lists: dense + BM25) ───────────────────────
+    const merged = this._rrfMerge(
+      [denseResults, sparseResults],
+      RRF_K
+    );
+
+    // Normalize RRF scores to 0-1 range
+    // Max possible RRF score = numLists * (1 / (k + 1)) [when item is rank 1 in every list]
+    const numLists = [denseResults, sparseResults].filter(l => l?.length > 0).length;
+    const maxRRF = numLists > 0 ? numLists * (1 / (RRF_K + 1)) : 1;
+
+    // Return top `limit` results with normalized scores
+    return merged.slice(0, limit).map((item) => ({
+      id:       item.id,
+      score:    maxRRF > 0 ? item.rrfScore / maxRRF : 0, // normalize to 0-1
+      content:  item.payload?.content ?? "",
+      metadata: this._extractMetadata(item.payload),
+    }));
+  }
+
+  // ─── getChunkCount ────────────────────────────────────────────────────────
+
+  /**
+   * Return the number of points in the named collection.
+   * @param {string} collection
+   * @returns {Promise<number>}
+   */
+  async getChunkCount(collection) {
+    const info = await this._client.getCollection(collection);
+    return info.points_count ?? 0;
+  }
+
+  // ─── Private helpers ──────────────────────────────────────────────────────
+
+  /**
+   * Format a raw Qdrant search result into the public result shape.
+   * @param {{ id: string, score: number, payload: object }} raw
+   * @returns {{ id: string, score: number, content: string, metadata: object }}
+   */
+  _formatResult(raw) {
+    const { content, ...rest } = raw.payload ?? {};
+    return {
+      id:       String(raw.id),
+      score:    raw.score,
+      content:  content ?? "",
+      metadata: rest,
+    };
+  }
+
+  /**
+   * Build a Qdrant payload filter from an array of key/value conditions.
+   * Returns null if conditions is empty/falsy.
+   *
+   * @param {Array<{ key: string, value: string }>|undefined} conditions
+   * @returns {object|null}
+   */
+  _buildFilter(conditions) {
+    if (!Array.isArray(conditions) || conditions.length === 0) return null;
+    return {
+      must: conditions.map(({ key, value }) => ({
+        key,
+        match: { value },
+      })),
+    };
+  }
+
+  /**
+   * Get (or compute) the BM25 sparse vector for a query against a collection.
+   * If no vectorizer exists for the collection, returns empty sparse vector.
+   *
+   * @param {string} collection
+   * @param {string} query
+   * @returns {{ indices: number[], values: number[] }}
+   */
+  _getSparseQueryVec(collection, query) {
+    const vectorizer = this._vectorizers.get(collection);
+    if (!vectorizer) return Promise.resolve({ indices: [], values: [] });
+    return Promise.resolve(vectorizer.computeSparseVector(query));
+  }
+
+  /**
+   * Merge multiple ranked result lists using Reciprocal Rank Fusion.
+   * RRF score = SUM_over_lists( 1 / (k + rank) )  where rank is 1-based.
+   *
+   * @param {Array<Array<{ id: string|number, score: number, payload: object }>>} lists
+   * @param {number} k  RRF smoothing constant (typically 60)
+   * @returns {Array<{ id: string, rrfScore: number, payload: object }>}
+   */
+  _rrfMerge(lists, k) {
+    /** @type {Map<string, { id: string, rrfScore: number, payload: object }>} */
+    const acc = new Map();
+
+    for (const list of lists) {
+      if (!Array.isArray(list)) continue;
+      list.forEach((item, idx) => {
+        const rank = idx + 1; // 1-based
+        const id   = String(item.id);
+        const rrf  = 1 / (k + rank);
+
+        if (acc.has(id)) {
+          acc.get(id).rrfScore += rrf;
+        } else {
+          acc.set(id, {
+            id,
+            rrfScore: rrf,
+            payload:  item.payload ?? {},
+          });
+        }
+      });
+    }
+
+    return Array.from(acc.values()).sort((a, b) => b.rrfScore - a.rrfScore);
+  }
+
+  /**
+   * Extract metadata fields from a Qdrant payload (everything except "content").
+   * @param {object} payload
+   * @returns {object}
+   */
+  _extractMetadata(payload) {
+    if (!payload || typeof payload !== "object") return {};
+    const { content, ...meta } = payload;
+    return meta;
+  }
+}
+
+// ─── Exports ──────────────────────────────────────────────────────────────────
+
+module.exports = { ChunkStore };

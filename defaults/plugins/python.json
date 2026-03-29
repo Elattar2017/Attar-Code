@@ -1,0 +1,2579 @@
+{
+  "metadata": {
+    "language": "Python",
+    "version": "1.0.0",
+    "description": "Error classification, dependency tracing, and fix ordering for Python 3.8+ projects with mypy, pylint, ruff, and pyright",
+    "toolchains": [
+      {
+        "name": "python",
+        "errorPrefix": null,
+        "errorFormat": "(?<file>[^\\s:]+\\.py):(?<line>\\d+):?(?<column>\\d+)?:?\\s*(?<message>.+)",
+        "errorFormatCaptures": ["file", "line", "column", "message"],
+        "outputStream": "stderr",
+        "supportsJsonOutput": false,
+        "jsonOutputFlag": null
+      },
+      {
+        "name": "python-traceback",
+        "errorPrefix": null,
+        "errorFormat": "File \"(?<file>[^\"]+)\", line (?<line>\\d+)(?:, in (?<context>\\w+))?\\n\\s+.+\\n(?<code>[A-Za-z]+Error):\\s*(?<message>.+)",
+        "errorFormatCaptures": ["file", "line", "context", "code", "message"],
+        "outputStream": "stderr",
+        "supportsJsonOutput": false,
+        "jsonOutputFlag": null
+      },
+      {
+        "name": "mypy",
+        "errorPrefix": null,
+        "errorFormat": "(?<file>[^\\s:]+):(?<line>\\d+):(?:\\s*(?<column>\\d+):)?\\s*error:\\s*(?<message>.+?)\\s*\\[(?<code>[a-z-]+)\\]",
+        "errorFormatCaptures": ["file", "line", "column", "message", "code"],
+        "outputStream": "stdout",
+        "supportsJsonOutput": true,
+        "jsonOutputFlag": "--output json"
+      },
+      {
+        "name": "pylint",
+        "errorPrefix": null,
+        "errorFormat": "(?<file>[^\\s:]+):(?<line>\\d+):(?<column>\\d+):\\s*(?<code>[CRWEF]\\d{4}):\\s*(?<message>.+?)\\s*\\((?<symbol>[a-z-]+)\\)",
+        "errorFormatCaptures": ["file", "line", "column", "code", "message", "symbol"],
+        "outputStream": "stdout",
+        "supportsJsonOutput": true,
+        "jsonOutputFlag": "--output-format json"
+      },
+      {
+        "name": "ruff",
+        "errorPrefix": null,
+        "errorFormat": "(?<file>[^\\s:]+):(?<line>\\d+):(?<column>\\d+):\\s*(?<code>[A-Z]+\\d+)\\s*(?<message>.+)",
+        "errorFormatCaptures": ["file", "line", "column", "code", "message"],
+        "outputStream": "stdout",
+        "supportsJsonOutput": true,
+        "jsonOutputFlag": "--output-format json"
+      },
+      {
+        "name": "pyright",
+        "errorPrefix": null,
+        "errorFormat": "(?<file>[^\\s:]+):(?<line>\\d+):(?<column>\\d+)\\s*-\\s*error:\\s*(?<message>.+?)\\s*\\((?<code>report[A-Za-z]+)\\)",
+        "errorFormatCaptures": ["file", "line", "column", "message", "code"],
+        "outputStream": "stdout",
+        "supportsJsonOutput": true,
+        "jsonOutputFlag": "--outputjson"
+      }
+    ],
+    "fileExtensions": [".py", ".pyi", ".pyw"],
+    "generatedBy": "plugin-generator-v1",
+    "generatedFor": "attar-code-smart-fix"
+  },
+
+  "errorCatalog": {
+    "categories": [
+      {
+        "id": "syntax",
+        "name": "Syntax and Parse Errors",
+        "description": "Errors in code structure detected by the Python parser before execution",
+        "defaultTracingBehavior": "local_only",
+        "errors": [
+          {
+            "code": "PY_SYNTAX_INVALID",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "SyntaxError:\\s+invalid\\s+syntax",
+            "match": "SyntaxError:\\s+invalid\\s+syntax",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "PY_IMPORT_ERROR", "relationship": "causes_this", "sharedCapture": null, "resolution": "fix_this_first" },
+              { "code": "PY_NAME_ERROR", "relationship": "causes_this", "sharedCapture": null, "resolution": "fix_this_first" }
+            ],
+            "rootCause": "The Python parser encountered a token it did not expect. This is the most generic syntax error and can be triggered by many issues: missing colons, unmatched brackets, Python 2 syntax in Python 3, or misplaced keywords.",
+            "prescription": "1. Check the indicated line and the line ABOVE it for: missing colons after if/for/def/class, unmatched parentheses/brackets/braces, missing commas in collections, or Python 2 syntax (e.g., print without parentheses). 2. Look for assignment with = where == was intended, or vice versa. 3. Check for walrus operator := usage on Python < 3.8.",
+            "codeBlock": "# BEFORE (wrong)\nif x == 5\n    print(x)\n\n# AFTER (correct)\nif x == 5:\n    print(x)",
+            "conditions": [
+              {
+                "when": "message contains print",
+                "rootCause": "Using Python 2 print statement syntax. In Python 3, print is a function requiring parentheses.",
+                "prescription": "Change 'print value' to 'print(value)'.",
+                "codeBlock": "# BEFORE (Python 2)\nprint \"hello\"\n\n# AFTER (Python 3)\nprint(\"hello\")"
+              }
+            ]
+          },
+          {
+            "code": "PY_SYNTAX_EOL",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "SyntaxError:\\s+EOL\\s+while\\s+scanning\\s+string\\s+literal",
+            "match": "SyntaxError:\\s+EOL\\s+while\\s+scanning\\s+string\\s+literal",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "A string literal was opened but not closed before the end of the line. Python does not allow single-quoted or double-quoted strings to span multiple lines without triple quotes or backslash continuation.",
+            "prescription": "1. Ensure all string literals have matching opening and closing quotes. 2. For multi-line strings, use triple quotes (''' or \"\"\"). 3. Check for unescaped quotes inside the string.",
+            "codeBlock": "# BEFORE (wrong)\nmsg = \"this string is not closed\n\n# AFTER (correct)\nmsg = \"this string is closed\"\n# or for multiline:\nmsg = \"\"\"this string\nspans multiple lines\"\"\"",
+            "conditions": []
+          },
+          {
+            "code": "PY_SYNTAX_EOF",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "SyntaxError:\\s+unexpected\\s+EOF\\s+while\\s+parsing",
+            "match": "SyntaxError:\\s+unexpected\\s+EOF\\s+while\\s+parsing",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "close_bracket", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "The file ended before the parser found all expected closing brackets, parentheses, braces, or a complete block statement body.",
+            "prescription": "1. Check for unmatched parentheses (), brackets [], or braces {}. 2. Ensure all block statements (if, for, def, class, with, try) have a body. 3. Use an editor with bracket matching to find the mismatch.",
+            "codeBlock": "# BEFORE (wrong)\ndef my_func():\n    data = {\n        'key': 'value'\n    # missing closing brace\n\n# AFTER (correct)\ndef my_func():\n    data = {\n        'key': 'value'\n    }",
+            "conditions": []
+          },
+          {
+            "code": "PY_SYNTAX_COLON",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "SyntaxError:\\s+expected\\s+':'",
+            "match": "SyntaxError:\\s+expected\\s+':'",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "A colon is expected after a compound statement header (if, elif, else, for, while, def, class, with, try, except, finally) but was not found.",
+            "prescription": "Add a colon at the end of the compound statement header.",
+            "codeBlock": "# BEFORE (wrong)\ndef my_func()\n    pass\n\n# AFTER (correct)\ndef my_func():\n    pass",
+            "conditions": []
+          },
+          {
+            "code": "PY_SYNTAX_RETURN",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "SyntaxError:\\s+'return'\\s+outside\\s+function",
+            "match": "SyntaxError:\\s+'return'\\s+outside\\s+function",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "A 'return' statement was used at module level or outside of any function definition.",
+            "prescription": "1. Move the return statement inside a function body. 2. If you intend to exit the script, use sys.exit() instead. 3. Check indentation to ensure the return is properly nested inside a def block.",
+            "codeBlock": "# BEFORE (wrong)\nresult = compute()\nreturn result\n\n# AFTER (correct)\ndef main():\n    result = compute()\n    return result",
+            "conditions": []
+          },
+          {
+            "code": "PY_SYNTAX_BREAK",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "SyntaxError:\\s+'break'\\s+outside\\s+loop",
+            "match": "SyntaxError:\\s+'break'\\s+outside\\s+loop",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "A 'break' statement was used outside of a for or while loop body.",
+            "prescription": "Move the break statement inside a loop body. Check indentation to ensure it is properly nested.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "PY_SYNTAX_CONTINUE",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "SyntaxError:\\s+'continue'\\s+not\\s+properly\\s+in\\s+loop",
+            "match": "SyntaxError:\\s+'continue'\\s+not\\s+properly\\s+in\\s+loop",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "A 'continue' statement was used outside of a for or while loop body.",
+            "prescription": "Move the continue statement inside a loop body. Check indentation.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "PY_SYNTAX_FSTRING",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "SyntaxError:\\s+f-string\\s+expression\\s+part\\s+cannot\\s+include\\s+a?\\s*backslash",
+            "match": "SyntaxError:\\s+f-string\\s+expression\\s+part\\s+cannot\\s+include\\s+a?\\s*backslash",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Backslash characters are not allowed inside the expression portion of an f-string (the part inside {}).",
+            "prescription": "Assign the expression containing the backslash to a variable first, then reference that variable inside the f-string.",
+            "codeBlock": "# BEFORE (wrong)\nresult = f\"{'\\n'.join(items)}\"\n\n# AFTER (correct)\nnewline = '\\n'\nresult = f\"{newline.join(items)}\"",
+            "conditions": []
+          },
+          {
+            "code": "PY_SYNTAX_NONLOCAL",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "SyntaxError:\\s+no\\s+binding\\s+for\\s+nonlocal\\s+'(?<varName>\\w+)'\\s+found",
+            "match": "SyntaxError:\\s+no\\s+binding\\s+for\\s+nonlocal\\s+'\\w+'\\s+found",
+            "captures": [{ "name": "varName", "role": "symbol_name" }],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "The 'nonlocal' declaration references variable '{varName}', but no such variable exists in any enclosing (non-global) scope.",
+            "prescription": "1. Ensure '{varName}' is defined in an enclosing function scope. 2. Use 'global' instead of 'nonlocal' for module-level variables. 3. Check for typos.",
+            "codeBlock": "# BEFORE (wrong)\ndef outer():\n    def inner():\n        nonlocal x  # x not in outer()\n        x = 10\n\n# AFTER (correct)\ndef outer():\n    x = 0\n    def inner():\n        nonlocal x\n        x = 10",
+            "conditions": []
+          },
+          {
+            "code": "PY_SYNTAX_ANNOTATION",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "SyntaxError:\\s+only\\s+single\\s+target\\s+\\(not\\s+(?<target>\\w+)\\)\\s+can\\s+be\\s+annotated",
+            "match": "SyntaxError:\\s+only\\s+single\\s+target.*can\\s+be\\s+annotated",
+            "captures": [{ "name": "target", "role": "literal_value" }],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Type annotations can only be applied to a single variable at a time, not to tuple unpacking or multiple assignment targets.",
+            "prescription": "Annotate each variable separately.",
+            "codeBlock": "# BEFORE (wrong)\nx, y: int = 1, 2\n\n# AFTER (correct)\nx: int = 1\ny: int = 2",
+            "conditions": []
+          },
+          {
+            "code": "PY_SYNTAX_WALRUS",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "SyntaxError:\\s+invalid\\s+syntax.*:=",
+            "match": "SyntaxError:\\s+invalid\\s+syntax.*:=",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The walrus operator (:=) requires Python 3.8+. The current Python version does not support it.",
+            "prescription": "1. Upgrade to Python 3.8 or later. 2. Or refactor to use a separate assignment.",
+            "codeBlock": "# BEFORE (Python 3.8+ only)\nif (n := len(data)) > 10:\n    print(n)\n\n# AFTER (compatible)\nn = len(data)\nif n > 10:\n    print(n)",
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "indentation",
+        "name": "Indentation Errors",
+        "description": "Errors related to incorrect or inconsistent indentation",
+        "defaultTracingBehavior": "local_only",
+        "errors": [
+          {
+            "code": "PY_INDENT_UNEXPECTED",
+            "category": "indentation",
+            "severity": "error",
+            "messagePattern": "IndentationError:\\s+unexpected\\s+indent",
+            "match": "IndentationError:\\s+unexpected\\s+indent",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_indentation", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "PY_TAB_ERROR", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+            "rootCause": "A line is indented more than expected by the parser.",
+            "prescription": "1. Remove extra spaces or tabs at the beginning of the flagged line. 2. Use 4 spaces per level consistently. 3. Enable 'show whitespace' in your editor.",
+            "codeBlock": "# BEFORE (wrong)\nif True:\n    print('a')\n        print('b')  # unexpected indent\n\n# AFTER (correct)\nif True:\n    print('a')\n    print('b')",
+            "conditions": []
+          },
+          {
+            "code": "PY_INDENT_EXPECTED",
+            "category": "indentation",
+            "severity": "error",
+            "messagePattern": "IndentationError:\\s+expected\\s+an\\s+indented\\s+block(?:\\s+after\\s+'(?<statement>\\w+)'\\s+statement\\s+on\\s+line\\s+(?<lineNum>\\d+))?",
+            "match": "IndentationError:\\s+expected\\s+an\\s+indented\\s+block",
+            "captures": [
+              { "name": "statement", "role": "literal_value" },
+              { "name": "lineNum", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_indentation", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "An indented block is expected after a compound statement but none was found.",
+            "prescription": "Add an indented body after the compound statement. Use 'pass' as a placeholder if intentionally empty.",
+            "codeBlock": "# BEFORE (wrong)\ndef placeholder():\n# no body\n\n# AFTER (correct)\ndef placeholder():\n    pass",
+            "conditions": []
+          },
+          {
+            "code": "PY_INDENT_UNINDENT",
+            "category": "indentation",
+            "severity": "error",
+            "messagePattern": "IndentationError:\\s+unindent\\s+does\\s+not\\s+match\\s+any\\s+outer\\s+indentation\\s+level",
+            "match": "IndentationError:\\s+unindent\\s+does\\s+not\\s+match\\s+any\\s+outer\\s+indentation\\s+level",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_indentation", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "PY_TAB_ERROR", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+            "rootCause": "A line's indentation was reduced to a level that does not match any enclosing block. Tabs and spaces are likely mixed.",
+            "prescription": "Align the line to match one of the enclosing block levels. Convert all indentation to spaces (4 per level).",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "PY_TAB_ERROR",
+            "category": "indentation",
+            "severity": "error",
+            "messagePattern": "TabError:\\s+inconsistent\\s+use\\s+of\\s+tabs\\s+and\\s+spaces\\s+in\\s+indentation",
+            "match": "TabError:\\s+inconsistent\\s+use\\s+of\\s+tabs\\s+and\\s+spaces\\s+in\\s+indentation",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_indentation", "requiresCrossFileEdit": false, "typicalScope": "entire_file" },
+            "coOccurrence": [
+              { "code": "PY_INDENT_UNEXPECTED", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" },
+              { "code": "PY_INDENT_UNINDENT", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+            "rootCause": "The file mixes tabs and spaces for indentation, which Python 3 does not allow within the same block.",
+            "prescription": "Convert all indentation to spaces (4 spaces per level). Use your editor's 'Convert Indentation to Spaces' command.",
+            "codeBlock": null,
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "name_resolution",
+        "name": "Name Resolution Errors",
+        "description": "Errors where a name cannot be found in scope",
+        "defaultTracingBehavior": "trace_import_source",
+        "errors": [
+          {
+            "code": "PY_NAME_ERROR",
+            "category": "name_resolution",
+            "severity": "error",
+            "messagePattern": "NameError:\\s+name\\s+'(?<symbolName>\\w+)'\\s+is\\s+not\\s+defined",
+            "match": "NameError:\\s+name\\s+'\\w+'\\s+is\\s+not\\s+defined",
+            "captures": [{ "name": "symbolName", "role": "symbol_name" }],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "symbolName" }, "adjustedProbability": 0.9, "traceDepth": "transitive", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "symbolName" }, "adjustedProbability": 0.05, "traceDepth": "none", "traceTarget": "same_file" },
+              { "check": { "type": "comes_from_package", "target": "symbolName" }, "adjustedProbability": 0.95, "traceDepth": "none", "traceTarget": "external_package" },
+              { "check": { "type": "symbol_was_deleted", "target": "symbolName" }, "adjustedProbability": 1.0, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "add_import", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [
+              { "code": "PY_IMPORT_ERROR", "relationship": "caused_by_this", "sharedCapture": null, "resolution": "fix_other_first" },
+              { "code": "PY_MODULE_NOT_FOUND", "relationship": "caused_by_this", "sharedCapture": null, "resolution": "fix_other_first" },
+              { "code": "PY_SYNTAX_INVALID", "relationship": "caused_by_this", "sharedCapture": null, "resolution": "fix_other_first" }
+            ],
+            "rootCause": "Variable, function, or class '{symbolName}' is referenced but was never defined in the current scope.",
+            "prescription": "1. Check for typos in '{symbolName}'. 2. Add the necessary import. 3. Ensure '{symbolName}' is defined before use. 4. If circular import, use TYPE_CHECKING guard or lazy import.",
+            "codeBlock": "# BEFORE (wrong)\nresult = my_function()\n\n# AFTER (correct)\nfrom my_module import my_function\nresult = my_function()",
+            "conditions": [
+              {
+                "when": "symbolName equals self",
+                "rootCause": "Using 'self' outside of a method or forgetting 'self' as the first parameter.",
+                "prescription": "Ensure 'self' is the first parameter of your instance method.",
+                "codeBlock": "# BEFORE (wrong)\nclass MyClass:\n    def method():  # missing self\n        return self.value\n\n# AFTER (correct)\nclass MyClass:\n    def method(self):\n        return self.value"
+              }
+            ]
+          },
+          {
+            "code": "PY_ATTRIBUTE_ERROR",
+            "category": "name_resolution",
+            "severity": "error",
+            "messagePattern": "AttributeError:\\s+'(?<objectType>\\w+)'\\s+object\\s+has\\s+no\\s+attribute\\s+'(?<attrName>\\w+)'",
+            "match": "AttributeError:\\s+'\\w+'\\s+object\\s+has\\s+no\\s+attribute\\s+'\\w+'",
+            "captures": [
+              { "name": "objectType", "role": "type_name" },
+              { "name": "attrName", "role": "property_name" }
+            ],
+            "baseCrossFileProbability": 0.4,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "objectType" }, "adjustedProbability": 0.75, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "objectType" }, "adjustedProbability": 0.1, "traceDepth": "none", "traceTarget": "same_file" },
+              { "check": { "type": "comes_from_package", "target": "objectType" }, "adjustedProbability": 0.9, "traceDepth": "none", "traceTarget": "external_package" }
+            ],
+            "fixHint": { "primaryStrategy": "add_property", "requiresCrossFileEdit": true, "typicalScope": "type_definition" },
+            "coOccurrence": [
+              { "code": "MYPY_ATTR_DEFINED", "relationship": "same_root_cause", "sharedCapture": "attrName", "resolution": "fix_either" }
+            ],
+            "rootCause": "An object of type '{objectType}' does not have attribute '{attrName}'.",
+            "prescription": "1. Check for typos in '{attrName}'. 2. Verify the object type with type(obj). 3. Use dir(obj) to list available attributes. 4. If '{objectType}' is 'NoneType', the object is None.",
+            "codeBlock": "# BEFORE (wrong)\nresult = get_user()  # returns None on failure\nprint(result.name)   # AttributeError\n\n# AFTER (correct)\nresult = get_user()\nif result is not None:\n    print(result.name)",
+            "conditions": [
+              {
+                "when": "objectType equals NoneType",
+                "rootCause": "The object is None. A function returned None instead of the expected value.",
+                "prescription": "Find where the object was assigned and ensure all code paths return a value. Add a None check.",
+                "codeBlock": "if obj is not None:\n    obj.{attrName}"
+              },
+              {
+                "when": "objectType equals module",
+                "rootCause": "The module does not export '{attrName}'. The name may have been removed or renamed.",
+                "prescription": "Check the module's API documentation. Use dir(module) to list available exports.",
+                "codeBlock": null
+              }
+            ]
+          }
+        ]
+      },
+
+      {
+        "id": "import_errors",
+        "name": "Import and Module Errors",
+        "description": "Errors related to importing modules, packages, and names",
+        "defaultTracingBehavior": "trace_import_source",
+        "errors": [
+          {
+            "code": "PY_IMPORT_ERROR",
+            "category": "import_errors",
+            "severity": "error",
+            "messagePattern": "ImportError:\\s+cannot\\s+import\\s+name\\s+'(?<importName>\\w+)'\\s+from\\s+'(?<moduleName>[\\w.]+)'",
+            "match": "ImportError:\\s+cannot\\s+import\\s+name\\s+'\\w+'\\s+from\\s+'[\\w.]+'",
+            "captures": [
+              { "name": "importName", "role": "symbol_name" },
+              { "name": "moduleName", "role": "target_module" }
+            ],
+            "baseCrossFileProbability": 0.85,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_local", "target": "moduleName" }, "adjustedProbability": 0.85, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_external", "target": "moduleName" }, "adjustedProbability": 0.95, "traceDepth": "none", "traceTarget": "external_package" },
+              { "check": { "type": "is_re_exported", "target": "importName" }, "adjustedProbability": 0.9, "traceDepth": "transitive", "traceTarget": "re_export_origin" }
+            ],
+            "fixHint": { "primaryStrategy": "update_import_path", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [
+              { "code": "PY_NAME_ERROR", "relationship": "causes_this", "sharedCapture": "importName", "resolution": "fix_this_first" },
+              { "code": "PY_ATTRIBUTE_ERROR", "relationship": "causes_this", "sharedCapture": "importName", "resolution": "fix_this_first" }
+            ],
+            "rootCause": "The name '{importName}' does not exist in module '{moduleName}'. It may have been removed, renamed, or is not listed in __all__.",
+            "prescription": "1. Verify '{importName}' is defined in '{moduleName}'. 2. Check for version changes. 3. Use dir() to list available exports. 4. For circular imports, use TYPE_CHECKING guard.",
+            "codeBlock": "import {moduleName}\nprint(dir({moduleName}))  # check available exports",
+            "conditions": [
+              {
+                "when": "moduleName contains partially initialized",
+                "rootCause": "Circular import detected. Module '{moduleName}' is partially loaded.",
+                "prescription": "Break the cycle with a local import or TYPE_CHECKING guard.",
+                "codeBlock": "def my_function():\n    from {moduleName} import {importName}\n    return {importName}()"
+              }
+            ]
+          },
+          {
+            "code": "PY_IMPORT_ERROR_GENERAL",
+            "category": "import_errors",
+            "severity": "error",
+            "messagePattern": "ImportError:\\s+(?<message>.+)",
+            "match": "ImportError:\\s+.+",
+            "captures": [{ "name": "message", "role": "literal_value" }],
+            "baseCrossFileProbability": 0.7,
+            "confidence": "heuristic",
+            "refinements": [
+              { "check": { "type": "is_local", "target": "message" }, "adjustedProbability": 0.7, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_external", "target": "message" }, "adjustedProbability": 0.95, "traceDepth": "none", "traceTarget": "external_package" }
+            ],
+            "fixHint": { "primaryStrategy": "update_import_path", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [
+              { "code": "PY_NAME_ERROR", "relationship": "causes_this", "sharedCapture": null, "resolution": "fix_this_first" }
+            ],
+            "rootCause": "Import failed: {message}.",
+            "prescription": "1. Read the full error message. 2. Check the module or package is installed. 3. Verify relative import paths.",
+            "codeBlock": null,
+            "conditions": [
+              {
+                "when": "message contains attempted relative import",
+                "rootCause": "Relative import was attempted but the package structure is incorrect.",
+                "prescription": "Ensure the directory has __init__.py. Run as module: 'python -m package.module'.",
+                "codeBlock": null
+              },
+              {
+                "when": "message contains DLL",
+                "rootCause": "A native DLL or shared library required by the module could not be loaded.",
+                "prescription": "Reinstall the package. Install required system dependencies.",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "PY_MODULE_NOT_FOUND",
+            "category": "import_errors",
+            "severity": "error",
+            "messagePattern": "ModuleNotFoundError:\\s+No\\s+module\\s+named\\s+'(?<moduleName>[\\w.]+)'",
+            "match": "ModuleNotFoundError:\\s+No\\s+module\\s+named\\s+'[\\w.]+'",
+            "captures": [{ "name": "moduleName", "role": "target_module" }],
+            "baseCrossFileProbability": 0.9,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_external", "target": "moduleName" }, "adjustedProbability": 1.0, "traceDepth": "none", "traceTarget": "external_package" },
+              { "check": { "type": "is_local", "target": "moduleName" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "install_package", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [
+              { "code": "PY_NAME_ERROR", "relationship": "causes_this", "sharedCapture": null, "resolution": "fix_this_first" }
+            ],
+            "rootCause": "The module '{moduleName}' cannot be found. Not installed, wrong name, or wrong environment.",
+            "prescription": "1. pip install {moduleName}. 2. Check virtual environment. 3. Check pip/import name mismatch (Pillow->PIL, scikit-learn->sklearn).",
+            "codeBlock": "pip install {moduleName}\nwhich python  # verify environment",
+            "conditions": [
+              {
+                "when": "moduleName contains .",
+                "rootCause": "Submodule '{moduleName}' not found. Parent package may not be installed or submodule path is wrong.",
+                "prescription": "Install the root package. Ensure each directory has __init__.py.",
+                "codeBlock": null
+              },
+              {
+                "when": "moduleName startsWith _",
+                "rootCause": "Module '{moduleName}' is a private/internal C extension that may have failed to build.",
+                "prescription": "Reinstall with --force-reinstall. Ensure build tools are installed.",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "PY_IMPORT_CIRCULAR",
+            "category": "import_errors",
+            "severity": "error",
+            "messagePattern": "ImportError:.*(?:circular|partially\\s+initialized\\s+module\\s+'(?<moduleName>[\\w.]+)'.*circular\\s+import)",
+            "match": "ImportError:.*(?:circular|partially\\s+initialized\\s+module)",
+            "captures": [{ "name": "moduleName", "role": "target_module" }],
+            "baseCrossFileProbability": 1.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": true, "typicalScope": "file_header" },
+            "coOccurrence": [
+              { "code": "PY_NAME_ERROR", "relationship": "causes_this", "sharedCapture": null, "resolution": "fix_this_first" },
+              { "code": "PY_ATTRIBUTE_ERROR", "relationship": "causes_this", "sharedCapture": null, "resolution": "fix_this_first" }
+            ],
+            "rootCause": "Circular import detected involving module '{moduleName}'.",
+            "prescription": "1. Move shared code to a third module. 2. Use local imports inside functions. 3. Use TYPE_CHECKING guard for type-only imports.",
+            "codeBlock": "from __future__ import annotations\nfrom typing import TYPE_CHECKING\n\nif TYPE_CHECKING:\n    from other_module import SomeType\n\ndef my_function(arg: 'SomeType') -> None:\n    pass",
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "type_errors",
+        "name": "Type Errors",
+        "description": "Runtime type mismatch errors",
+        "defaultTracingBehavior": "trace_if_imported_type",
+        "errors": [
+          {
+            "code": "PY_TYPE_ERROR_ARGS",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "TypeError:\\s+(?<funcName>\\w+)\\(\\)\\s+takes\\s+(?<expectedArgs>\\d+)\\s+positional\\s+arguments?\\s+but\\s+(?<givenArgs>\\d+)\\s+(?:was|were)\\s+given",
+            "match": "TypeError:\\s+\\w+\\(\\)\\s+takes\\s+\\d+\\s+positional\\s+arguments?\\s+but\\s+\\d+",
+            "captures": [
+              { "name": "funcName", "role": "symbol_name" },
+              { "name": "expectedArgs", "role": "literal_value" },
+              { "name": "givenArgs", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "funcName" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "funcName" }, "adjustedProbability": 0.1, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": { "primaryStrategy": "change_signature", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "MYPY_ARG_TYPE", "relationship": "same_root_cause", "sharedCapture": "funcName", "resolution": "fix_either" }
+            ],
+            "rootCause": "Function '{funcName}' expects {expectedArgs} positional argument(s) but received {givenArgs}.",
+            "prescription": "1. Adjust the call to pass {expectedArgs} arguments. 2. If a method, check if 'self' is missing from the definition. 3. Update all call sites if the signature changed.",
+            "codeBlock": "# BEFORE (wrong - missing self)\nclass MyClass:\n    def method():\n        pass\n\n# AFTER (correct)\nclass MyClass:\n    def method(self):\n        pass",
+            "conditions": [
+              {
+                "when": "expectedArgs equals 0",
+                "rootCause": "Function '{funcName}' takes no arguments but was called with {givenArgs}. Likely a method missing 'self'.",
+                "prescription": "Add 'self' as the first parameter of the method.",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "PY_TYPE_ERROR_SUBSCRIPT",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "TypeError:\\s+'(?<objectType>\\w+)'\\s+object\\s+is\\s+not\\s+subscriptable",
+            "match": "TypeError:\\s+'\\w+'\\s+object\\s+is\\s+not\\s+subscriptable",
+            "captures": [{ "name": "objectType", "role": "type_name" }],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "objectType" }, "adjustedProbability": 0.6, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "add_null_check", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Attempted to use [] indexing on a '{objectType}' object, which does not support subscript access.",
+            "prescription": "1. Verify the object is list/dict/tuple before indexing. 2. If '{objectType}' is 'NoneType', a function returned None. 3. If '{objectType}' is 'type', you may need Python 3.9+ for generic syntax like list[int].",
+            "codeBlock": "# BEFORE (wrong)\nresult = my_function()  # may return None\nvalue = result[0]\n\n# AFTER (correct)\nresult = my_function()\nif result is not None:\n    value = result[0]",
+            "conditions": [
+              {
+                "when": "objectType equals NoneType",
+                "rootCause": "Attempted to index None. A function returned None instead of a subscriptable object.",
+                "prescription": "Check the function's return paths for missing return values.",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "PY_TYPE_ERROR_CALLABLE",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "TypeError:\\s+'(?<objectType>\\w+)'\\s+object\\s+is\\s+not\\s+callable",
+            "match": "TypeError:\\s+'\\w+'\\s+object\\s+is\\s+not\\s+callable",
+            "captures": [{ "name": "objectType", "role": "type_name" }],
+            "baseCrossFileProbability": 0.2,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "rename_symbol", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Attempted to call a '{objectType}' object as a function. A variable may be shadowing a function name.",
+            "prescription": "1. Check if a variable shadows a built-in (e.g., list = [1,2] then list()). 2. If '{objectType}' is 'int', you may have forgotten an operator (2(x) vs 2*x).",
+            "codeBlock": "# BEFORE (wrong)\nlist = [1, 2, 3]  # shadows built-in\nnew_list = list()  # TypeError\n\n# AFTER (correct)\nmy_list = [1, 2, 3]\nnew_list = list()",
+            "conditions": []
+          },
+          {
+            "code": "PY_TYPE_ERROR_ITERABLE",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "TypeError:\\s+'(?<objectType>\\w+)'\\s+object\\s+is\\s+not\\s+iterable",
+            "match": "TypeError:\\s+'\\w+'\\s+object\\s+is\\s+not\\s+iterable",
+            "captures": [{ "name": "objectType", "role": "type_name" }],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "objectType" }, "adjustedProbability": 0.6, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "add_null_check", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Attempted to iterate over a '{objectType}' object, which does not implement __iter__.",
+            "prescription": "1. Verify the object is a collection. 2. If 'NoneType', a function returned None. 3. If 'int', use range().",
+            "codeBlock": "# BEFORE (wrong)\nfor item in get_items():  # returns None\n    process(item)\n\n# AFTER (correct)\nitems = get_items()\nif items:\n    for item in items:\n        process(item)",
+            "conditions": [
+              {
+                "when": "objectType equals NoneType",
+                "rootCause": "Iterating over None. A function returned None instead of an iterable.",
+                "prescription": "Ensure the function returns an iterable in all code paths, or guard with a None check.",
+                "codeBlock": null
+              },
+              {
+                "when": "objectType equals int",
+                "rootCause": "Attempting to iterate over an integer. Use range().",
+                "prescription": "Use range(n) to iterate n times.",
+                "codeBlock": "for i in range(10):\n    print(i)"
+              }
+            ]
+          },
+          {
+            "code": "PY_TYPE_ERROR_CONCAT",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "TypeError:\\s+can\\s+only\\s+concatenate\\s+(?<typeA>\\w+)\\s+\\(not\\s+\"(?<typeB>\\w+)\"\\)\\s+to\\s+(?<typeC>\\w+)",
+            "match": "TypeError:\\s+can\\s+only\\s+concatenate\\s+\\w+.*to\\s+\\w+",
+            "captures": [
+              { "name": "typeA", "role": "type_name" },
+              { "name": "typeB", "role": "type_name" },
+              { "name": "typeC", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.1,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "cast_type", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Attempted to concatenate incompatible types: '{typeA}' and '{typeB}'.",
+            "prescription": "Convert one operand to match the other. Use str() for string conversion or f-strings.",
+            "codeBlock": "# BEFORE (wrong)\nresult = \"count: \" + 42\n\n# AFTER (correct)\nresult = f\"count: {42}\"",
+            "conditions": []
+          },
+          {
+            "code": "PY_TYPE_ERROR_UNPACK",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "TypeError:\\s+cannot\\s+unpack\\s+non-iterable\\s+(?<objectType>\\w+)\\s+object",
+            "match": "TypeError:\\s+cannot\\s+unpack\\s+non-iterable\\s+\\w+\\s+object",
+            "captures": [{ "name": "objectType", "role": "type_name" }],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "objectType" }, "adjustedProbability": 0.6, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "add_null_check", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Attempted to unpack a '{objectType}' object into multiple variables, but it is not iterable.",
+            "prescription": "Ensure the right-hand side returns an iterable. If a function returns None, add a default return.",
+            "codeBlock": "# BEFORE (wrong)\ndef get_coords():\n    if not found:\n        return  # returns None\n    return x, y\n\n# AFTER (correct)\ndef get_coords():\n    if not found:\n        return 0, 0\n    return x, y",
+            "conditions": []
+          },
+          {
+            "code": "PY_TYPE_ERROR_UNSUPPORTED_OPERAND",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "TypeError:\\s+unsupported\\s+operand\\s+type\\(s\\)\\s+for\\s+(?<operator>.+?):\\s+'(?<typeA>\\w+)'\\s+and\\s+'(?<typeB>\\w+)'",
+            "match": "TypeError:\\s+unsupported\\s+operand\\s+type\\(s\\)\\s+for",
+            "captures": [
+              { "name": "operator", "role": "literal_value" },
+              { "name": "typeA", "role": "type_name" },
+              { "name": "typeB", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.2,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "cast_type", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The operator '{operator}' does not support types '{typeA}' and '{typeB}'.",
+            "prescription": "Convert one operand to a compatible type. For custom classes, implement the appropriate dunder method.",
+            "codeBlock": "# BEFORE (wrong)\nresult = \"5\" + 3\n\n# AFTER (correct)\nresult = int(\"5\") + 3",
+            "conditions": []
+          },
+          {
+            "code": "PY_TYPE_ERROR_MISSING_ARGS",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "TypeError:\\s+(?<funcName>\\w+)\\(\\)\\s+missing\\s+(?<count>\\d+)\\s+required\\s+positional\\s+arguments?:\\s+(?<argNames>.+)",
+            "match": "TypeError:\\s+\\w+\\(\\)\\s+missing\\s+\\d+\\s+required\\s+positional",
+            "captures": [
+              { "name": "funcName", "role": "symbol_name" },
+              { "name": "count", "role": "literal_value" },
+              { "name": "argNames", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "funcName" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "change_signature", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Function '{funcName}' requires {count} positional argument(s) ({argNames}) that were not provided.",
+            "prescription": "1. Add the missing arguments to the call. 2. If the signature changed, update all call sites. 3. Add defaults if the args should be optional.",
+            "codeBlock": null,
+            "conditions": [
+              {
+                "when": "argNames contains self",
+                "rootCause": "Calling '{funcName}' without an instance. Likely an unbound method call.",
+                "prescription": "Call on an instance, or add @staticmethod/@classmethod.",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "PY_TYPE_ERROR_UNEXPECTED_KWARG",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "TypeError:\\s+(?<funcName>\\w+)\\(\\)\\s+got\\s+an\\s+unexpected\\s+keyword\\s+argument\\s+'(?<kwargName>\\w+)'",
+            "match": "TypeError:\\s+\\w+\\(\\)\\s+got\\s+an\\s+unexpected\\s+keyword\\s+argument",
+            "captures": [
+              { "name": "funcName", "role": "symbol_name" },
+              { "name": "kwargName", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "funcName" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "change_signature", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Function '{funcName}' does not accept keyword argument '{kwargName}'.",
+            "prescription": "1. Check for typos in '{kwargName}'. 2. Review the function signature. 3. The parameter may have been renamed or removed.",
+            "codeBlock": null,
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "value_errors",
+        "name": "Value Errors",
+        "description": "Errors where the type is correct but the value is inappropriate",
+        "defaultTracingBehavior": "local_only",
+        "errors": [
+          {
+            "code": "PY_VALUE_ERROR",
+            "category": "value_errors",
+            "severity": "error",
+            "messagePattern": "ValueError:\\s+invalid\\s+literal\\s+for\\s+(?<funcName>\\w+)\\(\\)\\s+with\\s+base\\s+(?<base>\\d+):\\s+'(?<literal>[^']*)'",
+            "match": "ValueError:\\s+invalid\\s+literal\\s+for\\s+\\w+\\(\\)",
+            "captures": [
+              { "name": "funcName", "role": "symbol_name" },
+              { "name": "base", "role": "literal_value" },
+              { "name": "literal", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.1,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "add_null_check", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Cannot convert '{literal}' to a number using {funcName}() with base {base}.",
+            "prescription": "Validate input before conversion. Use try/except ValueError.",
+            "codeBlock": "try:\n    value = int(user_input.strip())\nexcept ValueError:\n    value = 0",
+            "conditions": []
+          },
+          {
+            "code": "PY_VALUE_ERROR_UNPACK",
+            "category": "value_errors",
+            "severity": "error",
+            "messagePattern": "ValueError:\\s+(?:not\\s+enough|too\\s+many)\\s+values\\s+to\\s+unpack\\s+\\(expected\\s+(?<expected>\\d+)(?:,\\s+got\\s+(?<got>\\d+))?\\)",
+            "match": "ValueError:\\s+(?:not\\s+enough|too\\s+many)\\s+values\\s+to\\s+unpack",
+            "captures": [
+              { "name": "expected", "role": "literal_value" },
+              { "name": "got", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Tried to unpack into {expected} variables but the iterable has a different count.",
+            "prescription": "Match variable count to iterable length. Use *rest for variable-length unpacking.",
+            "codeBlock": "a, *rest = [1, 2, 3, 4]  # a=1, rest=[2,3,4]",
+            "conditions": []
+          },
+          {
+            "code": "PY_VALUE_ERROR_GENERAL",
+            "category": "value_errors",
+            "severity": "error",
+            "messagePattern": "ValueError:\\s+(?<message>.+)",
+            "match": "ValueError:\\s+.+",
+            "captures": [{ "name": "message", "role": "literal_value" }],
+            "baseCrossFileProbability": 0.2,
+            "confidence": "heuristic",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "add_null_check", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "A value error occurred: {message}.",
+            "prescription": "Validate input values before passing them to the function. Add try/except ValueError.",
+            "codeBlock": null,
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "key_index_errors",
+        "name": "Key and Index Errors",
+        "description": "Errors accessing collections with invalid keys or indices",
+        "defaultTracingBehavior": "local_only",
+        "errors": [
+          {
+            "code": "PY_KEY_ERROR",
+            "category": "key_index_errors",
+            "severity": "error",
+            "messagePattern": "KeyError:\\s+'(?<keyName>[^']+)'",
+            "match": "KeyError:\\s+'[^']+'",
+            "captures": [{ "name": "keyName", "role": "literal_value" }],
+            "baseCrossFileProbability": 0.2,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "add_null_check", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Key '{keyName}' does not exist in the dictionary.",
+            "prescription": "Use dict.get('{keyName}', default) for safe access, or check 'if \"{keyName}\" in my_dict'.",
+            "codeBlock": "# BEFORE (wrong)\nvalue = my_dict['{keyName}']\n\n# AFTER (correct)\nvalue = my_dict.get('{keyName}', None)",
+            "conditions": []
+          },
+          {
+            "code": "PY_INDEX_ERROR",
+            "category": "key_index_errors",
+            "severity": "error",
+            "messagePattern": "IndexError:\\s+(?<target>\\w+)\\s+index\\s+out\\s+of\\s+range",
+            "match": "IndexError:\\s+\\w+\\s+index\\s+out\\s+of\\s+range",
+            "captures": [{ "name": "target", "role": "type_name" }],
+            "baseCrossFileProbability": 0.1,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "add_null_check", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Attempted to access a {target} at an out-of-bounds index.",
+            "prescription": "Check length with len() before indexing. Use try/except IndexError.",
+            "codeBlock": "if len(my_list) > index:\n    value = my_list[index]",
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "io_errors",
+        "name": "File and IO Errors",
+        "description": "Errors related to file operations and OS-level issues",
+        "defaultTracingBehavior": "local_only",
+        "errors": [
+          {
+            "code": "PY_FILE_NOT_FOUND",
+            "category": "io_errors",
+            "severity": "error",
+            "messagePattern": "FileNotFoundError:\\s+\\[Errno\\s+2\\]\\s+No\\s+such\\s+file\\s+or\\s+directory:\\s+'(?<filePath>[^']+)'",
+            "match": "FileNotFoundError:\\s+\\[Errno\\s+2\\]\\s+No\\s+such\\s+file\\s+or\\s+directory",
+            "captures": [{ "name": "filePath", "role": "file_path" }],
+            "baseCrossFileProbability": 0.1,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "update_import_path", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "The file or directory '{filePath}' does not exist.",
+            "prescription": "1. Verify the path. 2. Use Path.exists() to check. 3. Ensure relative paths are resolved from the correct working directory.",
+            "codeBlock": "from pathlib import Path\nif Path('{filePath}').exists():\n    with open('{filePath}') as f:\n        data = f.read()",
+            "conditions": []
+          },
+          {
+            "code": "PY_PERMISSION_ERROR",
+            "category": "io_errors",
+            "severity": "error",
+            "messagePattern": "PermissionError:\\s+\\[Errno\\s+13\\]\\s+Permission\\s+denied:\\s+'(?<filePath>[^']+)'",
+            "match": "PermissionError:\\s+\\[Errno\\s+13\\]\\s+Permission\\s+denied",
+            "captures": [{ "name": "filePath", "role": "file_path" }],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Permission denied for '{filePath}'.",
+            "prescription": "Check file permissions. On Windows, check if file is locked by another process.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "PY_OS_ERROR",
+            "category": "io_errors",
+            "severity": "error",
+            "messagePattern": "OSError:\\s+\\[Errno\\s+(?<errno>\\d+)\\]\\s+(?<message>.+?):\\s+'(?<path>[^']+)'",
+            "match": "OSError:\\s+\\[Errno\\s+\\d+\\]",
+            "captures": [
+              { "name": "errno", "role": "literal_value" },
+              { "name": "message", "role": "literal_value" },
+              { "name": "path", "role": "file_path" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "OS error (errno {errno}): {message} for '{path}'.",
+            "prescription": "Check file system state. Common errnos: 2=not found, 13=permission denied, 17=already exists, 28=no space.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "PY_UNICODE_ERROR",
+            "category": "io_errors",
+            "severity": "error",
+            "messagePattern": "UnicodeDecodeError:\\s+'(?<codec>\\w+)'\\s+codec\\s+can't\\s+decode\\s+byte\\s+(?<byte>0x[\\da-fA-F]+)\\s+in\\s+position\\s+(?<position>\\d+)",
+            "match": "UnicodeDecodeError:\\s+'\\w+'\\s+codec\\s+can't\\s+decode",
+            "captures": [
+              { "name": "codec", "role": "literal_value" },
+              { "name": "byte", "role": "literal_value" },
+              { "name": "position", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Cannot decode byte {byte} at position {position} using '{codec}' codec.",
+            "prescription": "Specify the correct encoding. Common alternatives: 'utf-8', 'latin-1', 'cp1252'. Use errors='replace' for fault tolerance.",
+            "codeBlock": "with open('file.txt', 'r', encoding='utf-8', errors='replace') as f:\n    data = f.read()",
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "runtime_errors",
+        "name": "Runtime Errors",
+        "description": "General runtime errors including recursion, arithmetic, memory, and network",
+        "defaultTracingBehavior": "local_only",
+        "errors": [
+          {
+            "code": "PY_ZERO_DIVISION",
+            "category": "runtime_errors",
+            "severity": "error",
+            "messagePattern": "ZeroDivisionError:\\s+(?<detail>division\\s+by\\s+zero|integer\\s+division\\s+or\\s+modulo\\s+by\\s+zero|float\\s+division\\s+by\\s+zero)",
+            "match": "ZeroDivisionError:",
+            "captures": [{ "name": "detail", "role": "literal_value" }],
+            "baseCrossFileProbability": 0.1,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "add_null_check", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Attempted to divide by zero: {detail}.",
+            "prescription": "Add a zero check before division.",
+            "codeBlock": "if denominator != 0:\n    result = numerator / denominator\nelse:\n    result = 0",
+            "conditions": []
+          },
+          {
+            "code": "PY_RECURSION_ERROR",
+            "category": "runtime_errors",
+            "severity": "error",
+            "messagePattern": "RecursionError:\\s+maximum\\s+recursion\\s+depth\\s+exceeded(?:\\s+in\\s+(?<context>\\w+))?",
+            "match": "RecursionError:\\s+maximum\\s+recursion\\s+depth\\s+exceeded",
+            "captures": [{ "name": "context", "role": "literal_value" }],
+            "baseCrossFileProbability": 0.2,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "context" }, "adjustedProbability": 0.5, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "Infinite or excessively deep recursion exceeding Python's default limit of 1000 frames.",
+            "prescription": "1. Add/fix the base case. 2. Convert to iterative approach. 3. Use sys.setrecursionlimit() cautiously.",
+            "codeBlock": "# BEFORE (wrong)\ndef factorial(n):\n    return n * factorial(n - 1)\n\n# AFTER (correct)\ndef factorial(n):\n    if n <= 1:\n        return 1\n    return n * factorial(n - 1)",
+            "conditions": [
+              {
+                "when": "context equals comparison",
+                "rootCause": "Infinite recursion in __eq__ or other comparison method.",
+                "prescription": "Check comparison methods for cycles. Use super() to delegate.",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "PY_STOP_ITERATION",
+            "category": "runtime_errors",
+            "severity": "error",
+            "messagePattern": "StopIteration",
+            "match": "StopIteration",
+            "captures": [],
+            "baseCrossFileProbability": 0.1,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "An iterator was exhausted when next() was called with no more items.",
+            "prescription": "Use next(iterator, default_value) or a for loop.",
+            "codeBlock": "value = next(my_iterator, None)",
+            "conditions": []
+          },
+          {
+            "code": "PY_MEMORY_ERROR",
+            "category": "runtime_errors",
+            "severity": "error",
+            "messagePattern": "MemoryError",
+            "match": "MemoryError",
+            "captures": [],
+            "baseCrossFileProbability": 0.1,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "Python process ran out of available memory.",
+            "prescription": "Process data in chunks. Use generators. Use memory-mapped files.",
+            "codeBlock": "# Use generator instead of loading everything\nwith open('huge.csv') as f:\n    for line in f:  # streams line by line\n        process(line)",
+            "conditions": []
+          },
+          {
+            "code": "PY_CONNECTION_ERROR",
+            "category": "runtime_errors",
+            "severity": "error",
+            "messagePattern": "(?:ConnectionRefusedError|ConnectionError):\\s+\\[Errno\\s+(?<errno>\\d+)\\]\\s+(?<message>.+)",
+            "match": "(?:ConnectionRefusedError|ConnectionError):",
+            "captures": [
+              { "name": "errno", "role": "literal_value" },
+              { "name": "message", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "Network connection failed (errno {errno}): {message}.",
+            "prescription": "Verify the service is running. Check hostname/port. Add retry with backoff.",
+            "codeBlock": "import time\nfor attempt in range(3):\n    try:\n        response = make_request()\n        break\n    except ConnectionError:\n        time.sleep(2 ** attempt)",
+            "conditions": []
+          },
+          {
+            "code": "PY_TIMEOUT_ERROR",
+            "category": "runtime_errors",
+            "severity": "error",
+            "messagePattern": "(?:TimeoutError|socket\\.timeout):\\s*(?<message>.+)?",
+            "match": "(?:TimeoutError|socket\\.timeout)",
+            "captures": [{ "name": "message", "role": "literal_value" }],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "An operation timed out.",
+            "prescription": "Increase timeout. Check network connectivity. Add retry logic.",
+            "codeBlock": "import requests\ntry:\n    response = requests.get(url, timeout=30)\nexcept requests.Timeout:\n    print(\"Request timed out\")",
+            "conditions": []
+          },
+          {
+            "code": "PY_ASSERTION_ERROR",
+            "category": "runtime_errors",
+            "severity": "error",
+            "messagePattern": "AssertionError(?::\\s+(?<message>.+))?",
+            "match": "AssertionError",
+            "captures": [{ "name": "message", "role": "literal_value" }],
+            "baseCrossFileProbability": 0.1,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "An assert statement failed.",
+            "prescription": "Replace assert with proper if/raise for runtime checks. Assert is removed with -O flag.",
+            "codeBlock": "# BEFORE (wrong for user input)\nassert x > 0\n\n# AFTER (correct)\nif x <= 0:\n    raise ValueError(\"Must be positive\")",
+            "conditions": []
+          },
+          {
+            "code": "PY_RUNTIME_ERROR",
+            "category": "runtime_errors",
+            "severity": "error",
+            "messagePattern": "RuntimeError:\\s+(?<message>.+)",
+            "match": "RuntimeError:\\s+.+",
+            "captures": [{ "name": "message", "role": "literal_value" }],
+            "baseCrossFileProbability": 0.2,
+            "confidence": "heuristic",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "Runtime error: {message}.",
+            "prescription": "Review the error message for context. Common causes: event loop issues, dictionary modification during iteration, generator errors.",
+            "codeBlock": null,
+            "conditions": [
+              {
+                "when": "message contains event loop",
+                "rootCause": "Event loop error. Typically calling asyncio.run() inside a running loop.",
+                "prescription": "Use 'await' instead of asyncio.run() in async contexts. Use nest_asyncio in Jupyter.",
+                "codeBlock": "import nest_asyncio\nnest_asyncio.apply()"
+              },
+              {
+                "when": "message contains dictionary changed size during iteration",
+                "rootCause": "Modifying a dictionary while iterating over it.",
+                "prescription": "Iterate over list(dict.keys()) instead.",
+                "codeBlock": "for key in list(my_dict.keys()):\n    if should_remove(key):\n        del my_dict[key]"
+              }
+            ]
+          },
+          {
+            "code": "PY_OVERFLOW_ERROR",
+            "category": "runtime_errors",
+            "severity": "error",
+            "messagePattern": "OverflowError:\\s+(?<message>.+)",
+            "match": "OverflowError:\\s+.+",
+            "captures": [{ "name": "message", "role": "literal_value" }],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "A numerical operation produced a result too large: {message}.",
+            "prescription": "Use arbitrary-precision integers or the decimal module.",
+            "codeBlock": "from decimal import Decimal\nresult = Decimal(large_number) / Decimal(divisor)",
+            "conditions": []
+          },
+          {
+            "code": "PY_NOT_IMPLEMENTED_ERROR",
+            "category": "runtime_errors",
+            "severity": "error",
+            "messagePattern": "NotImplementedError(?::\\s+(?<message>.+))?",
+            "match": "NotImplementedError",
+            "captures": [{ "name": "message", "role": "literal_value" }],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_inherited", "target": "message" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "inherited_parent" }
+            ],
+            "fixHint": { "primaryStrategy": "implement_interface", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "Called an abstract/placeholder method that requires implementation.",
+            "prescription": "Implement the method in your subclass.",
+            "codeBlock": "class Concrete(Base):\n    def process(self):\n        return \"implemented\"",
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "mypy_errors",
+        "name": "mypy Static Type Checking Errors",
+        "description": "Errors from mypy static type checker",
+        "defaultTracingBehavior": "trace_if_imported_type",
+        "errors": [
+          {
+            "code": "MYPY_ASSIGNMENT",
+            "category": "mypy_errors",
+            "severity": "error",
+            "messagePattern": "Incompatible\\s+types\\s+in\\s+assignment\\s+\\(expression\\s+has\\s+type\\s+\"(?<actualType>[^\"]+)\",\\s+variable\\s+has\\s+type\\s+\"(?<expectedType>[^\"]+)\"\\)",
+            "match": "Incompatible\\s+types\\s+in\\s+assignment.*\\[assignment\\]",
+            "captures": [
+              { "name": "actualType", "role": "actual_type" },
+              { "name": "expectedType", "role": "expected_type" }
+            ],
+            "baseCrossFileProbability": 0.4,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "expectedType" }, "adjustedProbability": 0.7, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "expectedType" }, "adjustedProbability": 0.1, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": { "primaryStrategy": "update_type_annotation", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "MYPY_ARG_TYPE", "relationship": "same_root_cause", "sharedCapture": "actualType", "resolution": "fix_either" }
+            ],
+            "rootCause": "Incompatible types: expression has type '{actualType}' but variable has type '{expectedType}'.",
+            "prescription": "1. Change the value to match '{expectedType}'. 2. Or update the annotation to '{actualType}'. 3. Use Union[{expectedType}, {actualType}] if both are valid.",
+            "codeBlock": "# BEFORE (wrong)\nx: int = \"hello\"\n\n# AFTER (correct)\nx: str = \"hello\"",
+            "conditions": [
+              {
+                "when": "actualType contains None",
+                "rootCause": "Assigning None to a variable typed as '{expectedType}'.",
+                "prescription": "Use Optional[{expectedType}] if None is valid.",
+                "codeBlock": "from typing import Optional\nx: Optional[{expectedType}] = None"
+              }
+            ]
+          },
+          {
+            "code": "MYPY_ARG_TYPE",
+            "category": "mypy_errors",
+            "severity": "error",
+            "messagePattern": "Argument\\s+(?<argPos>\\d+)\\s+to\\s+\"(?<funcName>[^\"]+)\"\\s+has\\s+incompatible\\s+type\\s+\"(?<actualType>[^\"]+)\";\\s+expected\\s+\"(?<expectedType>[^\"]+)\"",
+            "match": "Argument\\s+\\d+\\s+to\\s+\"[^\"]+\"\\s+has\\s+incompatible\\s+type.*\\[arg-type\\]",
+            "captures": [
+              { "name": "argPos", "role": "literal_value" },
+              { "name": "funcName", "role": "symbol_name" },
+              { "name": "actualType", "role": "actual_type" },
+              { "name": "expectedType", "role": "expected_type" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "funcName" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "comes_from_package", "target": "funcName" }, "adjustedProbability": 0.9, "traceDepth": "none", "traceTarget": "external_package" }
+            ],
+            "fixHint": { "primaryStrategy": "cast_type", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Argument {argPos} to '{funcName}' has type '{actualType}' but expects '{expectedType}'.",
+            "prescription": "1. Convert the argument to '{expectedType}'. 2. Or update the function signature. 3. Check argument order.",
+            "codeBlock": null,
+            "conditions": [
+              {
+                "when": "actualType contains None",
+                "rootCause": "Passing possibly-None value where '{expectedType}' is required.",
+                "prescription": "Add a None check before the call.",
+                "codeBlock": "if value is not None:\n    result = {funcName}(value)"
+              }
+            ]
+          },
+          {
+            "code": "MYPY_RETURN_VALUE",
+            "category": "mypy_errors",
+            "severity": "error",
+            "messagePattern": "Incompatible\\s+return\\s+value\\s+type\\s+\\(got\\s+\"(?<actualType>[^\"]+)\",\\s+expected\\s+\"(?<expectedType>[^\"]+)\"\\)",
+            "match": "Incompatible\\s+return\\s+value\\s+type.*\\[return-value\\]",
+            "captures": [
+              { "name": "actualType", "role": "actual_type" },
+              { "name": "expectedType", "role": "expected_type" }
+            ],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "expectedType" }, "adjustedProbability": 0.6, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "update_type_annotation", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "Function returns '{actualType}' but declares return type '{expectedType}'.",
+            "prescription": "Fix the return value or update the annotation.",
+            "codeBlock": "# BEFORE\ndef get_name() -> str:\n    return None\n\n# AFTER\ndef get_name() -> Optional[str]:\n    return None",
+            "conditions": [
+              {
+                "when": "actualType equals None",
+                "rootCause": "Function returns None but annotated as '{expectedType}'.",
+                "prescription": "Add Optional to return type, or add a return value in all code paths.",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "MYPY_ATTR_DEFINED",
+            "category": "mypy_errors",
+            "severity": "error",
+            "messagePattern": "\"(?<typeName>[^\"]+)\"\\s+has\\s+no\\s+attribute\\s+\"(?<attrName>[^\"]+)\"",
+            "match": "\"[^\"]+\"\\s+has\\s+no\\s+attribute\\s+\"[^\"]+\".*\\[attr-defined\\]",
+            "captures": [
+              { "name": "typeName", "role": "type_name" },
+              { "name": "attrName", "role": "property_name" }
+            ],
+            "baseCrossFileProbability": 0.6,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "typeName" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "comes_from_package", "target": "typeName" }, "adjustedProbability": 0.95, "traceDepth": "none", "traceTarget": "external_package" }
+            ],
+            "fixHint": { "primaryStrategy": "add_property", "requiresCrossFileEdit": true, "typicalScope": "type_definition" },
+            "coOccurrence": [
+              { "code": "PY_ATTRIBUTE_ERROR", "relationship": "same_root_cause", "sharedCapture": "attrName", "resolution": "fix_either" }
+            ],
+            "rootCause": "Type '{typeName}' has no attribute '{attrName}'.",
+            "prescription": "1. Check for typos. 2. Add '{attrName}' to the class. 3. For union types, narrow with isinstance first.",
+            "codeBlock": null,
+            "conditions": [
+              {
+                "when": "typeName contains Optional",
+                "rootCause": "Accessing '{attrName}' on an Optional type (may be None).",
+                "prescription": "Add a None check first.",
+                "codeBlock": "if obj is not None:\n    obj.{attrName}"
+              }
+            ]
+          },
+          {
+            "code": "MYPY_NO_UNTYPED_DEF",
+            "category": "mypy_errors",
+            "severity": "error",
+            "messagePattern": "Function\\s+is\\s+missing\\s+a\\s+(?:return\\s+)?type\\s+annotation",
+            "match": "Function\\s+is\\s+missing\\s+a.*type\\s+annotation.*\\[no-untyped-def\\]",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "update_type_annotation", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Function is missing type annotations.",
+            "prescription": "Add type annotations to parameters and return type.",
+            "codeBlock": "# BEFORE\ndef greet(name):\n    return f\"Hello, {name}\"\n\n# AFTER\ndef greet(name: str) -> str:\n    return f\"Hello, {name}\"",
+            "conditions": []
+          },
+          {
+            "code": "MYPY_IMPORT",
+            "category": "mypy_errors",
+            "severity": "error",
+            "messagePattern": "(?:Cannot\\s+find\\s+implementation\\s+or\\s+stub\\s+for\\s+module\\s+named\\s+\"(?<moduleName>[^\"]+)\"|Library\\s+stubs\\s+not\\s+installed\\s+for\\s+\"(?<moduleName2>[^\"]+)\")",
+            "match": "(?:Cannot\\s+find\\s+implementation\\s+or\\s+stub|Library\\s+stubs\\s+not\\s+installed).*\\[import(?:-untyped|-not-found)?\\]",
+            "captures": [
+              { "name": "moduleName", "role": "target_module" },
+              { "name": "moduleName2", "role": "target_module" }
+            ],
+            "baseCrossFileProbability": 0.9,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_external", "target": "moduleName" }, "adjustedProbability": 1.0, "traceDepth": "none", "traceTarget": "external_package" }
+            ],
+            "fixHint": { "primaryStrategy": "install_package", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [],
+            "rootCause": "mypy cannot find type stubs for the module.",
+            "prescription": "1. pip install types-<package>. 2. Run mypy --install-types. 3. Add ignore_missing_imports to mypy config.",
+            "codeBlock": "# mypy.ini\n[mypy-module_name.*]\nignore_missing_imports = True",
+            "conditions": []
+          },
+          {
+            "code": "MYPY_NAME_DEFINED",
+            "category": "mypy_errors",
+            "severity": "error",
+            "messagePattern": "Name\\s+\"(?<symbolName>[^\"]+)\"\\s+is\\s+not\\s+defined",
+            "match": "Name\\s+\"[^\"]+\"\\s+is\\s+not\\s+defined.*\\[name-defined\\]",
+            "captures": [{ "name": "symbolName", "role": "symbol_name" }],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "symbolName" }, "adjustedProbability": 0.85, "traceDepth": "transitive", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "add_import", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [
+              { "code": "PY_NAME_ERROR", "relationship": "same_root_cause", "sharedCapture": "symbolName", "resolution": "fix_either" }
+            ],
+            "rootCause": "Name '{symbolName}' is not defined in the current scope.",
+            "prescription": "Add the import or define '{symbolName}' before use.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "MYPY_OVERRIDE",
+            "category": "mypy_errors",
+            "severity": "error",
+            "messagePattern": "(?:Signature\\s+of\\s+\"(?<methodName>[^\"]+)\"\\s+incompatible\\s+with\\s+supertype\\s+\"(?<parentName>[^\"]+)\"|Argument\\s+\\d+\\s+of\\s+\"(?<methodName2>[^\"]+)\"\\s+is\\s+incompatible\\s+with\\s+supertype\\s+\"(?<parentName2>[^\"]+)\")",
+            "match": "(?:Signature|Argument).*incompatible\\s+with\\s+supertype.*\\[override\\]",
+            "captures": [
+              { "name": "methodName", "role": "symbol_name" },
+              { "name": "parentName", "role": "type_name" },
+              { "name": "methodName2", "role": "symbol_name" },
+              { "name": "parentName2", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.7,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_inherited", "target": "methodName" }, "adjustedProbability": 0.9, "traceDepth": "direct", "traceTarget": "inherited_parent" }
+            ],
+            "fixHint": { "primaryStrategy": "change_signature", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "Method '{methodName}' signature is incompatible with parent '{parentName}'.",
+            "prescription": "Match the method signature with the parent class. Use @override decorator (Python 3.12+).",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "MYPY_MISC",
+            "category": "mypy_errors",
+            "severity": "error",
+            "messagePattern": "(?<message>.+?)\\s*\\[misc\\]",
+            "match": ".+\\[misc\\]",
+            "captures": [{ "name": "message", "role": "literal_value" }],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "heuristic",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "mypy miscellaneous error: {message}.",
+            "prescription": "Read the specific error message for guidance.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "MYPY_UNION_ATTR",
+            "category": "mypy_errors",
+            "severity": "error",
+            "messagePattern": "Item\\s+\"(?<itemType>[^\"]+)\"\\s+of\\s+\"(?<unionType>[^\"]+)\"\\s+has\\s+no\\s+attribute\\s+\"(?<attrName>[^\"]+)\"",
+            "match": "Item\\s+\"[^\"]+\"\\s+of\\s+\"[^\"]+\"\\s+has\\s+no\\s+attribute.*\\[union-attr\\]",
+            "captures": [
+              { "name": "itemType", "role": "type_name" },
+              { "name": "unionType", "role": "type_name" },
+              { "name": "attrName", "role": "property_name" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "unionType" }, "adjustedProbability": 0.7, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "add_null_check", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Item '{itemType}' of union '{unionType}' has no attribute '{attrName}'. Narrow the type first.",
+            "prescription": "Use isinstance() or a None check to narrow the type.",
+            "codeBlock": "# BEFORE\ndef process(value: Optional[User]) -> str:\n    return value.name  # error\n\n# AFTER\ndef process(value: Optional[User]) -> str:\n    if value is None:\n        return \"\"\n    return value.name",
+            "conditions": [
+              {
+                "when": "itemType equals None",
+                "rootCause": "Accessing '{attrName}' on Optional that may be None.",
+                "prescription": "Add 'if value is not None:' guard.",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "MYPY_INDEX",
+            "category": "mypy_errors",
+            "severity": "error",
+            "messagePattern": "Invalid\\s+index\\s+type\\s+\"(?<indexType>[^\"]+)\"\\s+for\\s+\"(?<containerType>[^\"]+)\";\\s+expected\\s+type\\s+\"(?<expectedType>[^\"]+)\"",
+            "match": "Invalid\\s+index\\s+type.*\\[index\\]",
+            "captures": [
+              { "name": "indexType", "role": "actual_type" },
+              { "name": "containerType", "role": "type_name" },
+              { "name": "expectedType", "role": "expected_type" }
+            ],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "cast_type", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Index type '{indexType}' invalid for '{containerType}'; expected '{expectedType}'.",
+            "prescription": "Convert the index to '{expectedType}'.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "MYPY_CALL_OVERLOAD",
+            "category": "mypy_errors",
+            "severity": "error",
+            "messagePattern": "No\\s+overload\\s+variant\\s+of\\s+\"(?<funcName>[^\"]+)\"\\s+matches\\s+argument\\s+type(?:s)?\\s+\"(?<argTypes>[^\"]+)\"",
+            "match": "No\\s+overload\\s+variant\\s+of.*\\[call-overload\\]",
+            "captures": [
+              { "name": "funcName", "role": "symbol_name" },
+              { "name": "argTypes", "role": "actual_type" }
+            ],
+            "baseCrossFileProbability": 0.6,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "funcName" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "cast_type", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "No overloaded variant of '{funcName}' accepts '{argTypes}'.",
+            "prescription": "Check the @overload definitions. Convert arguments to match an available overload.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "MYPY_REDUNDANT_CAST",
+            "category": "mypy_errors",
+            "severity": "warning",
+            "messagePattern": "Redundant\\s+cast\\s+to\\s+\"(?<typeName>[^\"]+)\"",
+            "match": "Redundant\\s+cast\\s+to.*\\[redundant-cast\\]",
+            "captures": [{ "name": "typeName", "role": "type_name" }],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Cast to '{typeName}' is redundant.",
+            "prescription": "Remove the cast() call.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "MYPY_TYPE_ARG",
+            "category": "mypy_errors",
+            "severity": "error",
+            "messagePattern": "\"(?<genericType>[^\"]+)\"\\s+expects\\s+(?<expectedCount>\\d+)\\s+type\\s+arguments?,\\s+but\\s+(?<actualCount>\\d+)\\s+given",
+            "match": "expects\\s+\\d+\\s+type\\s+arguments?.*\\[type-arg\\]",
+            "captures": [
+              { "name": "genericType", "role": "type_name" },
+              { "name": "expectedCount", "role": "literal_value" },
+              { "name": "actualCount", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.4,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "update_type_annotation", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "'{genericType}' expects {expectedCount} type arg(s) but {actualCount} given.",
+            "prescription": "Provide exactly {expectedCount} type arguments.",
+            "codeBlock": "# BEFORE\nmy_dict: Dict[str] = {}\n\n# AFTER\nmy_dict: Dict[str, int] = {}",
+            "conditions": []
+          },
+          {
+            "code": "MYPY_INCOMPATIBLE_IMPORT",
+            "category": "mypy_errors",
+            "severity": "error",
+            "messagePattern": "Incompatible\\s+import\\s+of\\s+\"(?<symbolName>[^\"]+)\"\\s+\\(imported\\s+name\\s+has\\s+type\\s+\"(?<importedType>[^\"]+)\",\\s+local\\s+name\\s+has\\s+type\\s+\"(?<localType>[^\"]+)\"\\)",
+            "match": "Incompatible\\s+import.*\\[assignment\\]",
+            "captures": [
+              { "name": "symbolName", "role": "symbol_name" },
+              { "name": "importedType", "role": "actual_type" },
+              { "name": "localType", "role": "expected_type" }
+            ],
+            "baseCrossFileProbability": 0.9,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "update_type_annotation", "requiresCrossFileEdit": true, "typicalScope": "file_header" },
+            "coOccurrence": [],
+            "rootCause": "Imported '{symbolName}' has type '{importedType}' but local expects '{localType}'.",
+            "prescription": "Update the local annotation or the export's type.",
+            "codeBlock": null,
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "pyright_errors",
+        "name": "Pyright Type Checking Errors",
+        "description": "Errors from pyright static type checker",
+        "defaultTracingBehavior": "trace_if_imported_type",
+        "errors": [
+          {
+            "code": "PYRIGHT_GENERAL_TYPE",
+            "category": "pyright_errors",
+            "severity": "error",
+            "messagePattern": "Expression\\s+of\\s+type\\s+\"(?<actualType>[^\"]+)\"\\s+cannot\\s+be\\s+assigned\\s+to\\s+declared\\s+type\\s+\"(?<expectedType>[^\"]+)\"",
+            "match": "Expression\\s+of\\s+type.*cannot\\s+be\\s+assigned.*\\(reportGeneralTypeIssues\\)",
+            "captures": [
+              { "name": "actualType", "role": "actual_type" },
+              { "name": "expectedType", "role": "expected_type" }
+            ],
+            "baseCrossFileProbability": 0.4,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "expectedType" }, "adjustedProbability": 0.7, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "update_type_annotation", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "MYPY_ASSIGNMENT", "relationship": "same_root_cause", "sharedCapture": "actualType", "resolution": "fix_either" }
+            ],
+            "rootCause": "Expression of type '{actualType}' cannot be assigned to declared type '{expectedType}'.",
+            "prescription": "Fix the value or broaden the type annotation.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "PYRIGHT_MISSING_IMPORT",
+            "category": "pyright_errors",
+            "severity": "error",
+            "messagePattern": "Import\\s+\"(?<moduleName>[^\"]+)\"\\s+could\\s+not\\s+be\\s+resolved",
+            "match": "Import.*could\\s+not\\s+be\\s+resolved.*\\(reportMissingImports\\)",
+            "captures": [{ "name": "moduleName", "role": "target_module" }],
+            "baseCrossFileProbability": 0.9,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_external", "target": "moduleName" }, "adjustedProbability": 1.0, "traceDepth": "none", "traceTarget": "external_package" }
+            ],
+            "fixHint": { "primaryStrategy": "install_package", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [
+              { "code": "PY_MODULE_NOT_FOUND", "relationship": "same_root_cause", "sharedCapture": "moduleName", "resolution": "fix_either" }
+            ],
+            "rootCause": "Pyright cannot resolve import '{moduleName}'.",
+            "prescription": "1. pip install {moduleName}. 2. Configure venvPath in pyrightconfig.json. 3. Add to extraPaths.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "PYRIGHT_MISSING_TYPE_STUBS",
+            "category": "pyright_errors",
+            "severity": "warning",
+            "messagePattern": "Stub\\s+file\\s+not\\s+found\\s+for\\s+\"(?<moduleName>[^\"]+)\"",
+            "match": "Stub\\s+file\\s+not\\s+found.*\\(reportMissingTypeStubs\\)",
+            "captures": [{ "name": "moduleName", "role": "target_module" }],
+            "baseCrossFileProbability": 0.9,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "install_package", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [
+              { "code": "MYPY_IMPORT", "relationship": "same_root_cause", "sharedCapture": "moduleName", "resolution": "fix_either" }
+            ],
+            "rootCause": "No type stubs for '{moduleName}'.",
+            "prescription": "pip install types-{moduleName}. Or set reportMissingTypeStubs = false.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "PYRIGHT_RETURN_TYPE",
+            "category": "pyright_errors",
+            "severity": "error",
+            "messagePattern": "Expression\\s+of\\s+type\\s+\"(?<actualType>[^\"]+)\"\\s+cannot\\s+be\\s+assigned\\s+to\\s+return\\s+type\\s+\"(?<expectedType>[^\"]+)\"",
+            "match": "cannot\\s+be\\s+assigned\\s+to\\s+return\\s+type.*\\(reportReturnType\\)",
+            "captures": [
+              { "name": "actualType", "role": "actual_type" },
+              { "name": "expectedType", "role": "expected_type" }
+            ],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "update_type_annotation", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [
+              { "code": "MYPY_RETURN_VALUE", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+            "rootCause": "Return type '{actualType}' does not match declared '{expectedType}'.",
+            "prescription": "Fix the return value or update the return type annotation.",
+            "codeBlock": null,
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "pylint_errors",
+        "name": "Pylint Linting Errors",
+        "description": "Common pylint diagnostic codes",
+        "defaultTracingBehavior": "local_only",
+        "errors": [
+          {
+            "code": "PYLINT_E0001",
+            "category": "pylint_errors",
+            "severity": "error",
+            "messagePattern": "(?<message>.+?)\\s*\\(syntax-error\\)",
+            "match": "E0001:.*\\(syntax-error\\)",
+            "captures": [{ "name": "message", "role": "literal_value" }],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "fix_syntax", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [
+              { "code": "PY_SYNTAX_INVALID", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+            "rootCause": "Pylint detected a syntax error: {message}.",
+            "prescription": "Fix the syntax error. Same as Python's SyntaxError.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "PYLINT_E0102",
+            "category": "pylint_errors",
+            "severity": "error",
+            "messagePattern": "(?<funcName>\\w+)\\s+already\\s+defined\\s+line\\s+(?<lineNum>\\d+)\\s*\\(function-redefined\\)",
+            "match": "E0102:.*\\(function-redefined\\)",
+            "captures": [
+              { "name": "funcName", "role": "symbol_name" },
+              { "name": "lineNum", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "remove_duplicate", "requiresCrossFileEdit": false, "typicalScope": "function_body" },
+            "coOccurrence": [],
+            "rootCause": "'{funcName}' is redefined, overwriting the definition from line {lineNum}.",
+            "prescription": "Remove the duplicate or rename one.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "PYLINT_E0401",
+            "category": "pylint_errors",
+            "severity": "error",
+            "messagePattern": "Unable\\s+to\\s+import\\s+'(?<moduleName>[^']+)'\\s*\\(import-error\\)",
+            "match": "E0401:.*\\(import-error\\)",
+            "captures": [{ "name": "moduleName", "role": "target_module" }],
+            "baseCrossFileProbability": 0.9,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_external", "target": "moduleName" }, "adjustedProbability": 1.0, "traceDepth": "none", "traceTarget": "external_package" }
+            ],
+            "fixHint": { "primaryStrategy": "install_package", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [
+              { "code": "PY_MODULE_NOT_FOUND", "relationship": "same_root_cause", "sharedCapture": "moduleName", "resolution": "fix_either" }
+            ],
+            "rootCause": "Pylint cannot import '{moduleName}'.",
+            "prescription": "pip install {moduleName}. Ensure pylint uses the same virtual environment.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "PYLINT_E0611",
+            "category": "pylint_errors",
+            "severity": "error",
+            "messagePattern": "No\\s+name\\s+'(?<symbolName>[^']+)'\\s+in\\s+module\\s+'(?<moduleName>[^']+)'\\s*\\(no-name-in-module\\)",
+            "match": "E0611:.*\\(no-name-in-module\\)",
+            "captures": [
+              { "name": "symbolName", "role": "symbol_name" },
+              { "name": "moduleName", "role": "target_module" }
+            ],
+            "baseCrossFileProbability": 0.85,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_local", "target": "moduleName" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_external", "target": "moduleName" }, "adjustedProbability": 0.95, "traceDepth": "none", "traceTarget": "external_package" }
+            ],
+            "fixHint": { "primaryStrategy": "update_import_path", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [
+              { "code": "PY_IMPORT_ERROR", "relationship": "same_root_cause", "sharedCapture": "symbolName", "resolution": "fix_either" }
+            ],
+            "rootCause": "'{symbolName}' not found in module '{moduleName}'.",
+            "prescription": "Check for typos. Verify '{symbolName}' exists in the module.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "PYLINT_W0611",
+            "category": "pylint_errors",
+            "severity": "warning",
+            "messagePattern": "Unused\\s+import\\s+(?<symbolName>[\\w.]+)\\s*\\(unused-import\\)",
+            "match": "W0611:.*\\(unused-import\\)",
+            "captures": [{ "name": "symbolName", "role": "symbol_name" }],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "remove_import", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [],
+            "rootCause": "Import '{symbolName}' is unused.",
+            "prescription": "Remove the unused import or add to __all__ if it is a re-export.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "PYLINT_W0612",
+            "category": "pylint_errors",
+            "severity": "warning",
+            "messagePattern": "Unused\\s+variable\\s+'(?<varName>[^']+)'\\s*\\(unused-variable\\)",
+            "match": "W0612:.*\\(unused-variable\\)",
+            "captures": [{ "name": "varName", "role": "symbol_name" }],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Variable '{varName}' is assigned but never used.",
+            "prescription": "Remove the assignment or prefix with underscore: _{varName}.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "PYLINT_C0301",
+            "category": "pylint_errors",
+            "severity": "warning",
+            "messagePattern": "Line\\s+too\\s+long\\s+\\((?<length>\\d+)/(?<max>\\d+)\\)\\s*\\(line-too-long\\)",
+            "match": "C0301:.*\\(line-too-long\\)",
+            "captures": [
+              { "name": "length", "role": "literal_value" },
+              { "name": "max", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Line is {length} chars, exceeding max of {max}.",
+            "prescription": "Break the line. Configure max-line-length in pylintrc.",
+            "codeBlock": null,
+            "conditions": []
+          }
+        ]
+      },
+
+      {
+        "id": "ruff_errors",
+        "name": "Ruff Linting Errors",
+        "description": "Common ruff diagnostic codes",
+        "defaultTracingBehavior": "local_only",
+        "errors": [
+          {
+            "code": "RUFF_F401",
+            "category": "ruff_errors",
+            "severity": "warning",
+            "messagePattern": "(?<moduleName>[\\w.]+)\\s+imported\\s+but\\s+unused",
+            "match": "F401\\s+.+imported\\s+but\\s+unused",
+            "captures": [{ "name": "moduleName", "role": "symbol_name" }],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "remove_import", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [
+              { "code": "PYLINT_W0611", "relationship": "same_root_cause", "sharedCapture": "moduleName", "resolution": "fix_either" }
+            ],
+            "rootCause": "'{moduleName}' is imported but unused.",
+            "prescription": "Remove the import or add '# noqa: F401' for re-exports.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "RUFF_F811",
+            "category": "ruff_errors",
+            "severity": "warning",
+            "messagePattern": "Redefinition\\s+of\\s+unused\\s+'(?<symbolName>[^']+)'",
+            "match": "F811\\s+Redefinition\\s+of\\s+unused",
+            "captures": [{ "name": "symbolName", "role": "symbol_name" }],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "remove_duplicate", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "'{symbolName}' is redefined, overwriting an unused definition.",
+            "prescription": "Remove the first unused definition.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "RUFF_E501",
+            "category": "ruff_errors",
+            "severity": "warning",
+            "messagePattern": "Line\\s+too\\s+long\\s+\\((?<length>\\d+)\\s*>\\s*(?<max>\\d+)\\s*characters\\)",
+            "match": "E501\\s+Line\\s+too\\s+long",
+            "captures": [
+              { "name": "length", "role": "literal_value" },
+              { "name": "max", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Line is {length} chars, max is {max}.",
+            "prescription": "Break the line. Configure line-length in pyproject.toml.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "RUFF_F821",
+            "category": "ruff_errors",
+            "severity": "error",
+            "messagePattern": "Undefined\\s+name\\s+'(?<symbolName>[^']+)'",
+            "match": "F821\\s+Undefined\\s+name",
+            "captures": [{ "name": "symbolName", "role": "symbol_name" }],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "symbolName" }, "adjustedProbability": 0.85, "traceDepth": "transitive", "traceTarget": "imported_file" }
+            ],
+            "fixHint": { "primaryStrategy": "add_import", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [
+              { "code": "PY_NAME_ERROR", "relationship": "same_root_cause", "sharedCapture": "symbolName", "resolution": "fix_either" }
+            ],
+            "rootCause": "'{symbolName}' is undefined.",
+            "prescription": "Add an import or define before use.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "RUFF_E711",
+            "category": "ruff_errors",
+            "severity": "warning",
+            "messagePattern": "Comparison\\s+to\\s+None",
+            "match": "E711\\s+Comparison\\s+to\\s+None",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "single_line" },
+            "coOccurrence": [],
+            "rootCause": "Comparison to None should use 'is' or 'is not'.",
+            "prescription": "Replace '== None' with 'is None'.",
+            "codeBlock": "# BEFORE\nif x == None:\n\n# AFTER\nif x is None:",
+            "conditions": []
+          },
+          {
+            "code": "RUFF_I001",
+            "category": "ruff_errors",
+            "severity": "warning",
+            "messagePattern": "Import\\s+block\\s+is\\s+un-sorted\\s+or\\s+un-formatted",
+            "match": "I001\\s+Import\\s+block\\s+is\\s+un-sorted",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": { "primaryStrategy": "restructure_code", "requiresCrossFileEdit": false, "typicalScope": "file_header" },
+            "coOccurrence": [],
+            "rootCause": "Import statements are not sorted per isort rules.",
+            "prescription": "Run 'ruff check --fix' to auto-sort imports.",
+            "codeBlock": "# Correct order:\nimport os\nimport sys\n\nimport requests\n\nfrom mypackage import utils",
+            "conditions": []
+          }
+        ]
+      }
+    ]
+  },
+
+  "importSystem": {
+    "importPatterns": [
+      {
+        "type": "import_module",
+        "regex": "^import\\s+(?<module>[\\w.]+)(?:\\s+as\\s+(?<alias>\\w+))?",
+        "captures": [
+          { "name": "module", "index": 1, "isList": false },
+          { "name": "alias", "index": 2, "isList": false }
+        ],
+        "example": "import os",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "import_multiple",
+        "regex": "^import\\s+(?<modules>[\\w.]+(?:\\s*,\\s*[\\w.]+)+)",
+        "captures": [
+          { "name": "modules", "index": 1, "isList": true, "listSeparator": "," }
+        ],
+        "example": "import os, sys, json",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "from_import_named",
+        "regex": "^from\\s+(?<module>[\\w.]+)\\s+import\\s+(?<symbols>[\\w]+(?:\\s+as\\s+\\w+)?(?:\\s*,\\s*\\w+(?:\\s+as\\s+\\w+)?)*)",
+        "captures": [
+          { "name": "module", "index": 1, "isList": false },
+          { "name": "symbols", "index": 2, "isList": true, "listSeparator": "," }
+        ],
+        "example": "from os.path import join, exists",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "from_import_parenthesized",
+        "regex": "^from\\s+(?<module>[\\w.]+)\\s+import\\s+\\(\\s*(?<symbols>[^)]+)\\s*\\)",
+        "captures": [
+          { "name": "module", "index": 1, "isList": false },
+          { "name": "symbols", "index": 2, "isList": true, "listSeparator": "," }
+        ],
+        "example": "from typing import (\n    List,\n    Dict,\n    Optional,\n)",
+        "isMultiLine": true,
+        "multiLineRegex": "^from\\s+([\\w.]+)\\s+import\\s+\\(([\\s\\S]*?)\\)"
+      },
+      {
+        "type": "from_import_star",
+        "regex": "^from\\s+(?<module>[\\w.]+)\\s+import\\s+\\*",
+        "captures": [
+          { "name": "module", "index": 1, "isList": false }
+        ],
+        "example": "from os.path import *",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "from_relative_import",
+        "regex": "^from\\s+(?<relPath>\\.+)(?<module>[\\w.]*)?\\s+import\\s+(?<symbols>[\\w*]+(?:\\s+as\\s+\\w+)?(?:\\s*,\\s*\\w+(?:\\s+as\\s+\\w+)?)*)",
+        "captures": [
+          { "name": "relPath", "index": 1, "isList": false },
+          { "name": "module", "index": 2, "isList": false },
+          { "name": "symbols", "index": 3, "isList": true, "listSeparator": "," }
+        ],
+        "example": "from .models import User",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "from_relative_import_parenthesized",
+        "regex": "^from\\s+(?<relPath>\\.+)(?<module>[\\w.]*)?\\s+import\\s+\\(\\s*(?<symbols>[^)]+)\\s*\\)",
+        "captures": [
+          { "name": "relPath", "index": 1, "isList": false },
+          { "name": "module", "index": 2, "isList": false },
+          { "name": "symbols", "index": 3, "isList": true, "listSeparator": "," }
+        ],
+        "example": "from ..utils import (\n    helper,\n    formatter,\n)",
+        "isMultiLine": true,
+        "multiLineRegex": "^from\\s+(\\.+)([\\w.]*)?\\s+import\\s+\\(([\\s\\S]*?)\\)"
+      },
+      {
+        "type": "dynamic_import",
+        "regex": "importlib\\.import_module\\s*\\(\\s*['\"](?<module>[\\w.]+)['\"]\\s*\\)",
+        "captures": [
+          { "name": "module", "index": 1, "isList": false }
+        ],
+        "example": "module = importlib.import_module('mypackage.submodule')",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "type_checking_guard",
+        "regex": "if\\s+TYPE_CHECKING\\s*:\\s*\\n\\s+(?:from\\s+[\\w.]+\\s+import\\s+.+|import\\s+.+)",
+        "captures": [],
+        "example": "if TYPE_CHECKING:\n    from models import User",
+        "isMultiLine": true,
+        "multiLineRegex": "if\\s+TYPE_CHECKING\\s*:[\\s\\S]*?(?=\\n\\S|\\Z)"
+      },
+      {
+        "type": "__import__",
+        "regex": "__import__\\s*\\(\\s*['\"](?<module>[\\w.]+)['\"]\\s*\\)",
+        "captures": [
+          { "name": "module", "index": 1, "isList": false }
+        ],
+        "example": "mod = __import__('os.path')",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      }
+    ],
+    "exportPatterns": [
+      {
+        "type": "__all__",
+        "regex": "__all__\\s*=\\s*\\[\\s*(?<symbols>[^\\]]+)\\s*\\]",
+        "captures": [
+          { "name": "symbols", "index": 1, "isList": true, "listSeparator": "," }
+        ],
+        "isReExport": false,
+        "example": "__all__ = ['User', 'get_user', 'UserManager']"
+      },
+      {
+        "type": "__all___tuple",
+        "regex": "__all__\\s*=\\s*\\(\\s*(?<symbols>[^)]+)\\s*\\)",
+        "captures": [
+          { "name": "symbols", "index": 1, "isList": true, "listSeparator": "," }
+        ],
+        "isReExport": false,
+        "example": "__all__ = ('User', 'get_user')"
+      },
+      {
+        "type": "init_re_export",
+        "regex": "from\\s+\\.(?<module>[\\w.]+)\\s+import\\s+(?<symbols>[\\w*]+(?:\\s*,\\s*\\w+)*)",
+        "captures": [
+          { "name": "module", "index": 1, "isList": false },
+          { "name": "symbols", "index": 2, "isList": true, "listSeparator": "," }
+        ],
+        "isReExport": true,
+        "example": "from .models import User, UserManager"
+      },
+      {
+        "type": "init_re_export_star",
+        "regex": "from\\s+\\.(?<module>[\\w.]+)\\s+import\\s+\\*",
+        "captures": [
+          { "name": "module", "index": 1, "isList": false }
+        ],
+        "isReExport": true,
+        "example": "from .models import *"
+      },
+      {
+        "type": "function_def",
+        "regex": "(?:^|\\n)def\\s+(?<name>\\w+)\\s*\\(",
+        "captures": [
+          { "name": "name", "index": 1, "isList": false }
+        ],
+        "isReExport": false,
+        "example": "def process_data(items: list) -> dict:"
+      },
+      {
+        "type": "class_def",
+        "regex": "(?:^|\\n)class\\s+(?<name>\\w+)",
+        "captures": [
+          { "name": "name", "index": 1, "isList": false }
+        ],
+        "isReExport": false,
+        "example": "class UserManager:"
+      },
+      {
+        "type": "module_level_var",
+        "regex": "(?:^|\\n)(?<name>[A-Z_][A-Z0-9_]*)\\s*(?::\\s*[^=]+)?\\s*=",
+        "captures": [
+          { "name": "name", "index": 1, "isList": false }
+        ],
+        "isReExport": false,
+        "example": "MAX_RETRIES: int = 3"
+      }
+    ],
+    "moduleResolution": {
+      "strategy": "python",
+      "extensions": [".py", ".pyi", ".so", ".pyd"],
+      "indexFiles": ["__init__.py", "__init__.pyi"],
+      "aliasConfig": {
+        "file": "pyproject.toml",
+        "path": "[tool.mypy] mypy_path or [tool.pyright] extraPaths",
+        "format": "Space-separated or list of additional directories to add to the module search path"
+      },
+      "packageEntryPoints": ["__init__.py", "__main__.py"],
+      "relativeImportRules": "Resolved relative to the current package. A leading dot means the current package directory. Two dots means the parent package. Relative imports require the module to be part of a package (have __init__.py). Running 'python file.py' directly breaks relative imports -- use 'python -m package.module' instead.",
+      "absoluteImportRules": "Searched in order: 1. Built-in modules. 2. Frozen modules. 3. sys.path (includes script directory, PYTHONPATH, site-packages). Virtual environments modify sys.path to prioritize their site-packages. Namespace packages (PEP 420) do not require __init__.py."
+    },
+    "renamePattern": "(?<originalName>\\w+)\\s+as\\s+(?<aliasName>\\w+)"
+  },
+
+  "typeTracing": {
+    "definitionPatterns": [
+      {
+        "kind": "class",
+        "regex": "(?:^|\\n)class\\s+(?<name>\\w+)(?:\\s*\\((?<bases>[^)]+)\\))?\\s*:",
+        "captures": [
+          { "name": "name", "index": 1 },
+          { "name": "bases", "index": 2 }
+        ],
+        "canBeExported": true,
+        "example": "class UserManager(BaseManager, Serializable):"
+      },
+      {
+        "kind": "function",
+        "regex": "(?:^|\\n)(?:async\\s+)?def\\s+(?<name>\\w+)\\s*\\((?<params>[^)]*)\\)(?:\\s*->\\s*(?<returnType>[^:]+))?\\s*:",
+        "captures": [
+          { "name": "name", "index": 1 },
+          { "name": "params", "index": 2 },
+          { "name": "returnType", "index": 3 }
+        ],
+        "canBeExported": true,
+        "example": "async def fetch_user(user_id: int) -> Optional[User]:"
+      },
+      {
+        "kind": "variable",
+        "regex": "(?:^|\\n)(?<name>\\w+)\\s*:\\s*(?<typeAnnotation>[^=\\n]+?)\\s*=",
+        "captures": [
+          { "name": "name", "index": 1 },
+          { "name": "typeAnnotation", "index": 2 }
+        ],
+        "canBeExported": true,
+        "example": "db_engine: Engine = create_engine(url)"
+      },
+      {
+        "kind": "type_alias",
+        "regex": "(?:^|\\n)(?<name>\\w+)\\s*=\\s*(?:TypeVar|NewType|TypeAlias|Union|Optional|Literal)\\s*[\\[(]",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "UserId = NewType('UserId', int)"
+      },
+      {
+        "kind": "type_alias_3_12",
+        "regex": "(?:^|\\n)type\\s+(?<name>\\w+)(?:\\[(?<params>[^\\]]+)\\])?\\s*=",
+        "captures": [
+          { "name": "name", "index": 1 },
+          { "name": "params", "index": 2 }
+        ],
+        "canBeExported": true,
+        "example": "type Point[T] = tuple[T, T]"
+      },
+      {
+        "kind": "dataclass",
+        "regex": "@dataclass(?:es\\.dataclass)?(?:\\([^)]*\\))?\\s*\\nclass\\s+(?<name>\\w+)",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "@dataclass\nclass User:\n    name: str\n    age: int"
+      },
+      {
+        "kind": "pydantic_model",
+        "regex": "class\\s+(?<name>\\w+)\\s*\\((?:BaseModel|BaseSettings)[^)]*\\)\\s*:",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "class UserCreate(BaseModel):\n    name: str\n    email: EmailStr"
+      },
+      {
+        "kind": "protocol",
+        "regex": "class\\s+(?<name>\\w+)\\s*\\((?:[^)]*\\bProtocol\\b[^)]*)\\)\\s*:",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "class Serializable(Protocol):\n    def serialize(self) -> bytes: ..."
+      },
+      {
+        "kind": "enum",
+        "regex": "class\\s+(?<name>\\w+)\\s*\\((?:[^)]*\\b(?:Enum|IntEnum|StrEnum|Flag|IntFlag)\\b[^)]*)\\)\\s*:",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "class Color(Enum):\n    RED = 1"
+      },
+      {
+        "kind": "named_tuple",
+        "regex": "class\\s+(?<name>\\w+)\\s*\\((?:NamedTuple|typing\\.NamedTuple)\\)\\s*:",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "class Point(NamedTuple):\n    x: float\n    y: float"
+      },
+      {
+        "kind": "typed_dict",
+        "regex": "class\\s+(?<name>\\w+)\\s*\\((?:TypedDict|typing\\.TypedDict)\\)\\s*:",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "class UserDict(TypedDict):\n    name: str"
+      },
+      {
+        "kind": "typevar",
+        "regex": "(?<name>\\w+)\\s*=\\s*TypeVar\\s*\\(\\s*['\"]\\w+['\"](?:,\\s*(?:bound=)?[^)]+)?\\)",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "T = TypeVar('T', bound=Comparable)"
+      }
+    ],
+    "inheritancePatterns": [
+      {
+        "kind": "extends",
+        "regex": "class\\s+(?<child>\\w+)\\s*\\(\\s*(?<parents>[\\w.,\\s\\[\\]]+)\\s*\\)\\s*:",
+        "captures": [
+          { "name": "child", "index": 1, "isList": false },
+          { "name": "parents", "index": 2, "isList": true, "listSeparator": "," }
+        ],
+        "traceConfidence": 0.90,
+        "example": "class AdminUser(User, Serializable):"
+      },
+      {
+        "kind": "abc_abstract",
+        "regex": "class\\s+(?<child>\\w+)\\s*\\(\\s*(?<parents>[^)]*\\bABC\\b[^)]*|[^)]*metaclass\\s*=\\s*ABCMeta[^)]*)\\s*\\)\\s*:",
+        "captures": [
+          { "name": "child", "index": 1, "isList": false },
+          { "name": "parents", "index": 2, "isList": true, "listSeparator": "," }
+        ],
+        "traceConfidence": 0.90,
+        "example": "class Repository(ABC):"
+      },
+      {
+        "kind": "protocol_structural",
+        "regex": "class\\s+(?<child>\\w+)\\s*\\(\\s*(?<parents>[^)]*\\bProtocol\\b[^)]*)\\s*\\)\\s*:",
+        "captures": [
+          { "name": "child", "index": 1, "isList": false },
+          { "name": "parents", "index": 2, "isList": true, "listSeparator": "," }
+        ],
+        "traceConfidence": 0.80,
+        "example": "class Serializable(Protocol):"
+      }
+    ],
+    "compositionPatterns": [
+      {
+        "kind": "union",
+        "regex": "Union\\[(?<types>[^\\]]+)\\]",
+        "captures": [
+          { "name": "types", "index": 1, "isList": true, "listSeparator": "," }
+        ],
+        "decomposable": true,
+        "traceConfidence": 0.70,
+        "example": "Result = Union[Success, Failure, None]"
+      },
+      {
+        "kind": "union_pipe",
+        "regex": "(?<typeA>\\w+(?:\\[.*?\\])?)\\s*\\|\\s*(?<typeB>\\w+(?:\\[.*?\\])?)",
+        "captures": [
+          { "name": "typeA", "index": 1, "isList": false },
+          { "name": "typeB", "index": 2, "isList": false }
+        ],
+        "decomposable": true,
+        "traceConfidence": 0.70,
+        "example": "def process(value: int | str | None) -> bool:"
+      },
+      {
+        "kind": "optional",
+        "regex": "Optional\\[(?<type>[^\\]]+)\\]",
+        "captures": [
+          { "name": "type", "index": 1, "isList": false }
+        ],
+        "decomposable": true,
+        "traceConfidence": 0.75,
+        "example": "name: Optional[str] = None"
+      },
+      {
+        "kind": "generic_instantiation",
+        "regex": "(?<generic>\\w+)\\[(?<typeArgs>[^\\]]+)\\]",
+        "captures": [
+          { "name": "generic", "index": 1, "isList": false },
+          { "name": "typeArgs", "index": 2, "isList": true, "listSeparator": "," }
+        ],
+        "decomposable": true,
+        "traceConfidence": 0.60,
+        "example": "users: List[User] = []"
+      },
+      {
+        "kind": "callable",
+        "regex": "Callable\\[\\[(?<params>[^\\]]*)\\]\\s*,\\s*(?<returnType>[^\\]]+)\\]",
+        "captures": [
+          { "name": "params", "index": 1, "isList": true, "listSeparator": "," },
+          { "name": "returnType", "index": 2, "isList": false }
+        ],
+        "decomposable": true,
+        "traceConfidence": 0.50,
+        "example": "handler: Callable[[Request], Response]"
+      }
+    ],
+    "confidenceTiers": {
+      "direct_import": 0.95,
+      "re_export_one_hop": 0.85,
+      "re_export_multi_hop": 0.70,
+      "inheritance_direct": 0.90,
+      "inheritance_chain": 0.75,
+      "generic_resolution": 0.50,
+      "inferred_type": 0.30,
+      "dynamic_type": 0.15,
+      "protocol_structural": 0.65,
+      "dataclass_field": 0.85,
+      "pydantic_model_field": 0.80
+    }
+  },
+
+  "externalDependencies": {
+    "pathIndicators": ["site-packages/", "dist-packages/", "Lib/site-packages/", "lib/python3.*/site-packages/"],
+    "packageManifest": "requirements.txt",
+    "lockFiles": ["requirements.txt", "Pipfile.lock", "poetry.lock", "pdm.lock", "uv.lock"],
+    "typesPackagePattern": "types-*",
+    "typeDeclarationLocations": [
+      {
+        "description": "Inline type annotations (py.typed marker)",
+        "path": "site-packages/{package}/py.typed",
+        "fallback": "site-packages/{package}/__init__.pyi",
+        "entryPointField": "py.typed marker file in package root"
+      },
+      {
+        "description": "Stub packages from typeshed or third-party",
+        "path": "site-packages/{package}-stubs/",
+        "fallback": "site-packages/types-{package}/",
+        "entryPointField": "Package named {package}-stubs or types-{package}"
+      },
+      {
+        "description": "Bundled .pyi stub files",
+        "path": "site-packages/{package}/__init__.pyi",
+        "fallback": "site-packages/{package}/*.pyi",
+        "entryPointField": ".pyi files alongside .py files"
+      }
+    ],
+    "detectionRules": [
+      {
+        "signal": "package_not_installed",
+        "condition": "Import path is not a local module and not in site-packages",
+        "errorCodes": ["PY_MODULE_NOT_FOUND", "PYLINT_E0401"],
+        "suggestedActions": ["Run pip install <package>", "Check virtual environment activation", "Check package name vs import name"],
+        "autoFixable": true,
+        "autoFixCommand": "pip install {package}"
+      },
+      {
+        "signal": "stubs_not_installed",
+        "condition": "Package exists but has no type annotations and no stubs package",
+        "errorCodes": ["MYPY_IMPORT", "PYRIGHT_MISSING_TYPE_STUBS"],
+        "suggestedActions": ["Run pip install types-<package>", "Run mypy --install-types", "Create local .pyi stub"],
+        "autoFixable": true,
+        "autoFixCommand": "pip install types-{package}"
+      },
+      {
+        "signal": "version_mismatch",
+        "condition": "Package installed but API changed",
+        "errorCodes": ["PY_IMPORT_ERROR", "PY_ATTRIBUTE_ERROR", "MYPY_ATTR_DEFINED"],
+        "suggestedActions": ["Check package version", "Pin version in requirements.txt", "Check migration guide"],
+        "autoFixable": false,
+        "autoFixCommand": null
+      },
+      {
+        "signal": "wrong_python_version",
+        "condition": "Package requires a different Python version",
+        "errorCodes": ["PY_MODULE_NOT_FOUND", "PY_SYNTAX_INVALID"],
+        "suggestedActions": ["Check python --version", "Check python_requires", "Use compatible version"],
+        "autoFixable": false,
+        "autoFixCommand": null
+      }
+    ],
+    "commonBreakingPatterns": [
+      {
+        "description": "Major version bump removed or renamed API",
+        "errorCodes": ["PY_IMPORT_ERROR", "PY_ATTRIBUTE_ERROR", "PY_MODULE_NOT_FOUND"],
+        "resolution": "Check the package CHANGELOG or migration guide. Pin to previous major version temporarily."
+      },
+      {
+        "description": "Package name differs from import name (Pillow->PIL, scikit-learn->sklearn, PyYAML->yaml, beautifulsoup4->bs4, opencv-python->cv2)",
+        "errorCodes": ["PY_MODULE_NOT_FOUND"],
+        "resolution": "Look up correct pip package name for the import."
+      },
+      {
+        "description": "Stubs version mismatch with runtime package",
+        "errorCodes": ["MYPY_ATTR_DEFINED", "MYPY_ARG_TYPE", "PYRIGHT_GENERAL_TYPE"],
+        "resolution": "Ensure types-<package> version matches runtime package version."
+      },
+      {
+        "description": "Virtual environment not activated",
+        "errorCodes": ["PY_MODULE_NOT_FOUND", "PYLINT_E0401"],
+        "resolution": "Activate venv: source .venv/bin/activate (Unix) or .venv\\Scripts\\activate (Windows)."
+      }
+    ]
+  },
+
+  "quirks": [
+    {
+      "id": "circular_imports",
+      "name": "Circular Imports",
+      "description": "Module A imports from B, and B imports from A. At import time, one module is partially loaded, causing ImportError or AttributeError. Extremely common in Python projects.",
+      "affectsTracing": true,
+      "affectsResolution": true,
+      "workaround": "1. Use lazy imports inside functions. 2. Use TYPE_CHECKING guard. 3. Move shared types to a third module. 4. Detect cycles during graph build.",
+      "example": "# models.py\nfrom .serializers import UserSerializer\nclass User: ...\n\n# serializers.py\nfrom .models import User\nclass UserSerializer: ...\n\n# FIX:\nfrom __future__ import annotations\nfrom typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    from .models import User",
+      "relatedErrorCodes": ["PY_IMPORT_CIRCULAR", "PY_IMPORT_ERROR", "PY_NAME_ERROR", "PY_ATTRIBUTE_ERROR"]
+    },
+    {
+      "id": "init_py_barrels",
+      "name": "__init__.py Barrel Files",
+      "description": "__init__.py files serve as package markers and commonly re-export symbols from submodules. The true origin of a symbol may be several levels deep. __all__ controls star exports.",
+      "affectsTracing": true,
+      "affectsResolution": true,
+      "workaround": "Follow 'from .submodule import X' chains in __init__.py recursively. Check __all__ for public names.",
+      "example": "# mypackage/__init__.py\nfrom .models import User, UserManager\n__all__ = ['User', 'UserManager']",
+      "relatedErrorCodes": ["PY_IMPORT_ERROR", "PY_MODULE_NOT_FOUND", "PYLINT_E0611"]
+    },
+    {
+      "id": "all_list",
+      "name": "__all__ Export Control",
+      "description": "__all__ controls which names are exported by 'from module import *'. If not defined, all public names (not starting with _) are exported.",
+      "affectsTracing": true,
+      "affectsResolution": false,
+      "workaround": "Check for __all__ when resolving star imports. Only listed names are available.",
+      "example": "__all__ = ['public_func', 'PublicClass']",
+      "relatedErrorCodes": ["PY_IMPORT_ERROR", "PY_NAME_ERROR"]
+    },
+    {
+      "id": "type_checking_guard",
+      "name": "TYPE_CHECKING Guard",
+      "description": "TYPE_CHECKING is False at runtime but True during static type checking. Imports inside the guard are only visible to type checkers. Standard pattern for avoiding circular imports.",
+      "affectsTracing": true,
+      "affectsResolution": true,
+      "workaround": "Track TYPE_CHECKING-guarded imports separately. They exist for type checking but not at runtime. Requires 'from __future__ import annotations' for forward references.",
+      "example": "from __future__ import annotations\nfrom typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    from heavy_module import ExpensiveType",
+      "relatedErrorCodes": ["PY_NAME_ERROR", "PY_IMPORT_CIRCULAR"]
+    },
+    {
+      "id": "dynamic_attributes",
+      "name": "Dynamic Attributes",
+      "description": "Python allows setting attributes dynamically via setattr(), __getattr__, __getattribute__, or __dict__. Static type checkers cannot trace dynamically added attributes.",
+      "affectsTracing": true,
+      "affectsResolution": false,
+      "workaround": "When attr-defined errors occur on classes with __getattr__ or dynamic patterns, lower cross-file probability. Consider type: ignore.",
+      "example": "class DynamicConfig:\n    def __getattr__(self, name):\n        return self._data.get(name)",
+      "relatedErrorCodes": ["PY_ATTRIBUTE_ERROR", "MYPY_ATTR_DEFINED"]
+    },
+    {
+      "id": "monkey_patching",
+      "name": "Monkey Patching",
+      "description": "Python allows modifying classes and modules at runtime. Common in testing (mock.patch) and frameworks. Static analysis cannot detect monkey-patched attributes.",
+      "affectsTracing": true,
+      "affectsResolution": false,
+      "workaround": "Check conftest.py, test fixtures, middleware, or app init for setattr() or mock.patch() calls.",
+      "example": "from unittest.mock import patch\n@patch('mymodule.expensive_call')\ndef test_it(mock_call):\n    mock_call.return_value = 'mocked'",
+      "relatedErrorCodes": ["PY_ATTRIBUTE_ERROR", "MYPY_ATTR_DEFINED"]
+    },
+    {
+      "id": "namespace_packages",
+      "name": "Implicit Namespace Packages (PEP 420)",
+      "description": "Python 3.3+ supports packages without __init__.py. Multiple directories can contribute to the same package.",
+      "affectsTracing": true,
+      "affectsResolution": true,
+      "workaround": "Don't assume a directory without __init__.py is not a package. Check sys.path for namespace package contributions.",
+      "example": "# No __init__.py needed:\n# mypackage/module_a.py\n# mypackage/module_b.py",
+      "relatedErrorCodes": ["PY_MODULE_NOT_FOUND", "PY_IMPORT_ERROR"]
+    },
+    {
+      "id": "relative_import_resolution",
+      "name": "Relative Import Resolution",
+      "description": "Relative imports resolve based on package structure, not filesystem. Running directly (python file.py) breaks relative imports. Must use 'python -m package.module'.",
+      "affectsTracing": true,
+      "affectsResolution": true,
+      "workaround": "Determine current package from __name__, not filesystem. If module is run directly, relative imports fail.",
+      "example": "# Fails: python mypackage/module.py\n# Works: python -m mypackage.module\nfrom . import sibling_module",
+      "relatedErrorCodes": ["PY_IMPORT_ERROR_GENERAL", "PY_MODULE_NOT_FOUND"]
+    },
+    {
+      "id": "conditional_imports",
+      "name": "Conditional and Try/Except Imports",
+      "description": "Python uses try/except around imports for optional dependencies or compatibility. Both branches should be considered as possible sources.",
+      "affectsTracing": true,
+      "affectsResolution": false,
+      "workaround": "Look for try/except ImportError patterns. Both primary and fallback imports should be tracked.",
+      "example": "try:\n    import ujson as json\nexcept ImportError:\n    import json",
+      "relatedErrorCodes": ["PY_MODULE_NOT_FOUND", "PY_IMPORT_ERROR"]
+    },
+    {
+      "id": "auto_generated_code",
+      "name": "Auto-Generated Code",
+      "description": "Many tools generate Python code: protobuf (pb2.py), Django migrations, SQLAlchemy models. These files may not exist until build time.",
+      "affectsTracing": false,
+      "affectsResolution": true,
+      "workaround": "Check for *_pb2.py, migrations/*.py patterns. Suggest running code generation step.",
+      "example": "from myproto import user_pb2  # auto-generated by protoc",
+      "relatedErrorCodes": ["PY_MODULE_NOT_FOUND", "PY_IMPORT_ERROR"]
+    }
+  ],
+
+  "buildTools": [
+    {
+      "name": "python",
+      "detectFiles": ["*.py", "setup.py", "pyproject.toml"],
+      "buildCommand": "python -m py_compile {file} 2>&1",
+      "watchCommand": null,
+      "errorStream": "stderr",
+      "supportsJsonOutput": false,
+      "jsonOutputFlag": null,
+      "commonConfigs": ["pyproject.toml", "setup.cfg", "setup.py"]
+    },
+    {
+      "name": "mypy",
+      "detectFiles": ["mypy.ini", ".mypy.ini", "setup.cfg", "pyproject.toml"],
+      "buildCommand": "mypy . 2>&1",
+      "watchCommand": "dmypy run -- .",
+      "errorStream": "stdout",
+      "supportsJsonOutput": true,
+      "jsonOutputFlag": "--output json",
+      "commonConfigs": ["mypy.ini", ".mypy.ini", "pyproject.toml", "setup.cfg"]
+    },
+    {
+      "name": "pyright",
+      "detectFiles": ["pyrightconfig.json", "pyproject.toml"],
+      "buildCommand": "pyright 2>&1",
+      "watchCommand": "pyright --watch",
+      "errorStream": "stdout",
+      "supportsJsonOutput": true,
+      "jsonOutputFlag": "--outputjson",
+      "commonConfigs": ["pyrightconfig.json", "pyproject.toml"]
+    },
+    {
+      "name": "pylint",
+      "detectFiles": [".pylintrc", "pylintrc", "pyproject.toml", "setup.cfg"],
+      "buildCommand": "pylint **/*.py 2>&1",
+      "watchCommand": null,
+      "errorStream": "stdout",
+      "supportsJsonOutput": true,
+      "jsonOutputFlag": "--output-format json",
+      "commonConfigs": [".pylintrc", "pylintrc", "pyproject.toml"]
+    },
+    {
+      "name": "ruff",
+      "detectFiles": ["ruff.toml", ".ruff.toml", "pyproject.toml"],
+      "buildCommand": "ruff check . 2>&1",
+      "watchCommand": "ruff check --watch .",
+      "errorStream": "stdout",
+      "supportsJsonOutput": true,
+      "jsonOutputFlag": "--output-format json",
+      "commonConfigs": ["ruff.toml", ".ruff.toml", "pyproject.toml"]
+    },
+    {
+      "name": "pytest",
+      "detectFiles": ["pytest.ini", "conftest.py", "pyproject.toml", "setup.cfg", "tox.ini"],
+      "buildCommand": "pytest --tb=short 2>&1",
+      "watchCommand": "pytest-watch",
+      "errorStream": "stdout",
+      "supportsJsonOutput": true,
+      "jsonOutputFlag": "--json-report --json-report-file=-",
+      "commonConfigs": ["pytest.ini", "conftest.py", "pyproject.toml", "setup.cfg"]
+    }
+  ]
+}

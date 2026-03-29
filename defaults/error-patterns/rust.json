@@ -1,0 +1,326 @@
+{
+  "technology": "rust",
+  "version": 1,
+  "patterns": [
+    {
+      "id": "E0382",
+      "match": "error\\[E0382\\]: borrow of moved value: `(\\w+)`",
+      "captures": ["variable"],
+      "rootCause": "The variable `{variable}` was moved to a new owner and can no longer be borrowed or used.",
+      "prescription": "Clone the value before moving it, use a reference instead of transferring ownership, or restructure the code so the value is not used after the move.",
+      "codeBlock": "let value = original.clone();\nuse_value(value);\n// `original` is still valid here"
+    },
+    {
+      "id": "E0499",
+      "match": "error\\[E0499\\]: cannot borrow `(\\w+)` as mutable more than once at a time",
+      "captures": ["variable"],
+      "rootCause": "The variable `{variable}` is being mutably borrowed more than once simultaneously, violating Rust's borrowing rules.",
+      "prescription": "Limit the scope of the first mutable borrow so it ends before the second one begins, or refactor to avoid needing two mutable references at the same time.",
+      "codeBlock": "{\n    let first = &mut data;\n    first.push(1);\n} // first borrow ends here\nlet second = &mut data;"
+    },
+    {
+      "id": "E0502",
+      "match": "error\\[E0502\\]: cannot borrow `(\\w+)` as immutable because it is also borrowed as mutable",
+      "captures": ["variable"],
+      "rootCause": "The variable `{variable}` has an active mutable borrow, preventing any immutable borrows at the same time.",
+      "prescription": "End the mutable borrow before creating the immutable borrow, or restructure to separate the mutable and immutable access into different scopes.",
+      "codeBlock": "let result = {\n    let mutref = &mut data;\n    mutref.modify();\n    mutref.get_result()\n};\nprintln!(\"{}\", data); // immutable borrow is fine now"
+    },
+    {
+      "id": "E0505",
+      "match": "error\\[E0505\\]: cannot move out of `(\\w+)` because it is borrowed",
+      "captures": ["variable"],
+      "rootCause": "The variable `{variable}` cannot be moved because an outstanding borrow still references it.",
+      "prescription": "Ensure all borrows of the variable go out of scope before attempting to move it, or clone the value instead of moving.",
+      "codeBlock": "let reference = &data;\nprintln!(\"{}\", reference);\n// reference is no longer used\ndrop(reference);\nlet moved = data; // now safe to move"
+    },
+    {
+      "id": "E0507",
+      "match": "error\\[E0507\\]: cannot move out of (.*?) which is behind a (shared|mutable) reference",
+      "captures": ["expression", "refKind"],
+      "rootCause": "Attempted to move a value out of {expression} which is behind a {refKind} reference. You cannot take ownership of data behind a reference.",
+      "prescription": "Clone the value instead of moving it, or use a method that works with references (e.g., as_ref(), iter() instead of into_iter()).",
+      "codeBlock": "// Instead of:\n// let val = *some_ref;\n// Use:\nlet val = some_ref.clone();"
+    },
+    {
+      "id": "E0384",
+      "match": "error\\[E0384\\]: cannot assign twice to immutable variable `(\\w+)`",
+      "captures": ["variable"],
+      "rootCause": "The variable `{variable}` is immutable by default and cannot be reassigned after its initial binding.",
+      "prescription": "Declare the variable as mutable using `let mut` if reassignment is intended.",
+      "codeBlock": "let mut {variable} = initial_value;\n{variable} = new_value; // now allowed"
+    },
+    {
+      "id": "E0596",
+      "match": "error\\[E0596\\]: cannot borrow `(\\w+)` as mutable, as it is not declared as mutable",
+      "captures": ["variable"],
+      "rootCause": "The variable `{variable}` needs to be mutable to allow mutable borrowing, but it was declared as immutable.",
+      "prescription": "Add `mut` to the variable declaration to allow mutable borrows.",
+      "codeBlock": "let mut {variable} = value;\nmodify(&mut {variable});"
+    },
+    {
+      "id": "E0308",
+      "match": "error\\[E0308\\]: mismatched types.*expected `([^`]+)`, found `([^`]+)`",
+      "captures": ["expected", "found"],
+      "rootCause": "Type mismatch: the code expects `{expected}` but received `{found}`.",
+      "prescription": "Convert the value to the expected type using .into(), as, or explicit conversion methods. If working with Option/Result, use unwrap, map, or pattern matching.",
+      "codeBlock": null
+    },
+    {
+      "id": "E0277",
+      "match": "error\\[E0277\\]: the trait bound `([^`]+): ([^`]+)` is not satisfied",
+      "captures": ["type", "trait"],
+      "rootCause": "The type `{type}` does not implement the trait `{trait}`, which is required in this context.",
+      "prescription": "Implement the trait for the type using `impl {trait} for {type}`, derive it with `#[derive({trait})]` if supported, or use a type that already implements the trait.",
+      "codeBlock": "#[derive(Debug, Clone, PartialEq)]\nstruct MyType {\n    // fields\n}"
+    },
+    {
+      "id": "E0282",
+      "match": "error\\[E0282\\]: type annotations needed(?: for `([^`]+)`)?",
+      "captures": ["variable"],
+      "rootCause": "The compiler cannot infer the type for `{variable}` and needs an explicit annotation.",
+      "prescription": "Add a type annotation to the variable or use the turbofish syntax on the function/method call.",
+      "codeBlock": "let values: Vec<i32> = vec![];\n// or\nlet values = Vec::<i32>::new();"
+    },
+    {
+      "id": "E0412",
+      "match": "error\\[E0412\\]: cannot find type `(\\w+)` in this scope",
+      "captures": ["typeName"],
+      "rootCause": "The type `{typeName}` is not found in the current scope. It may not be imported, may be misspelled, or may not exist.",
+      "prescription": "Add the appropriate `use` statement to import the type, check for typos, or ensure the type is defined in the referenced crate/module.",
+      "codeBlock": "use crate::module::{typeName};\n// or\nuse some_crate::{typeName};"
+    },
+    {
+      "id": "E0107",
+      "match": "error\\[E0107\\]: (wrong number of|missing) (type|lifetime|const) arguments: expected (\\d+), found (\\d+)",
+      "captures": ["errorKind", "argKind", "expected", "found"],
+      "rootCause": "The generic item has {errorKind} {argKind} arguments: expected {expected} but found {found}.",
+      "prescription": "Adjust the number of generic arguments to match the definition. Check the type's declaration for the correct number of type parameters.",
+      "codeBlock": null
+    },
+    {
+      "id": "E0369",
+      "match": "error\\[E0369\\]: binary operation `([^`]+)` cannot be applied to type `([^`]+)`",
+      "captures": ["operator", "type"],
+      "rootCause": "The operator `{operator}` is not implemented for the type `{type}`.",
+      "prescription": "Implement the corresponding operator trait (e.g., Add, Sub, Mul, PartialEq) for the type, or convert the operands to a type that supports the operator.",
+      "codeBlock": "use std::ops::Add;\n\nimpl Add for MyType {\n    type Output = Self;\n    fn add(self, other: Self) -> Self {\n        // implementation\n    }\n}"
+    },
+    {
+      "id": "E0599",
+      "match": "error\\[E0599\\]: no method named `(\\w+)` found for (type|struct|enum) `([^`]+)`",
+      "captures": ["method", "kind", "type"],
+      "rootCause": "No method named `{method}` exists for {kind} `{type}`.",
+      "prescription": "Check for typos in the method name, ensure the trait providing the method is in scope (use the appropriate `use` statement), or implement the method for the type.",
+      "codeBlock": null
+    },
+    {
+      "id": "E0609",
+      "match": "error\\[E0609\\]: no field `(\\w+)` on type `([^`]+)`",
+      "captures": ["field", "type"],
+      "rootCause": "The type `{type}` does not have a field named `{field}`.",
+      "prescription": "Check the struct definition for the correct field name, fix any typos, or add the field to the struct definition.",
+      "codeBlock": null
+    },
+    {
+      "id": "E0425",
+      "match": "error\\[E0425\\]: cannot find value `(\\w+)` in this scope",
+      "captures": ["name"],
+      "rootCause": "The value `{name}` is not found in the current scope. It may be undefined, misspelled, or not imported.",
+      "prescription": "Define the variable, import it with a `use` statement, or check for typos in the name.",
+      "codeBlock": null
+    },
+    {
+      "id": "E0432",
+      "match": "error\\[E0432\\]: unresolved import `([^`]+)`",
+      "captures": ["importPath"],
+      "rootCause": "The import path `{importPath}` could not be resolved. The module or item may not exist or may be private.",
+      "prescription": "Verify the import path is correct, ensure the crate is listed in Cargo.toml dependencies, and check that the item is publicly exported.",
+      "codeBlock": "// In Cargo.toml:\n[dependencies]\nsome_crate = \"1.0\"\n\n// In your code:\nuse some_crate::module::Item;"
+    },
+    {
+      "id": "E0433",
+      "match": "error\\[E0433\\]: failed to resolve: use of undeclared (crate or module|type) `(\\w+)`",
+      "captures": ["kind", "name"],
+      "rootCause": "The {kind} `{name}` is undeclared. It may need to be imported or added as a dependency.",
+      "prescription": "Add the crate to Cargo.toml if it is an external dependency, or add a `mod` declaration if it is a local module. Verify the name is spelled correctly.",
+      "codeBlock": null
+    },
+    {
+      "id": "E0255",
+      "match": "error\\[E0255\\]: the name `(\\w+)` is defined multiple times",
+      "captures": ["name"],
+      "rootCause": "The name `{name}` has duplicate definitions in the same scope.",
+      "prescription": "Rename one of the conflicting items or use `as` to create an alias for one of the imports.",
+      "codeBlock": "use crate::module1::Thing as Thing1;\nuse crate::module2::Thing as Thing2;"
+    },
+    {
+      "id": "E0106",
+      "match": "error\\[E0106\\]: missing lifetime specifier",
+      "captures": [],
+      "rootCause": "A reference is missing a lifetime annotation. The compiler cannot determine how long the reference should be valid.",
+      "prescription": "Add an explicit lifetime parameter to the function signature or struct definition. If the function has one input reference, use a single lifetime. For multiple references, specify the relationship.",
+      "codeBlock": "fn longest<'a>(x: &'a str, y: &'a str) -> &'a str {\n    if x.len() > y.len() { x } else { y }\n}"
+    },
+    {
+      "id": "E0495",
+      "match": "error\\[E0495\\]: cannot infer an appropriate lifetime",
+      "captures": [],
+      "rootCause": "The compiler cannot determine the correct lifetime for a reference based on the function's signature and usage.",
+      "prescription": "Add explicit lifetime annotations to clarify the relationship between input and output references. Consider whether the function needs to return a reference or could return an owned value instead.",
+      "codeBlock": null
+    },
+    {
+      "id": "E0621",
+      "match": "error\\[E0621\\]: explicit lifetime required in the type of `(\\w+)`",
+      "captures": ["parameter"],
+      "rootCause": "The parameter `{parameter}` needs an explicit lifetime annotation to satisfy the compiler's borrow checker.",
+      "prescription": "Add a lifetime parameter to the function and annotate the parameter's type with it.",
+      "codeBlock": "fn process<'a>(input: &'a str) -> &'a str {\n    // ...\n}"
+    },
+    {
+      "id": "E0759",
+      "match": "error\\[E0759\\]: `(\\w+)` has (lifetime `[^`]+`|an anonymous lifetime) but it needs to satisfy a `'(\\w+)` lifetime requirement",
+      "captures": ["parameter", "currentLifetime", "requiredLifetime"],
+      "rootCause": "The parameter `{parameter}` has {currentLifetime} but the context requires it to satisfy a `'{requiredLifetime}` lifetime constraint.",
+      "prescription": "Adjust the lifetime annotations so the parameter's lifetime matches the required constraint, or use a trait object with the correct lifetime bound.",
+      "codeBlock": null
+    },
+    {
+      "id": "E0046",
+      "match": "error\\[E0046\\]: not all trait items implemented, missing: `([^`]+)`",
+      "captures": ["missingItems"],
+      "rootCause": "The trait implementation is incomplete. Missing items: `{missingItems}`.",
+      "prescription": "Implement all required methods, types, and constants defined by the trait.",
+      "codeBlock": "impl MyTrait for MyType {\n    fn required_method(&self) {\n        // implementation\n    }\n}"
+    },
+    {
+      "id": "E0053",
+      "match": "error\\[E0053\\]: method `(\\w+)` has an incompatible (type|signature) for trait",
+      "captures": ["method", "mismatchKind"],
+      "rootCause": "The method `{method}` has an incompatible {mismatchKind} compared to the trait definition.",
+      "prescription": "Ensure the method signature exactly matches the trait's definition, including parameter types, return type, and lifetimes.",
+      "codeBlock": null
+    },
+    {
+      "id": "E0061",
+      "match": "error\\[E0061\\]: this function takes (\\d+) arguments? but (\\d+) (?:arguments? )?(?:was|were) supplied",
+      "captures": ["expected", "supplied"],
+      "rootCause": "Function argument count mismatch: expected {expected} but {supplied} were supplied.",
+      "prescription": "Check the function signature and provide the correct number of arguments. Verify you are calling the right function.",
+      "codeBlock": null
+    },
+    {
+      "id": "E0063",
+      "match": "error\\[E0063\\]: missing field `(\\w+)` in initializer of `([^`]+)`",
+      "captures": ["field", "structName"],
+      "rootCause": "The struct `{structName}` initializer is missing the required field `{field}`.",
+      "prescription": "Add the missing field to the struct initializer, or use `..Default::default()` if the struct implements Default to fill remaining fields.",
+      "codeBlock": "let instance = MyStruct {\n    field1: value1,\n    field2: value2,\n    ..Default::default()\n};"
+    },
+    {
+      "id": "E0560",
+      "match": "error\\[E0560\\]: struct `([^`]+)` has no field named `(\\w+)`",
+      "captures": ["structName", "field"],
+      "rootCause": "The struct `{structName}` does not have a field named `{field}`.",
+      "prescription": "Check the struct definition for the correct field name, fix any typos, or add the field to the struct definition if needed.",
+      "codeBlock": null
+    },
+    {
+      "id": "E0573",
+      "match": "error\\[E0573\\]: expected type, found variant `([^`]+)`",
+      "captures": ["variant"],
+      "rootCause": "A type was expected but the enum variant `{variant}` was provided instead.",
+      "prescription": "Use the full enum type (e.g., `Option<T>`) instead of a variant (e.g., `Some`). Variants are not types on their own.",
+      "codeBlock": "// Wrong: fn process(input: Some) { }\n// Right:\nfn process(input: Option<String>) {\n    if let Some(val) = input { /* ... */ }\n}"
+    },
+    {
+      "id": "E0271",
+      "match": "error\\[E0271\\]: type mismatch resolving `<([^>]+) as ([^>]+)>::(\\w+) == ([^`]+)`",
+      "captures": ["type", "trait", "assocType", "expected"],
+      "rootCause": "The associated type `{assocType}` of trait `{trait}` for type `{type}` does not match the expected type `{expected}`.",
+      "prescription": "Ensure the associated type in your trait implementation matches the expected type, or adjust the generic constraints.",
+      "codeBlock": null
+    },
+    {
+      "id": "E0133",
+      "match": "error\\[E0133\\]: call to unsafe function `?([^`]*)`? (is unsafe and )?requires unsafe (function or )?block",
+      "captures": ["function"],
+      "rootCause": "An unsafe function is being called outside an `unsafe` block.",
+      "prescription": "Wrap the unsafe call in an `unsafe { }` block. Add a SAFETY comment documenting why the unsafe call is sound.",
+      "codeBlock": "// SAFETY: the pointer is guaranteed to be valid and aligned\nunsafe {\n    dangerous_function();\n}"
+    },
+    {
+      "id": "E0015",
+      "match": "error\\[E0015\\]: calls in (constants|statics|const fn) are limited to (constant|const) functions",
+      "captures": ["context", "limitation"],
+      "rootCause": "Only const functions can be called in {context}. Non-const function calls are not allowed at compile time.",
+      "prescription": "Use a `const fn` version of the function, compute the value at runtime using `lazy_static!` or `once_cell::sync::Lazy`, or restructure to avoid the non-const call.",
+      "codeBlock": "use once_cell::sync::Lazy;\n\nstatic VALUE: Lazy<MyType> = Lazy::new(|| {\n    compute_value()\n});"
+    },
+    {
+      "id": "E0658",
+      "match": "error\\[E0658\\]: (use of )?(?:unstable library feature|the feature) `([^`]+)` is (unstable|not stable)",
+      "captures": ["prefix", "feature", "status"],
+      "rootCause": "The feature `{feature}` is unstable and requires a nightly compiler or a feature gate.",
+      "prescription": "Switch to the nightly toolchain and add `#![feature({feature})]` to your crate root, or find a stable alternative approach.",
+      "codeBlock": "#![feature(feature_name)]\n// Requires: rustup default nightly"
+    },
+    {
+      "id": "RUST_PANIC",
+      "match": "thread '(\\w+)' panicked at '([^']+)', ([\\w/\\\\.]+):(\\d+):(\\d+)",
+      "captures": ["thread", "message", "file", "line", "column"],
+      "rootCause": "Thread '{thread}' panicked at {file}:{line} with message: {message}",
+      "prescription": "Examine the panic message and stack trace. Replace panic-inducing operations (unwrap, expect, index) with proper error handling using Result and Option combinators.",
+      "codeBlock": "// Instead of:\n// value.unwrap()\n// Use:\nmatch value {\n    Some(v) => v,\n    None => return Err(\"value was None\".into()),\n}"
+    },
+    {
+      "id": "RUST_UNWRAP",
+      "match": "called `(Option::unwrap|Result::unwrap)\\(\\)` on a(?:n)? `(None|Err)` value",
+      "captures": ["method", "variant"],
+      "rootCause": "Called unwrap() on a {variant} value, causing a panic at runtime.",
+      "prescription": "Replace unwrap() with proper error handling: use match, if let, unwrap_or, unwrap_or_else, or the ? operator for Result types.",
+      "codeBlock": "// Use the ? operator for propagation:\nlet value = some_option.ok_or(\"missing value\")?;\n\n// Or provide a default:\nlet value = some_option.unwrap_or(default_value);"
+    },
+    {
+      "id": "RUST_OVERFLOW",
+      "match": "thread '\\w+' panicked at 'attempt to (add|subtract|multiply|divide|shift left|shift right|negate) with overflow'",
+      "captures": ["operation"],
+      "rootCause": "An arithmetic {operation} overflowed at runtime. Rust panics on overflow in debug mode.",
+      "prescription": "Use checked, wrapping, or saturating arithmetic methods instead of standard operators.",
+      "codeBlock": "// Checked (returns None on overflow):\nlet result = a.checked_add(b);\n\n// Saturating (clamps to max/min):\nlet result = a.saturating_add(b);\n\n// Wrapping (wraps around):\nlet result = a.wrapping_add(b);"
+    },
+    {
+      "id": "RUST_INDEX",
+      "match": "index out of bounds: the len is (\\d+) but the index is (\\d+)",
+      "captures": ["length", "index"],
+      "rootCause": "Attempted to access index {index} but the collection only has {length} elements.",
+      "prescription": "Use .get() for safe access that returns an Option, or validate the index before accessing.",
+      "codeBlock": "// Safe access:\nif let Some(value) = collection.get(index) {\n    // use value\n}\n\n// Or with a default:\nlet value = collection.get(index).unwrap_or(&default);"
+    },
+    {
+      "id": "RUST_STACK",
+      "match": "thread '(\\w+)' has overflowed its stack",
+      "captures": ["thread"],
+      "rootCause": "Thread '{thread}' has overflowed its stack, likely due to unbounded recursion or very large stack allocations.",
+      "prescription": "Add or fix the base case in recursive functions, convert recursion to iteration, or use Box to move large data to the heap. Increase the stack size with `std::thread::Builder::new().stack_size()` if needed.",
+      "codeBlock": "// Convert recursion to iteration:\nfn factorial(n: u64) -> u64 {\n    (1..=n).product()\n}\n\n// Or increase stack size:\nstd::thread::Builder::new()\n    .stack_size(8 * 1024 * 1024)\n    .spawn(|| { /* work */ })\n    .unwrap();"
+    },
+    {
+      "id": "CARGO_NOT_FOUND",
+      "match": "error: no matching package named `([^`]+)` found",
+      "captures": ["package"],
+      "rootCause": "The package `{package}` could not be found in the crate registry.",
+      "prescription": "Verify the crate name is spelled correctly on crates.io. Check your Cargo.toml for typos in the dependency name. If using a private registry, ensure the registry is configured.",
+      "codeBlock": "# Check the correct name:\ncargo search {package}\n\n# Or specify a git dependency:\n[dependencies]\npackage = { git = \"https://github.com/user/repo\" }"
+    },
+    {
+      "id": "CARGO_FEATURE",
+      "match": "error: feature `(\\w+)` not found in package `([^`]+)`",
+      "captures": ["feature", "package"],
+      "rootCause": "The feature `{feature}` does not exist in the package `{package}`.",
+      "prescription": "Check the available features in the crate's Cargo.toml or documentation. Remove the invalid feature flag or use the correct feature name.",
+      "codeBlock": "# List available features:\ncargo doc --open -p {package}\n\n# In Cargo.toml:\n[dependencies]\npackage = { version = \"1.0\", features = [\"correct-feature\"] }"
+    }
+  ]
+}

@@ -1,0 +1,326 @@
+{
+  "technology": "go",
+  "version": 1,
+  "patterns": [
+    {
+      "id": "GO_UNDEFINED",
+      "match": "undefined:\\s+(\\w+)",
+      "captures": ["identifier"],
+      "rootCause": "The identifier '{identifier}' is referenced but not declared in the current scope or any imported package.",
+      "prescription": "Declare '{identifier}' before use, import the package that defines it, or check for typos in the name.",
+      "codeBlock": null
+    },
+    {
+      "id": "GO_UNUSED_IMPORT",
+      "match": "\"([\\w./]+)\"\\s+imported\\s+and\\s+not\\s+used",
+      "captures": ["packagePath"],
+      "rootCause": "The package '{packagePath}' is imported but no exported identifiers from it are used in the file.",
+      "prescription": "Remove the unused import or use an identifier from '{packagePath}'. Use the blank identifier _ to keep it for side effects: import _ \"{packagePath}\".",
+      "codeBlock": "import _ \"{packagePath}\"  // side-effect only import"
+    },
+    {
+      "id": "GO_UNUSED_VAR",
+      "match": "(\\w+)\\s+declared\\s+(?:and|but)\\s+not\\s+used",
+      "captures": ["varName"],
+      "rootCause": "The variable '{varName}' is declared but never read in the current scope.",
+      "prescription": "Use the variable '{varName}' or replace it with the blank identifier _ if the value is intentionally discarded.",
+      "codeBlock": "_ = {varName}  // discard intentionally"
+    },
+    {
+      "id": "GO_TYPE_MISMATCH",
+      "match": "cannot\\s+use\\s+(.+?)\\s+\\((?:untyped\\s+)?(?:value\\s+of\\s+type|type)\\s+([\\w.*\\[\\]]+)\\)\\s+as\\s+(?:type\\s+)?([\\w.*\\[\\]]+)",
+      "captures": ["expr", "actualType", "expectedType"],
+      "rootCause": "Type mismatch: expression '{expr}' has type '{actualType}' but '{expectedType}' is required.",
+      "prescription": "Convert the value explicitly: {expectedType}({expr}), or change the target type. If involving interfaces, ensure '{actualType}' implements all methods of '{expectedType}'.",
+      "codeBlock": null
+    },
+    {
+      "id": "GO_NOT_ENOUGH_ARGS",
+      "match": "not\\s+enough\\s+arguments\\s+in\\s+call\\s+to\\s+(\\w+)",
+      "captures": ["funcName"],
+      "rootCause": "The function call to '{funcName}' is missing one or more required arguments.",
+      "prescription": "Check the signature of '{funcName}' and provide all required arguments in the correct order.",
+      "codeBlock": null
+    },
+    {
+      "id": "GO_TOO_MANY_ARGS",
+      "match": "too\\s+many\\s+arguments\\s+in\\s+call\\s+to\\s+(\\w+)",
+      "captures": ["funcName"],
+      "rootCause": "The function call to '{funcName}' has more arguments than its signature accepts.",
+      "prescription": "Check the signature of '{funcName}' and remove the extra arguments. Variadic functions use '...' syntax.",
+      "codeBlock": null
+    },
+    {
+      "id": "GO_CANNOT_ASSIGN",
+      "match": "cannot\\s+assign\\s+to\\s+(.+)",
+      "captures": ["target"],
+      "rootCause": "Cannot assign to '{target}'. It may be a constant, a map element accessed via a value receiver, or an unaddressable value.",
+      "prescription": "Ensure the target is an assignable variable. For struct fields in maps, use a pointer or extract-modify-reassign pattern. For constants, use a variable instead.",
+      "codeBlock": null
+    },
+    {
+      "id": "GO_MULTI_VALUE",
+      "match": "multiple-value\\s+(\\w+(?:\\.\\w+)?)\\(\\)\\s+in\\s+single-value\\s+context",
+      "captures": ["funcName"],
+      "rootCause": "The function '{funcName}' returns multiple values but only one is being captured.",
+      "prescription": "Capture all return values: val, err := {funcName}(). Use _ to discard unwanted values: val, _ := {funcName}().",
+      "codeBlock": "val, err := {funcName}()\nif err != nil {\n    return err\n}"
+    },
+    {
+      "id": "GO_INTERFACE_MISSING",
+      "match": "(?:cannot\\s+use.*as.*value.*)?missing\\s+method\\s+(\\w+)",
+      "captures": ["methodName"],
+      "rootCause": "A type does not implement an interface because it is missing the method '{methodName}'.",
+      "prescription": "Implement the '{methodName}' method on the type with the correct signature matching the interface. Check for pointer vs value receiver mismatch.",
+      "codeBlock": null
+    },
+    {
+      "id": "GO_CANNOT_CONVERT",
+      "match": "cannot\\s+convert\\s+(.+?)\\s+\\((?:type|value\\s+of\\s+type)\\s+([\\w.*]+)\\)\\s+to\\s+(?:type\\s+)?([\\w.*]+)",
+      "captures": ["expr", "fromType", "toType"],
+      "rootCause": "Cannot convert '{expr}' from type '{fromType}' to type '{toType}'. The types are not compatible for direct conversion.",
+      "prescription": "Use an intermediate conversion or a different approach. For numeric types, convert through a common type. For strings and bytes, use []byte(s) or string(b).",
+      "codeBlock": null
+    },
+    {
+      "id": "GO_CANNOT_RANGE",
+      "match": "cannot\\s+range\\s+over\\s+(\\w+)\\s+\\((?:variable\\s+of\\s+)?type\\s+([\\w.*]+)\\)",
+      "captures": ["varName", "varType"],
+      "rootCause": "Cannot range over '{varName}' of type '{varType}'. Only arrays, slices, strings, maps, channels, and integer types are rangeable.",
+      "prescription": "Ensure '{varName}' is a rangeable type. If it is a pointer to a slice, dereference it first: *{varName}. If it is a custom type, implement an iterator method.",
+      "codeBlock": null
+    },
+    {
+      "id": "GO_REDECLARED",
+      "match": "(\\w+)\\s+redeclared\\s+in\\s+this\\s+block",
+      "captures": ["identifier"],
+      "rootCause": "The identifier '{identifier}' is declared more than once in the same scope.",
+      "prescription": "Rename one of the declarations or use = instead of := if you intend to reassign the existing variable.",
+      "codeBlock": null
+    },
+    {
+      "id": "GO_NOT_EXPORTED",
+      "match": "cannot\\s+refer\\s+to\\s+unexported\\s+(?:name|field|method)\\s+([\\w.]+)",
+      "captures": ["name"],
+      "rootCause": "'{name}' is unexported (starts with a lowercase letter) and cannot be accessed from outside its package.",
+      "prescription": "If you control the package, capitalize the first letter to export it. Otherwise, use an exported function or method that provides access to the unexported value.",
+      "codeBlock": null
+    },
+    {
+      "id": "GO_INIT_CYCLE",
+      "match": "initialization\\s+cycle(?:\\s+for\\s+(\\w+))?",
+      "captures": ["identifier"],
+      "rootCause": "A circular dependency was detected during package initialization. Variables or init functions depend on each other cyclically.",
+      "prescription": "Break the circular dependency by refactoring the initialization order, using lazy initialization, or moving shared state to a separate package.",
+      "codeBlock": null
+    },
+    {
+      "id": "GO_INVALID_OPERATION",
+      "match": "invalid\\s+operation:\\s+(.+?)\\s+\\((?:operator\\s+(.+?)\\s+not\\s+defined|mismatched\\s+types\\s+(\\w+)\\s+and\\s+(\\w+))\\)",
+      "captures": ["expr", "operator", "typeA", "typeB"],
+      "rootCause": "Invalid operation on '{expr}'. The operator is not defined for the given type(s).",
+      "prescription": "Ensure both operands are of compatible types. Convert one operand to match the other. For custom types, implement the necessary interface or use a comparison function.",
+      "codeBlock": null
+    },
+    {
+      "id": "GO_MISSING_RETURN",
+      "match": "missing\\s+return\\s+at\\s+end\\s+of\\s+function",
+      "captures": [],
+      "rootCause": "A function with a declared return type does not have a return statement on all code paths.",
+      "prescription": "Add a return statement at the end of the function or ensure all conditional branches return a value.",
+      "codeBlock": null
+    },
+    {
+      "id": "GO_NO_NEW_VARS",
+      "match": "no\\s+new\\s+variables\\s+on\\s+left\\s+side\\s+of\\s+:=",
+      "captures": [],
+      "rootCause": "The short variable declaration := requires at least one new variable on the left side, but all variables were already declared.",
+      "prescription": "Use = instead of := for reassignment, or introduce a new variable name on the left side.",
+      "codeBlock": null
+    },
+    {
+      "id": "GO_MIXED_ASSIGNMENT",
+      "match": "mixed\\s+named\\s+and\\s+unnamed\\s+(?:parameters|return\\s+values)",
+      "captures": [],
+      "rootCause": "Function signature mixes named and unnamed parameters or return values, which is not allowed in Go.",
+      "prescription": "Either name all parameters/return values or leave them all unnamed. Be consistent within each group.",
+      "codeBlock": null
+    },
+    {
+      "id": "GO_LABEL_NOT_DEFINED",
+      "match": "label\\s+(\\w+)\\s+(?:not\\s+defined|defined\\s+and\\s+not\\s+used)",
+      "captures": ["labelName"],
+      "rootCause": "The label '{labelName}' is either referenced but not defined, or defined but never used.",
+      "prescription": "Define the label '{labelName}:' before its use in a goto, break, or continue statement. If the label is unused, remove it.",
+      "codeBlock": null
+    },
+    {
+      "id": "GO_BREAK_NOT_IN_LOOP",
+      "match": "break\\s+is\\s+not\\s+in\\s+a\\s+loop(?:\\s+or\\s+switch)?",
+      "captures": [],
+      "rootCause": "A 'break' statement was used outside of a for loop, switch, or select statement.",
+      "prescription": "Move the break inside a for, switch, or select block. Use 'return' to exit a function instead.",
+      "codeBlock": null
+    },
+    {
+      "id": "GO_NIL_POINTER",
+      "match": "runtime\\s+error:\\s+invalid\\s+memory\\s+address\\s+or\\s+nil\\s+pointer\\s+dereference",
+      "captures": [],
+      "rootCause": "A nil pointer was dereferenced at runtime. A variable that should hold a valid reference is nil.",
+      "prescription": "Add nil checks before dereferencing pointers. Initialize structs and maps before use. Check function return values for nil before accessing fields or methods.",
+      "codeBlock": "if ptr != nil {\n    value := ptr.Field\n}"
+    },
+    {
+      "id": "GO_INDEX_OUT_OF_RANGE",
+      "match": "runtime\\s+error:\\s+index\\s+out\\s+of\\s+range\\s+\\[(\\d+)\\]\\s+with\\s+length\\s+(\\d+)",
+      "captures": ["index", "length"],
+      "rootCause": "Attempted to access index {index} in a slice/array of length {length}.",
+      "prescription": "Check the length before accessing: if {index} < len(slice). Use bounds checking or iterate with range instead of manual indexing.",
+      "codeBlock": "if idx < len(slice) {\n    value := slice[idx]\n}"
+    },
+    {
+      "id": "GO_SLICE_BOUNDS",
+      "match": "runtime\\s+error:\\s+slice\\s+bounds\\s+out\\s+of\\s+range\\s+\\[(\\d+):(\\d+)\\](?:\\s+with\\s+(?:capacity|length)\\s+(\\d+))?",
+      "captures": ["low", "high", "cap"],
+      "rootCause": "Slice bounds [{low}:{high}] exceed the slice's capacity or length.",
+      "prescription": "Verify both bounds are within range: 0 <= low <= high <= len(slice). Add bounds checking before slicing operations.",
+      "codeBlock": null
+    },
+    {
+      "id": "GO_MAP_ASSIGNMENT_NIL",
+      "match": "assignment\\s+to\\s+entry\\s+in\\s+nil\\s+map",
+      "captures": [],
+      "rootCause": "Attempted to assign a value to a key in an uninitialized (nil) map.",
+      "prescription": "Initialize the map with make() before assigning values.",
+      "codeBlock": "m := make(map[string]int)\nm[\"key\"] = value"
+    },
+    {
+      "id": "GO_DEADLOCK",
+      "match": "fatal\\s+error:\\s+all\\s+goroutines\\s+are\\s+asleep\\s+-\\s+deadlock!",
+      "captures": [],
+      "rootCause": "All goroutines are blocked waiting on channels or locks, creating a deadlock with no goroutine able to make progress.",
+      "prescription": "Review channel operations: ensure sends have corresponding receives. Use buffered channels where appropriate. Add a default case in select statements. Use sync.WaitGroup correctly.",
+      "codeBlock": "// Use buffered channel to prevent blocking\nch := make(chan int, 1)\nch <- value  // won't block if buffer has space"
+    },
+    {
+      "id": "GO_CONCURRENT_MAP",
+      "match": "fatal\\s+error:\\s+concurrent\\s+map\\s+(?:read\\s+and\\s+map\\s+write|writes)",
+      "captures": [],
+      "rootCause": "Multiple goroutines are reading from and writing to the same map concurrently without synchronization.",
+      "prescription": "Protect the map with a sync.RWMutex, or use sync.Map for concurrent access patterns.",
+      "codeBlock": "var mu sync.RWMutex\nvar m = make(map[string]int)\n\n// Write\nmu.Lock()\nm[\"key\"] = value\nmu.Unlock()\n\n// Read\nmu.RLock()\nv := m[\"key\"]\nmu.RUnlock()"
+    },
+    {
+      "id": "GO_STACK_OVERFLOW",
+      "match": "runtime:\\s+goroutine\\s+stack\\s+exceeds\\s+(\\d+)-byte\\s+limit",
+      "captures": ["limit"],
+      "rootCause": "A goroutine's stack exceeded the {limit}-byte limit, typically caused by infinite recursion.",
+      "prescription": "Check for infinite recursion (missing base case). Convert deep recursion to iteration. If legitimate deep stacks are needed, this is a sign of a design issue.",
+      "codeBlock": null
+    },
+    {
+      "id": "GO_CLOSED_CHANNEL",
+      "match": "(?:panic:\\s+)?(?:runtime\\s+error:\\s+)?send\\s+on\\s+closed\\s+channel",
+      "captures": [],
+      "rootCause": "Attempted to send a value on a channel that has already been closed.",
+      "prescription": "Only close a channel from the sender side, and only once. Use a sync.Once or context cancellation to coordinate channel closure. Check if the channel is closed before sending.",
+      "codeBlock": "// Use context for safe cancellation\nctx, cancel := context.WithCancel(context.Background())\ndefer cancel()\n\nselect {\ncase ch <- value:\ncase <-ctx.Done():\n    return\n}"
+    },
+    {
+      "id": "GO_DIVISION_BY_ZERO",
+      "match": "runtime\\s+error:\\s+integer\\s+divide\\s+by\\s+zero",
+      "captures": [],
+      "rootCause": "An integer division or modulo operation was attempted with a zero divisor.",
+      "prescription": "Add a zero check before performing division. Handle the zero case explicitly.",
+      "codeBlock": "if divisor != 0 {\n    result := dividend / divisor\n}"
+    },
+    {
+      "id": "GO_TYPE_ASSERTION",
+      "match": "interface\\s+conversion:\\s+interface\\s+\\{\\}\\s+is\\s+(\\w+),\\s+not\\s+(\\w+)",
+      "captures": ["actualType", "expectedType"],
+      "rootCause": "Type assertion failed: the interface holds a value of type '{actualType}', not '{expectedType}'.",
+      "prescription": "Use the two-value form of type assertion to safely check: val, ok := i.({expectedType}). Use a type switch for multiple possible types.",
+      "codeBlock": "val, ok := i.({expectedType})\nif !ok {\n    // handle type mismatch\n}"
+    },
+    {
+      "id": "GO_MOD_NOT_FOUND",
+      "match": "cannot\\s+find\\s+module\\s+providing\\s+package\\s+([\\w./]+)",
+      "captures": ["packagePath"],
+      "rootCause": "No module provides the package '{packagePath}'. It may not be downloaded or the module path is incorrect.",
+      "prescription": "Run 'go get {packagePath}' to download the module, or 'go mod tidy' to resolve all dependencies. Verify the import path is correct.",
+      "codeBlock": "go get {packagePath}\ngo mod tidy"
+    },
+    {
+      "id": "GO_MOD_REQUIRE",
+      "match": "go\\.mod\\s+(?:file\\s+not\\s+found|has\\s+missing\\s+require\\s+directive\\s+for\\s+([\\w./]+))",
+      "captures": ["modulePath"],
+      "rootCause": "The go.mod file is missing or lacks a required dependency directive.",
+      "prescription": "Run 'go mod init <module-name>' if go.mod is missing. Run 'go mod tidy' to add missing require directives automatically.",
+      "codeBlock": "go mod init mymodule\ngo mod tidy"
+    },
+    {
+      "id": "GO_MOD_REPLACE",
+      "match": "go\\.mod:\\s+replace\\s+directive\\s+(?:for\\s+([\\w./]+)\\s+)?(.+)",
+      "captures": ["modulePath", "detail"],
+      "rootCause": "A replace directive in go.mod is misconfigured for module '{modulePath}': {detail}.",
+      "prescription": "Review the replace directive in go.mod. Ensure the replacement path exists and is a valid module. Remove replace directives before publishing modules.",
+      "codeBlock": "// go.mod replace directive format:\nreplace example.com/old => example.com/new v1.0.0\nreplace example.com/pkg => ../local/pkg"
+    },
+    {
+      "id": "GO_MOD_VERSION",
+      "match": "require\\s+([\\w./]+):\\s+version\\s+\"([^\"]+)\"\\s+invalid|go:\\s+([\\w./]+)@([\\w.]+):\\s+(.+)",
+      "captures": ["modulePath", "version", "modulePath2", "version2", "detail"],
+      "rootCause": "Module version mismatch or invalid version specification for a dependency.",
+      "prescription": "Check the required version exists. Run 'go list -m -versions {modulePath}' to see available versions. Update go.mod with a valid version and run 'go mod tidy'.",
+      "codeBlock": "go list -m -versions {modulePath}\ngo get {modulePath}@latest"
+    },
+    {
+      "id": "GO_MOD_TIDY",
+      "match": "go\\.sum\\s+is\\s+out\\s+of\\s+sync|missing\\s+go\\.sum\\s+entry",
+      "captures": [],
+      "rootCause": "The go.sum file is missing entries or out of sync with go.mod.",
+      "prescription": "Run 'go mod tidy' to synchronize go.sum with the current dependencies in go.mod.",
+      "codeBlock": "go mod tidy"
+    },
+    {
+      "id": "GO_BUILD_CONSTRAINT",
+      "match": "build\\s+constraints\\s+exclude\\s+all\\s+Go\\s+files\\s+in\\s+([\\w./]+)",
+      "captures": ["packagePath"],
+      "rootCause": "All Go files in '{packagePath}' are excluded by build constraints (build tags or OS/arch suffixes).",
+      "prescription": "Check //go:build or // +build directives in the source files. Ensure the build tags match your target: GOOS, GOARCH, or custom tags passed via -tags flag.",
+      "codeBlock": "go build -tags \"tagname\" ./..."
+    },
+    {
+      "id": "GO_TEST_FAIL",
+      "match": "---\\s+FAIL:\\s+(\\w+)(?:/(\\S+))?\\s+\\(([\\d.]+)s\\)",
+      "captures": ["testName", "subTest", "duration"],
+      "rootCause": "Test '{testName}' failed after {duration}s.",
+      "prescription": "Review the test output for assertion failures. Run the specific test with verbose output: go test -v -run {testName} to see detailed failure information.",
+      "codeBlock": "go test -v -run {testName} ./..."
+    },
+    {
+      "id": "GO_TEST_TIMEOUT",
+      "match": "panic:\\s+test\\s+timed\\s+out\\s+after\\s+(\\S+)",
+      "captures": ["duration"],
+      "rootCause": "Test execution exceeded the timeout of {duration}. A test is hanging or taking too long.",
+      "prescription": "Increase the timeout with -timeout flag, or investigate which test is hanging. Check for deadlocks, infinite loops, or blocking I/O in tests.",
+      "codeBlock": "go test -timeout 300s ./..."
+    },
+    {
+      "id": "GO_VET_ERROR",
+      "match": "go\\s+vet[:\\s]+([\\w./]+):\\s+(.+)",
+      "captures": ["packagePath", "message"],
+      "rootCause": "go vet found a suspicious construct in '{packagePath}': {message}.",
+      "prescription": "Review and fix the issue reported by go vet. Common issues include: printf format mismatches, unreachable code, suspicious mutex usage, and struct tag errors.",
+      "codeBlock": "go vet ./..."
+    },
+    {
+      "id": "GO_RACE_CONDITION",
+      "match": "(?:WARNING:\\s+)?DATA\\s+RACE|race\\s+detected\\s+during\\s+execution",
+      "captures": [],
+      "rootCause": "A data race was detected: multiple goroutines access the same variable concurrently with at least one write and no synchronization.",
+      "prescription": "Use sync.Mutex, sync.RWMutex, or channels to synchronize access to shared data. Run 'go test -race ./...' to find all races. Consider using atomic operations for simple counters.",
+      "codeBlock": "// Use atomic for simple counters\nimport \"sync/atomic\"\nvar counter int64\natomic.AddInt64(&counter, 1)"
+    }
+  ]
+}

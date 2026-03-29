@@ -1,11 +1,38 @@
 {
-  "name": "hello-api",
-  "version": "1.0.0",
-  "main": "server.js",
+  "name": "attar-code",
+  "version": "2.0.0",
+  "description": "Local AI coding assistant — Claude Code edition for Ollama",
+  "main": "attar-code.js",
+  "bin": {
+    "attar-code": "./attar-code.js"
+  },
   "scripts": {
-    "start": "node server.js"
+    "start": "node attar-code.js",
+    "proxy": "node search-proxy.js",
+    "test": "jest --testPathPatterns=smart-fix/tests",
+    "test:watch": "jest --testPathPatterns=smart-fix/tests --watch"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   },
   "dependencies": {
-    "express": "^4.18.2"
+    "@babel/parser": "^7.29.2",
+    "@mozilla/readability": "^0.6.0",
+    "@qdrant/js-client-rest": "^1.17.0",
+    "axios": "^1.7.0",
+    "cheerio": "^1.0.0",
+    "express": "^4.18.2",
+    "jsdom": "^29.0.1",
+    "pdf-parse": "^1.1.1",
+    "turndown": "^7.2.2",
+    "wink-bm25-text-search": "^3.1.2"
+  },
+  "devDependencies": {
+    "jest": "^30.3.0"
+  },
+  "jest": {
+    "moduleNameMapper": {
+      "@exodus/bytes/encoding-lite\\.js": "<rootDir>/node_modules/whatwg-encoding/lib/whatwg-encoding.js"
+    }
   }
 }

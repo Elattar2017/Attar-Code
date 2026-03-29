@@ -1,0 +1,2282 @@
+{
+  "metadata": {
+    "language": "PHP",
+    "version": "1.0.0",
+    "description": "Error classification, dependency tracing, and fix ordering for PHP 8.1+ projects with PHPStan and Psalm support",
+    "toolchains": [
+      {
+        "name": "php",
+        "errorPrefix": null,
+        "errorFormat": "(?:PHP\\s+)?(?<severity>Fatal error|Parse error|Warning|Notice|Deprecated|TypeError|ValueError|ArgumentCountError|Error):\\s*(?<message>.+?)\\s+in\\s+(?<file>[^\\s]+?)\\s+on\\s+line\\s+(?<line>\\d+)",
+        "errorFormatCaptures": ["severity", "message", "file", "line"],
+        "outputStream": "stderr",
+        "supportsJsonOutput": false,
+        "jsonOutputFlag": null
+      },
+      {
+        "name": "php-compact",
+        "errorPrefix": null,
+        "errorFormat": "(?<file>[^:\\s]+):(?<line>\\d+)\\s+(?<severity>Fatal error|Parse error|Warning|Notice|TypeError):\\s*(?<message>.+)",
+        "errorFormatCaptures": ["file", "line", "severity", "message"],
+        "outputStream": "stderr",
+        "supportsJsonOutput": false,
+        "jsonOutputFlag": null
+      },
+      {
+        "name": "phpstan",
+        "errorPrefix": null,
+        "errorFormat": "(?:--+\\s+)?(?<file>[^\\s]+?)(?:\\s+)?(?:\\(line\\s+)?(?<line>\\d+)\\)?\\s*(?:--|:)\\s*(?<message>.+)",
+        "errorFormatCaptures": ["file", "line", "message"],
+        "outputStream": "stdout",
+        "supportsJsonOutput": true,
+        "jsonOutputFlag": "--error-format=json"
+      },
+      {
+        "name": "phpstan-table",
+        "errorPrefix": null,
+        "errorFormat": "Line\\s+(?<line>\\d+)\\s+(?<message>.+?)\\s+(?:in\\s+(?<file>[^\\s]+))?",
+        "errorFormatCaptures": ["line", "message", "file"],
+        "outputStream": "stdout",
+        "supportsJsonOutput": true,
+        "jsonOutputFlag": "--error-format=json"
+      },
+      {
+        "name": "psalm",
+        "errorPrefix": null,
+        "errorFormat": "(?<severity>ERROR|INFO):\\s*(?<code>\\w+)\\s*-\\s*(?<file>[^:]+):(?<line>\\d+):(?<column>\\d+)\\s*-\\s*(?<message>.+)",
+        "errorFormatCaptures": ["severity", "code", "file", "line", "column", "message"],
+        "outputStream": "stdout",
+        "supportsJsonOutput": true,
+        "jsonOutputFlag": "--output-format=json"
+      }
+    ],
+    "fileExtensions": [".php", ".phtml", ".php8", ".phps"],
+    "generatedBy": "plugin-generator-v1",
+    "generatedFor": "attar-code-smart-fix"
+  },
+
+  "errorCatalog": {
+    "categories": [
+      {
+        "id": "syntax",
+        "name": "Syntax and Parse Errors",
+        "description": "PHP parse-time errors from malformed code, missing tokens, unexpected characters",
+        "defaultTracingBehavior": "local_only",
+        "errors": [
+          {
+            "code": "PHP_PARSE_ERROR",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "(?:syntax error,\\s*)?unexpected\\s+'?(?<unexpected>[^']+?)'?(?:,\\s*expecting\\s+'?(?<expected>[^']+?)'?)?",
+            "match": "Parse error:.*(?:syntax error,\\s*)?unexpected\\s+'?([^']+?)'?(?:,\\s*expecting\\s+'?([^']+?)'?)?",
+            "captures": [
+              { "name": "unexpected", "role": "literal_value" },
+              { "name": "expected", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "fix_syntax",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [
+              { "code": "PHP_FATAL_ERROR", "relationship": "causes_this", "sharedCapture": null, "resolution": "fix_this_first" },
+              { "code": "PHP_CLASS_NOT_FOUND", "relationship": "causes_this", "sharedCapture": null, "resolution": "fix_this_first" }
+            ],
+            "rootCause": "PHP parser encountered an unexpected token '{unexpected}' in the source code. The parser expected '{expected}' at this position. This is typically caused by a missing semicolon, unclosed bracket, mismatched quotes, or invalid syntax construct.",
+            "prescription": "1. Check for a missing semicolon on the line above the error.\n2. Verify all opening brackets ({, (, [) have matching closing brackets.\n3. Ensure string literals are properly closed.\n4. If '{expected}' is indicated, add the expected token at the reported position.\n5. Check for PHP version-specific syntax (e.g., named arguments, enums, readonly properties require PHP 8.x).",
+            "codeBlock": "// BEFORE (wrong)\n$value = $obj->method(\n// missing closing paren and semicolon\n\n// AFTER (correct)\n$value = $obj->method();",
+            "conditions": [
+              {
+                "when": "expected contains ;",
+                "rootCause": "A semicolon is missing at the end of a statement before '{unexpected}'. PHP requires semicolons to terminate statements.",
+                "prescription": "Add a semicolon (;) at the end of the previous statement, just before the line where the error was reported.",
+                "codeBlock": "// BEFORE\n$x = 1\n$y = 2;\n\n// AFTER\n$x = 1;\n$y = 2;"
+              },
+              {
+                "when": "unexpected contains end of file",
+                "rootCause": "The PHP parser reached the end of the file while still expecting more tokens. This usually means an unclosed bracket, quote, or block.",
+                "prescription": "1. Check for unclosed curly braces (class, function, if/else blocks).\n2. Check for unclosed parentheses in function calls or conditions.\n3. Ensure all string heredocs/nowdocs are properly terminated.\n4. Use an editor with bracket matching to find the unclosed pair.",
+                "codeBlock": "// BEFORE\nclass User {\n    public function getName() {\n        return $this->name;\n    // missing closing brace for class\n\n// AFTER\nclass User {\n    public function getName() {\n        return $this->name;\n    }\n}"
+              },
+              {
+                "when": "unexpected contains T_STRING",
+                "rootCause": "An identifier (T_STRING) appeared where the parser did not expect one. Common causes: missing operator between expressions, missing semicolon, or using a reserved keyword as an identifier.",
+                "prescription": "1. Check the previous line for a missing semicolon or operator.\n2. Verify you are not using a PHP reserved keyword as a variable, function, or class name.\n3. If using newer PHP syntax (enum, readonly, match), ensure your PHP version supports it.",
+                "codeBlock": null
+              },
+              {
+                "when": "unexpected contains T_VARIABLE",
+                "rootCause": "A variable appeared where the parser did not expect one. This typically means a missing operator, semicolon, or comma on the previous line.",
+                "prescription": "Check the previous line for a missing semicolon, comma (in arrays or function arguments), or concatenation operator (.).",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "PHP_PARSE_ERROR_UNCLOSED_COMMENT",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "Unterminated comment starting line (?<startLine>\\d+)",
+            "match": "Parse error:.*Unterminated comment starting line (\\d+)",
+            "captures": [
+              { "name": "startLine", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "fix_syntax",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [],
+            "rootCause": "A block comment (/* ... */) starting at line {startLine} was never closed. Everything after the opening /* is treated as part of the comment, causing the rest of the file to be ignored.",
+            "prescription": "Add the closing comment marker */ at the appropriate position after line {startLine}.",
+            "codeBlock": "// BEFORE\n/* This is a comment\n$code = 'runs';\n\n// AFTER\n/* This is a comment */\n$code = 'runs';",
+            "conditions": []
+          },
+          {
+            "code": "PHP_PARSE_ERROR_UNTERMINATED_STRING",
+            "category": "syntax",
+            "severity": "error",
+            "messagePattern": "Unterminated string",
+            "match": "Parse error:.*Unterminated string",
+            "captures": [],
+            "baseCrossFileProbability": 0.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "fix_syntax",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [],
+            "rootCause": "A string literal was opened with a quote character (' or \") but never properly closed. This causes the parser to consume the rest of the file as part of the string.",
+            "prescription": "1. Find the opening quote on the reported line.\n2. Add the matching closing quote.\n3. If the string contains the same quote character, escape it with a backslash (\\' or \\\").\n4. For heredoc/nowdoc syntax, ensure the closing identifier is on its own line with no leading whitespace (PHP <7.3) or properly indented (PHP 7.3+).",
+            "codeBlock": "// BEFORE\n$msg = \"Hello world;\n\n// AFTER\n$msg = \"Hello world\";",
+            "conditions": []
+          }
+        ]
+      },
+      {
+        "id": "fatal",
+        "name": "Fatal Runtime Errors",
+        "description": "PHP fatal errors that halt script execution",
+        "defaultTracingBehavior": "trace_import_source",
+        "errors": [
+          {
+            "code": "PHP_FATAL_ERROR",
+            "category": "fatal",
+            "severity": "error",
+            "messagePattern": "Uncaught Error:\\s*(?<message>.+)",
+            "match": "Fatal error:.*Uncaught Error:\\s*(.+)",
+            "captures": [
+              { "name": "message", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.4,
+            "confidence": "heuristic",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "message" }, "adjustedProbability": 0.7, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": {
+              "primaryStrategy": "restructure_code",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "function_body"
+            },
+            "coOccurrence": [],
+            "rootCause": "A fatal PHP error occurred at runtime: {message}. This error terminates script execution immediately and cannot be caught without a try/catch block.",
+            "prescription": "1. Read the full error message to understand the specific failure.\n2. Check the stack trace to identify the originating call.\n3. Wrap the failing code in a try/catch block if appropriate.\n4. Fix the underlying issue (missing class, bad method call, type error, etc.).",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "PHP_CLASS_NOT_FOUND",
+            "category": "fatal",
+            "severity": "error",
+            "messagePattern": "Class ['\"]?(?<className>[^'\"\\s]+)['\"]?\\s*not found",
+            "match": "Fatal error:.*Class ['\"]?([^'\"\\s]+)['\"]?\\s*not found",
+            "captures": [
+              { "name": "className", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.85,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_external", "target": "className" }, "adjustedProbability": 0.95, "traceDepth": "none", "traceTarget": "external_package" },
+              { "check": { "type": "is_local", "target": "className" }, "adjustedProbability": 0.85, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "comes_from_package", "target": "className" }, "adjustedProbability": 0.98, "traceDepth": "none", "traceTarget": "external_package" }
+            ],
+            "fixHint": {
+              "primaryStrategy": "add_import",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "file_header"
+            },
+            "coOccurrence": [
+              { "code": "PHP_UNDEFINED_METHOD", "relationship": "causes_this", "sharedCapture": "className", "resolution": "fix_this_first" },
+              { "code": "PHP_UNDEFINED_PROPERTY", "relationship": "causes_this", "sharedCapture": "className", "resolution": "fix_this_first" },
+              { "code": "PHPSTAN_UNDEFINED_METHOD", "relationship": "same_root_cause", "sharedCapture": "className", "resolution": "fix_either" }
+            ],
+            "rootCause": "The class '{className}' could not be found at runtime. This means it is either not defined, not autoloaded, the namespace is wrong, or the use statement is missing.",
+            "prescription": "1. Add a 'use {className};' statement at the top of the file (with the correct fully-qualified namespace).\n2. Verify the class file exists and the namespace matches the PSR-4 autoload mapping in composer.json.\n3. Run 'composer dump-autoload' to regenerate the autoloader.\n4. Check for typos in the class name (PHP class names are case-insensitive on most systems but the autoloader maps are case-sensitive on Linux).\n5. If the class is from a package, ensure the package is installed: 'composer require vendor/package'.",
+            "codeBlock": "// BEFORE\n$user = new User(); // Class 'User' not found\n\n// AFTER\nuse App\\Models\\User;\n\n$user = new User();",
+            "conditions": [
+              {
+                "when": "className contains \\",
+                "rootCause": "The fully-qualified class '{className}' could not be found. The namespace path does not match any autoloaded class.",
+                "prescription": "1. Verify the namespace in the target class file matches '{className}' exactly.\n2. Check composer.json 'autoload.psr-4' mapping matches the namespace prefix to the directory.\n3. Run 'composer dump-autoload'.\n4. On case-sensitive filesystems (Linux), ensure the directory structure matches the namespace casing exactly.",
+                "codeBlock": null
+              },
+              {
+                "when": "className startsWith App\\",
+                "rootCause": "The class '{className}' from the application namespace was not found. The PSR-4 autoload mapping from App\\ to the source directory may be incorrect, or the class file is missing.",
+                "prescription": "1. Verify the class file exists at the path derived from the namespace (e.g., App\\Models\\User -> app/Models/User.php for Laravel, src/Models/User.php for Symfony).\n2. Run 'composer dump-autoload -o'.\n3. If using Laravel, try 'php artisan clear-compiled'.",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "PHP_INTERFACE_NOT_FOUND",
+            "category": "fatal",
+            "severity": "error",
+            "messagePattern": "Interface ['\"]?(?<interfaceName>[^'\"\\s]+)['\"]?\\s*not found",
+            "match": "Fatal error:.*Interface ['\"]?([^'\"\\s]+)['\"]?\\s*not found",
+            "captures": [
+              { "name": "interfaceName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.9,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_external", "target": "interfaceName" }, "adjustedProbability": 0.98, "traceDepth": "none", "traceTarget": "external_package" },
+              { "check": { "type": "is_local", "target": "interfaceName" }, "adjustedProbability": 0.9, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": {
+              "primaryStrategy": "add_import",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "file_header"
+            },
+            "coOccurrence": [
+              { "code": "PHP_CLASS_NOT_FOUND", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+            "rootCause": "The interface '{interfaceName}' was not found. A class is trying to implement an interface that has not been loaded via autoloading or require.",
+            "prescription": "1. Add a 'use {interfaceName};' statement at the top of the file.\n2. Verify the interface file exists and its namespace matches the PSR-4 autoload mapping.\n3. Run 'composer dump-autoload'.",
+            "codeBlock": "// BEFORE\nclass UserRepo implements UserRepositoryInterface {} // Interface not found\n\n// AFTER\nuse App\\Contracts\\UserRepositoryInterface;\n\nclass UserRepo implements UserRepositoryInterface {}",
+            "conditions": []
+          },
+          {
+            "code": "PHP_TRAIT_NOT_FOUND",
+            "category": "fatal",
+            "severity": "error",
+            "messagePattern": "Trait ['\"]?(?<traitName>[^'\"\\s]+)['\"]?\\s*not found",
+            "match": "Fatal error:.*Trait ['\"]?([^'\"\\s]+)['\"]?\\s*not found",
+            "captures": [
+              { "name": "traitName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.9,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_external", "target": "traitName" }, "adjustedProbability": 0.98, "traceDepth": "none", "traceTarget": "external_package" },
+              { "check": { "type": "is_local", "target": "traitName" }, "adjustedProbability": 0.9, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": {
+              "primaryStrategy": "add_import",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "file_header"
+            },
+            "coOccurrence": [
+              { "code": "PHP_CLASS_NOT_FOUND", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+            "rootCause": "The trait '{traitName}' was not found. A class is trying to use a trait that has not been autoloaded.",
+            "prescription": "1. Add a 'use {traitName};' statement at the top of the file (namespace import, not the 'use' inside the class body).\n2. Verify the trait file exists and the namespace matches the PSR-4 mapping.\n3. Run 'composer dump-autoload'.",
+            "codeBlock": "// BEFORE\nclass User {\n    use HasFactory; // Trait not found\n}\n\n// AFTER\nuse Illuminate\\Database\\Eloquent\\Factories\\HasFactory;\n\nclass User {\n    use HasFactory;\n}",
+            "conditions": []
+          },
+          {
+            "code": "PHP_UNDEFINED_METHOD",
+            "category": "fatal",
+            "severity": "error",
+            "messagePattern": "(?:Call to undefined method|Uncaught Error: Call to undefined method)\\s+(?<className>[^:]+)::(?<methodName>[^(]+)\\(",
+            "match": "Fatal error:.*(?:Call to undefined method|Uncaught Error: Call to undefined method)\\s+([^:]+)::([^(]+)\\(",
+            "captures": [
+              { "name": "className", "role": "type_name" },
+              { "name": "methodName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.7,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "className" }, "adjustedProbability": 0.85, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "className" }, "adjustedProbability": 0.3, "traceDepth": "none", "traceTarget": "same_file" },
+              { "check": { "type": "is_inherited", "target": "methodName" }, "adjustedProbability": 0.9, "traceDepth": "transitive", "traceTarget": "inherited_parent" }
+            ],
+            "fixHint": {
+              "primaryStrategy": "add_property",
+              "requiresCrossFileEdit": true,
+              "typicalScope": "type_definition"
+            },
+            "coOccurrence": [
+              { "code": "PHP_CLASS_NOT_FOUND", "relationship": "caused_by_this", "sharedCapture": "className", "resolution": "fix_other_first" },
+              { "code": "PHPSTAN_UNDEFINED_METHOD", "relationship": "same_root_cause", "sharedCapture": "methodName", "resolution": "fix_either" }
+            ],
+            "rootCause": "The method '{methodName}' does not exist on class '{className}'. The method was either never defined, was removed, is in a parent class/trait that is not loaded, or there is a typo in the method name.",
+            "prescription": "1. Check for typos in '{methodName}' — PHP method names are case-insensitive but autocompletion may differ.\n2. Verify the method exists in the class definition or any parent class/trait.\n3. If the method should exist via a trait, ensure the trait is properly used.\n4. If the class uses __call() magic method, static analysis tools may not detect it.\n5. If '{className}' is wrong, check the type of the variable being called.",
+            "codeBlock": "// BEFORE\n$user->getFullName(); // undefined method\n\n// AFTER — add the method to the class\nclass User {\n    public function getFullName(): string {\n        return $this->firstName . ' ' . $this->lastName;\n    }\n}",
+            "conditions": [
+              {
+                "when": "methodName startsWith get",
+                "rootCause": "A getter method '{methodName}' does not exist on '{className}'. The property may exist but has no getter, or a magic __get is being used.",
+                "prescription": "1. Add the getter method to '{className}'.\n2. If using a framework (Laravel Eloquent, Symfony), check if the property is accessed differently (e.g., $model->attribute vs $model->getAttribute()).",
+                "codeBlock": null
+              },
+              {
+                "when": "methodName startsWith set",
+                "rootCause": "A setter method '{methodName}' does not exist on '{className}'. Consider adding the method or using property promotion.",
+                "prescription": "Add the setter method to '{className}', or if using readonly properties (PHP 8.1+), set the value in the constructor.",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "PHP_UNDEFINED_PROPERTY",
+            "category": "fatal",
+            "severity": "error",
+            "messagePattern": "(?:Undefined property|Access to undeclared property):\\s+(?<className>[^:$]+)(?:::\\$|->\\$?)(?<propertyName>\\w+)",
+            "match": "(?:Warning|Fatal error|Notice):.*(?:Undefined property|Access to undeclared property):\\s+([^:$]+)(?:::\\$|->\\$?)(\\w+)",
+            "captures": [
+              { "name": "className", "role": "type_name" },
+              { "name": "propertyName", "role": "property_name" }
+            ],
+            "baseCrossFileProbability": 0.6,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "className" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "className" }, "adjustedProbability": 0.2, "traceDepth": "none", "traceTarget": "same_file" },
+              { "check": { "type": "is_inherited", "target": "propertyName" }, "adjustedProbability": 0.85, "traceDepth": "transitive", "traceTarget": "inherited_parent" }
+            ],
+            "fixHint": {
+              "primaryStrategy": "add_property",
+              "requiresCrossFileEdit": true,
+              "typicalScope": "type_definition"
+            },
+            "coOccurrence": [
+              { "code": "PHPSTAN_PROPERTY_TYPE", "relationship": "same_root_cause", "sharedCapture": "propertyName", "resolution": "fix_either" }
+            ],
+            "rootCause": "The property '{propertyName}' does not exist on class '{className}'. It was never declared, or the class uses dynamic properties without __get/__set magic methods.",
+            "prescription": "1. Add the property declaration to '{className}'.\n2. If using PHP 8.2+, note that dynamic properties are deprecated. Add #[AllowDynamicProperties] attribute or declare the property explicitly.\n3. If the property comes from a parent class or trait, verify the parent/trait is loaded.\n4. Check for typos in the property name.",
+            "codeBlock": "// BEFORE\nclass User {\n    public string $name;\n}\n$user->email; // Undefined property\n\n// AFTER\nclass User {\n    public string $name;\n    public string $email;\n}",
+            "conditions": []
+          },
+          {
+            "code": "PHP_UNDEFINED_VARIABLE",
+            "category": "fatal",
+            "severity": "warning",
+            "messagePattern": "Undefined variable:?\\s*\\$?(?<variableName>\\w+)",
+            "match": "(?:Warning|Notice):.*Undefined variable:?\\s*\\$?(\\w+)",
+            "captures": [
+              { "name": "variableName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.05,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_local", "target": "variableName" }, "adjustedProbability": 0.02, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": {
+              "primaryStrategy": "initialize_variable",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "function_body"
+            },
+            "coOccurrence": [
+              { "code": "PHPSTAN_UNDEFINED_VARIABLE", "relationship": "same_root_cause", "sharedCapture": "variableName", "resolution": "fix_either" },
+              { "code": "PSALM_UNDEFINED_VARIABLE", "relationship": "same_root_cause", "sharedCapture": "variableName", "resolution": "fix_either" }
+            ],
+            "rootCause": "The variable '${variableName}' is used before it has been assigned a value. PHP variables must be assigned before use.",
+            "prescription": "1. Initialize the variable before the line where it is used.\n2. Check for typos in the variable name.\n3. If the variable comes from a conditional block (if/else, try/catch, loop), ensure all code paths assign it.\n4. If the variable is expected from an extracted array (extract()), make the dependency explicit.",
+            "codeBlock": "// BEFORE\nif ($condition) {\n    $result = compute();\n}\necho $result; // Undefined if $condition is false\n\n// AFTER\n$result = null;\nif ($condition) {\n    $result = compute();\n}\necho $result;",
+            "conditions": []
+          },
+          {
+            "code": "PHP_UNDEFINED_FUNCTION",
+            "category": "fatal",
+            "severity": "error",
+            "messagePattern": "Call to undefined function\\s+(?<functionName>[\\w\\\\]+)\\(",
+            "match": "Fatal error:.*Call to undefined function\\s+([\\w\\\\]+)\\(",
+            "captures": [
+              { "name": "functionName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.7,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_external", "target": "functionName" }, "adjustedProbability": 0.95, "traceDepth": "none", "traceTarget": "external_package" },
+              { "check": { "type": "is_local", "target": "functionName" }, "adjustedProbability": 0.5, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": {
+              "primaryStrategy": "add_import",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "file_header"
+            },
+            "coOccurrence": [],
+            "rootCause": "The function '{functionName}' does not exist. It is either not defined, not autoloaded, needs a 'use function' import, or belongs to a PHP extension that is not installed.",
+            "prescription": "1. If the function is namespaced, add 'use function {functionName};' at the top of the file.\n2. If it is a global function being called from a namespace, prefix with backslash: \\{functionName}().\n3. If it is from a PHP extension (e.g., json_encode, mb_strlen), install the extension.\n4. If it is a custom function, ensure the file defining it is included/autoloaded.\n5. Check for typos in the function name.",
+            "codeBlock": "// BEFORE (calling namespaced function without import)\nnamespace App\\Service;\n\n$json = json_encode($data); // works (global fallback)\n$result = array_helper($data); // may fail if not global\n\n// AFTER\nnamespace App\\Service;\n\nuse function App\\Helpers\\array_helper;\n\n$result = array_helper($data);",
+            "conditions": [
+              {
+                "when": "functionName contains \\",
+                "rootCause": "The namespaced function '{functionName}' was not found. The 'use function' import may be missing or the function is not autoloaded.",
+                "prescription": "1. Add 'use function {functionName};' at the top of the file.\n2. Verify the function exists in the expected namespace.\n3. Ensure the file defining the function is autoloaded (Composer files autoload).",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "PHP_UNDEFINED_CONSTANT",
+            "category": "fatal",
+            "severity": "error",
+            "messagePattern": "Undefined constant ['\"]?(?<constantName>[^'\"]+)['\"]?",
+            "match": "(?:Fatal error|Warning):.*Undefined constant ['\"]?([^'\"]+)['\"]?",
+            "captures": [
+              { "name": "constantName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_external", "target": "constantName" }, "adjustedProbability": 0.9, "traceDepth": "none", "traceTarget": "external_package" },
+              { "check": { "type": "is_local", "target": "constantName" }, "adjustedProbability": 0.3, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": {
+              "primaryStrategy": "add_import",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "file_header"
+            },
+            "coOccurrence": [],
+            "rootCause": "The constant '{constantName}' is not defined. It may need a 'use const' import, may not be defined yet, or could be a typo.",
+            "prescription": "1. If the constant is namespaced, add 'use const {constantName};' at the top.\n2. If it is a class constant, use ClassName::CONSTANT_NAME syntax.\n3. Verify the constant is defined with define() or const.\n4. Check for typos — constant names are case-sensitive.",
+            "codeBlock": "// BEFORE\nnamespace App;\necho APP_VERSION; // Undefined constant\n\n// AFTER\nnamespace App;\nuse const App\\Config\\APP_VERSION;\necho APP_VERSION;",
+            "conditions": []
+          },
+          {
+            "code": "PHP_TYPE_ERROR",
+            "category": "fatal",
+            "severity": "error",
+            "messagePattern": "(?:Uncaught TypeError:\\s*)?(?<functionName>[^:()]+?)(?:::(?<methodName>[^(]+))?\\(\\)(?::|,)\\s*Argument\\s*#(?<argNum>\\d+)\\s*\\(\\$(?<paramName>\\w+)\\)\\s*must be of type\\s+(?<expectedType>[^,]+),\\s*(?<actualType>[^\\s]+)\\s*given",
+            "match": "(?:Fatal error|TypeError):.*(?:Uncaught TypeError:\\s*)?([^:()]+?)(?:::([^(]+))?\\(\\)(?::|,)\\s*Argument\\s*#(\\d+)\\s*\\(\\$(\\w+)\\)\\s*must be of type\\s+([^,]+),\\s*([^\\s]+)\\s*given",
+            "captures": [
+              { "name": "functionName", "role": "symbol_name" },
+              { "name": "methodName", "role": "symbol_name" },
+              { "name": "argNum", "role": "literal_value" },
+              { "name": "paramName", "role": "symbol_name" },
+              { "name": "expectedType", "role": "expected_type" },
+              { "name": "actualType", "role": "actual_type" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "functionName" }, "adjustedProbability": 0.75, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "functionName" }, "adjustedProbability": 0.2, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": {
+              "primaryStrategy": "cast_type",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [
+              { "code": "PHPSTAN_ARGUMENT_TYPE", "relationship": "same_root_cause", "sharedCapture": "expectedType", "resolution": "fix_either" },
+              { "code": "PSALM_TYPE_MISMATCH", "relationship": "same_root_cause", "sharedCapture": "expectedType", "resolution": "fix_either" }
+            ],
+            "rootCause": "Argument #{argNum} (${paramName}) passed to {functionName}{methodName} must be of type '{expectedType}', but '{actualType}' was given. PHP's strict typing (declare(strict_types=1)) enforces this at runtime.",
+            "prescription": "1. Ensure the value passed as argument #{argNum} is of type '{expectedType}' before calling the function.\n2. Cast the value: ({expectedType})$value, or use appropriate conversion functions (intval(), strval(), etc.).\n3. If the function signature is wrong, update the type hint to accept '{actualType}' as well (e.g., int|string).\n4. Check if null is being passed — use nullable type (?{expectedType}) if null is valid.",
+            "codeBlock": "// BEFORE\nfunction process(int $count): void { }\nprocess('5'); // TypeError: must be int, string given\n\n// AFTER — Option 1: Cast the argument\nprocess((int) '5');\n\n// AFTER — Option 2: Widen the parameter type\nfunction process(int|string $count): void { }",
+            "conditions": [
+              {
+                "when": "actualType equals null",
+                "rootCause": "null was passed to parameter ${paramName} of {functionName}, but the parameter type '{expectedType}' does not allow null.",
+                "prescription": "1. If null is a valid value, change the parameter type to nullable: ?{expectedType} or {expectedType}|null.\n2. If null is not valid, add a null check before calling the function.\n3. Check where the value originates — database queries, optional form fields, and API responses often return null unexpectedly.",
+                "codeBlock": "// BEFORE\nfunction greet(string $name): void { }\ngreet(null); // TypeError\n\n// AFTER\nfunction greet(?string $name): void {\n    $name = $name ?? 'Guest';\n}"
+              }
+            ]
+          },
+          {
+            "code": "PHP_ARGUMENT_COUNT",
+            "category": "fatal",
+            "severity": "error",
+            "messagePattern": "(?:Uncaught ArgumentCountError:\\s*)?Too (?<direction>few|many) arguments to function\\s+(?<functionName>[^(,]+?)(?:::(?<methodName>[^(]+))?\\(\\),\\s*(?<actualCount>\\d+)\\s*passed\\s*(?:in\\s*[^\\s]+\\s*on\\s*line\\s*\\d+\\s*)?and\\s*(?:exactly|at least|at most)\\s*(?<expectedCount>\\d+)\\s*expected",
+            "match": "(?:Fatal error|ArgumentCountError):.*Too (few|many) arguments to function\\s+([^(,]+?)(?:::([^(]+))?\\(\\),\\s*(\\d+)\\s*passed.*(\\d+)\\s*expected",
+            "captures": [
+              { "name": "direction", "role": "literal_value" },
+              { "name": "functionName", "role": "symbol_name" },
+              { "name": "methodName", "role": "symbol_name" },
+              { "name": "actualCount", "role": "literal_value" },
+              { "name": "expectedCount", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.6,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "functionName" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "functionName" }, "adjustedProbability": 0.15, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": {
+              "primaryStrategy": "change_signature",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [],
+            "rootCause": "Too {direction} arguments passed to {functionName}(). Got {actualCount} but expected {expectedCount}. The function call does not match the function signature.",
+            "prescription": "1. If too few: add the missing required arguments to the function call.\n2. If too many: remove the extra arguments.\n3. If the function signature recently changed, update all call sites.\n4. If arguments should be optional, add default values to the function parameter: function foo($required, $optional = null).\n5. Use named arguments (PHP 8.0+) to skip optional parameters: foo(required: $val).",
+            "codeBlock": "// BEFORE\nfunction createUser(string $name, string $email, string $role): void { }\ncreateUser('John', 'john@example.com'); // Too few arguments\n\n// AFTER — Option 1: Pass all arguments\ncreateUser('John', 'john@example.com', 'user');\n\n// AFTER — Option 2: Make parameter optional\nfunction createUser(string $name, string $email, string $role = 'user'): void { }",
+            "conditions": []
+          },
+          {
+            "code": "PHP_RETURN_TYPE_ERROR",
+            "category": "fatal",
+            "severity": "error",
+            "messagePattern": "(?:Uncaught TypeError:\\s*)?(?<functionName>[^:]+?)(?:::(?<methodName>[^(]+))?\\(\\):\\s*Return value must be of type\\s+(?<expectedType>[^,]+),\\s*(?<actualType>[^\\s]+)\\s*returned",
+            "match": "(?:Fatal error|TypeError):.*Return value must be of type\\s+([^,]+),\\s*([^\\s]+)\\s*returned",
+            "captures": [
+              { "name": "functionName", "role": "symbol_name" },
+              { "name": "methodName", "role": "symbol_name" },
+              { "name": "expectedType", "role": "expected_type" },
+              { "name": "actualType", "role": "actual_type" }
+            ],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_local", "target": "functionName" }, "adjustedProbability": 0.1, "traceDepth": "none", "traceTarget": "same_file" },
+              { "check": { "type": "is_imported", "target": "functionName" }, "adjustedProbability": 0.6, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": {
+              "primaryStrategy": "update_type_annotation",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "function_body"
+            },
+            "coOccurrence": [
+              { "code": "PHPSTAN_RETURN_TYPE", "relationship": "same_root_cause", "sharedCapture": "expectedType", "resolution": "fix_either" }
+            ],
+            "rootCause": "The function {functionName}() declares a return type of '{expectedType}' but actually returned a value of type '{actualType}'.",
+            "prescription": "1. Ensure the function returns a value of type '{expectedType}' in all code paths.\n2. If '{actualType}' is 'null', either add a null check before return or change the return type to nullable: ?{expectedType}.\n3. If the return type declaration is wrong, update it to match the actual return value.\n4. Cast the return value if appropriate.",
+            "codeBlock": "// BEFORE\nfunction getAge(): int {\n    return null; // TypeError: must return int, null returned\n}\n\n// AFTER\nfunction getAge(): ?int {\n    return null; // OK with nullable return type\n}",
+            "conditions": []
+          },
+          {
+            "code": "PHP_CANNOT_REDECLARE",
+            "category": "fatal",
+            "severity": "error",
+            "messagePattern": "Cannot (?:re)?declare (?:class |function |interface )?(?<symbolName>[^\\s(]+)",
+            "match": "Fatal error:.*Cannot (?:re)?declare (?:class |function |interface )?([^\\s(]+)",
+            "captures": [
+              { "name": "symbolName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.7,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "symbolName" }, "adjustedProbability": 0.85, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": {
+              "primaryStrategy": "remove_duplicate",
+              "requiresCrossFileEdit": true,
+              "typicalScope": "entire_file"
+            },
+            "coOccurrence": [],
+            "rootCause": "The symbol '{symbolName}' is being declared more than once. This usually happens when a file is included/required multiple times, or two files define the same class/function in the same namespace.",
+            "prescription": "1. Use require_once or include_once instead of require/include to prevent double-loading.\n2. If two files define the same class, rename one or put them in different namespaces.\n3. Check composer autoload for conflicting PSR-4 mappings.\n4. If using classmap autoloading, run 'composer dump-autoload' to detect duplicates.",
+            "codeBlock": "// BEFORE\nrequire 'helpers.php'; // defines function formatDate()\nrequire 'helpers.php'; // Fatal: Cannot redeclare formatDate()\n\n// AFTER\nrequire_once 'helpers.php';",
+            "conditions": []
+          },
+          {
+            "code": "PHP_ABSTRACT_METHOD_NOT_IMPLEMENTED",
+            "category": "fatal",
+            "severity": "error",
+            "messagePattern": "Class (?<className>[^\\s]+) contains (?<count>\\d+) abstract methods? and must therefore be declared abstract or implement the remaining methods? \\((?<methods>.+?)\\)",
+            "match": "Fatal error:.*Class ([^\\s]+) contains (\\d+) abstract methods?.*\\((.+?)\\)",
+            "captures": [
+              { "name": "className", "role": "type_name" },
+              { "name": "count", "role": "literal_value" },
+              { "name": "methods", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.8,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_inherited", "target": "methods" }, "adjustedProbability": 0.9, "traceDepth": "transitive", "traceTarget": "inherited_parent" }
+            ],
+            "fixHint": {
+              "primaryStrategy": "implement_interface",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "type_definition"
+            },
+            "coOccurrence": [],
+            "rootCause": "Class '{className}' extends an abstract class or implements an interface but does not implement all required methods: {methods}.",
+            "prescription": "1. Implement all the listed abstract methods in '{className}': {methods}.\n2. Match the exact method signatures (parameter types and return type) from the parent class or interface.\n3. Alternatively, declare '{className}' as abstract if it should not be instantiated directly.",
+            "codeBlock": "// BEFORE\nabstract class Shape {\n    abstract public function area(): float;\n}\nclass Circle extends Shape { } // Fatal: must implement area()\n\n// AFTER\nclass Circle extends Shape {\n    public function __construct(private float $radius) {}\n    public function area(): float {\n        return M_PI * $this->radius ** 2;\n    }\n}",
+            "conditions": []
+          },
+          {
+            "code": "PHP_ACCESS_PRIVATE_METHOD",
+            "category": "fatal",
+            "severity": "error",
+            "messagePattern": "Call to (?<visibility>private|protected) method\\s+(?<className>[^:]+)::(?<methodName>\\w+)\\(\\)\\s*from (?:context|scope)\\s+'?(?<callerContext>[^']+)'?",
+            "match": "Fatal error:.*Call to (private|protected) method\\s+([^:]+)::(\\w+)\\(\\)",
+            "captures": [
+              { "name": "visibility", "role": "literal_value" },
+              { "name": "className", "role": "type_name" },
+              { "name": "methodName", "role": "symbol_name" },
+              { "name": "callerContext", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.7,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "className" }, "adjustedProbability": 0.85, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": {
+              "primaryStrategy": "fix_access_modifier",
+              "requiresCrossFileEdit": true,
+              "typicalScope": "type_definition"
+            },
+            "coOccurrence": [],
+            "rootCause": "Cannot call {visibility} method {className}::{methodName}() from context '{callerContext}'. The method's visibility restricts access from outside the class (or class hierarchy for protected).",
+            "prescription": "1. Change the method visibility from '{visibility}' to 'public' if it should be accessible externally.\n2. If only subclasses need access, change from 'private' to 'protected'.\n3. If the visibility is intentional, access the method through a public method that wraps it.\n4. Consider if you are calling the method on the correct object.",
+            "codeBlock": "// BEFORE\nclass User {\n    private function hashPassword(string $pw): string { /*...*/ }\n}\n(new User())->hashPassword('secret'); // Cannot call private method\n\n// AFTER — Option 1: Make public\nclass User {\n    public function hashPassword(string $pw): string { /*...*/ }\n}\n\n// AFTER — Option 2: Expose via public wrapper\nclass User {\n    private function hashPassword(string $pw): string { /*...*/ }\n    public function setPassword(string $pw): void {\n        $this->password = $this->hashPassword($pw);\n    }\n}",
+            "conditions": []
+          },
+          {
+            "code": "PHP_ACCESS_PRIVATE_PROPERTY",
+            "category": "fatal",
+            "severity": "error",
+            "messagePattern": "Cannot access (?<visibility>private|protected) property\\s+(?<className>[^:$]+)(?:::\\$|->\\$?)(?<propertyName>\\w+)",
+            "match": "Fatal error:.*Cannot access (private|protected) property\\s+([^:$]+)(?:::\\$|->\\$?)(\\w+)",
+            "captures": [
+              { "name": "visibility", "role": "literal_value" },
+              { "name": "className", "role": "type_name" },
+              { "name": "propertyName", "role": "property_name" }
+            ],
+            "baseCrossFileProbability": 0.7,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "className" }, "adjustedProbability": 0.85, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": {
+              "primaryStrategy": "fix_access_modifier",
+              "requiresCrossFileEdit": true,
+              "typicalScope": "type_definition"
+            },
+            "coOccurrence": [],
+            "rootCause": "Cannot access {visibility} property {className}::${propertyName} from outside the class. The property's visibility prevents external access.",
+            "prescription": "1. Change the property visibility to 'public' if external access is needed.\n2. Add a public getter/setter method.\n3. If only subclasses need access, change 'private' to 'protected'.\n4. For PHP 8.1+ readonly properties, ensure they are public if read access is needed externally.",
+            "codeBlock": "// BEFORE\nclass Config {\n    private string $dbHost = 'localhost';\n}\n$config->dbHost; // Cannot access private property\n\n// AFTER\nclass Config {\n    public readonly string $dbHost;\n    public function __construct(string $dbHost = 'localhost') {\n        $this->dbHost = $dbHost;\n    }\n}",
+            "conditions": []
+          },
+          {
+            "code": "PHP_CANNOT_INSTANTIATE_ABSTRACT",
+            "category": "fatal",
+            "severity": "error",
+            "messagePattern": "Cannot instantiate (?:abstract class|interface|enum|trait)\\s+(?<className>[^\\s]+)",
+            "match": "Fatal error:.*Cannot instantiate (?:abstract class|interface|enum|trait)\\s+([^\\s]+)",
+            "captures": [
+              { "name": "className", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.6,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "className" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": {
+              "primaryStrategy": "restructure_code",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [],
+            "rootCause": "Attempted to instantiate '{className}' which is an abstract class, interface, enum, or trait. These types cannot be directly instantiated with 'new'.",
+            "prescription": "1. Instantiate a concrete subclass that extends the abstract class or implements the interface.\n2. If you intended to use a factory, call the factory method instead of using 'new' directly.\n3. If '{className}' is an enum, access cases via ClassName::CaseName instead of new ClassName().",
+            "codeBlock": "// BEFORE\ninterface Logger { public function log(string $msg): void; }\nnew Logger(); // Cannot instantiate interface\n\n// AFTER\nclass FileLogger implements Logger {\n    public function log(string $msg): void { file_put_contents('log.txt', $msg, FILE_APPEND); }\n}\nnew FileLogger();",
+            "conditions": []
+          }
+        ]
+      },
+      {
+        "id": "module_resolution",
+        "name": "Module and Autoloading Errors",
+        "description": "Errors about require/include, use statements, and autoloading failures",
+        "defaultTracingBehavior": "trace_import_source",
+        "errors": [
+          {
+            "code": "PHP_REQUIRE_FAILED",
+            "category": "module_resolution",
+            "severity": "error",
+            "messagePattern": "(?:require|require_once|include|include_once)\\((?<filePath>[^)]+)\\):\\s*(?:Failed to open stream|failed to open stream):\\s*(?<reason>.+)",
+            "match": "(?:Fatal error|Warning):.*(?:require|require_once|include|include_once)\\(([^)]+)\\):\\s*(?:Failed to open stream|failed to open stream)",
+            "captures": [
+              { "name": "filePath", "role": "file_path" },
+              { "name": "reason", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 1.0,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "update_import_path",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [
+              { "code": "PHP_CLASS_NOT_FOUND", "relationship": "causes_this", "sharedCapture": null, "resolution": "fix_this_first" }
+            ],
+            "rootCause": "PHP could not open or find the file '{filePath}': {reason}. The require/include path does not resolve to an existing file.",
+            "prescription": "1. Verify the file exists at the specified path.\n2. Check if the path is relative — it resolves relative to the include_path and the current working directory, not the file containing the require.\n3. Use __DIR__ . '/relative/path.php' for reliable relative paths.\n4. If using Composer autoloading, you should not need manual require statements for classes.\n5. Check file permissions on Linux/Mac systems.",
+            "codeBlock": "// BEFORE\nrequire 'src/helpers.php'; // Fails if CWD is not project root\n\n// AFTER\nrequire __DIR__ . '/../src/helpers.php'; // Reliable relative path\n\n// BEST: Use Composer autoloading\nrequire __DIR__ . '/../vendor/autoload.php';",
+            "conditions": [
+              {
+                "when": "reason contains No such file",
+                "rootCause": "The file '{filePath}' does not exist on disk. The path is wrong or the file has been moved/deleted.",
+                "prescription": "1. Check the file path for typos.\n2. Verify the file exists (it may have been renamed or moved).\n3. Use __DIR__ for path resolution.\n4. If the file was generated, run the generation step first.",
+                "codeBlock": null
+              },
+              {
+                "when": "reason contains Permission denied",
+                "rootCause": "The file '{filePath}' exists but PHP does not have read permission.",
+                "prescription": "Fix file permissions: chmod 644 {filePath} on Linux/Mac, or adjust ACLs on Windows.",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "PHP_AUTOLOAD_FAILED",
+            "category": "module_resolution",
+            "severity": "error",
+            "messagePattern": "Class ['\"]?(?<className>[^'\"\\s]+)['\"]?\\s*not found.*autoload",
+            "match": "Fatal error:.*Class ['\"]?([^'\"\\s]+)['\"]?\\s*not found",
+            "captures": [
+              { "name": "className", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.95,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_external", "target": "className" }, "adjustedProbability": 0.98, "traceDepth": "none", "traceTarget": "external_package" },
+              { "check": { "type": "is_local", "target": "className" }, "adjustedProbability": 0.9, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": {
+              "primaryStrategy": "install_package",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "file_header"
+            },
+            "coOccurrence": [
+              { "code": "PHP_CLASS_NOT_FOUND", "relationship": "same_root_cause", "sharedCapture": "className", "resolution": "fix_either" }
+            ],
+            "rootCause": "The Composer autoloader could not find class '{className}'. The PSR-4 namespace-to-directory mapping does not match, the class file is missing, or Composer dependencies are not installed.",
+            "prescription": "1. Run 'composer install' to install dependencies.\n2. Run 'composer dump-autoload' to rebuild the autoload map.\n3. Verify composer.json autoload.psr-4 maps the namespace prefix to the correct directory.\n4. Check that the file path matches the namespace (e.g., App\\Models\\User → src/Models/User.php).\n5. Verify the class name and namespace in the file match exactly (case-sensitive on Linux).",
+            "codeBlock": "// composer.json\n{\n    \"autoload\": {\n        \"psr-4\": {\n            \"App\\\\\": \"src/\"\n        }\n    }\n}\n// File: src/Models/User.php\nnamespace App\\Models;\nclass User { }",
+            "conditions": []
+          },
+          {
+            "code": "PHP_NAMESPACE_NOT_FOUND",
+            "category": "module_resolution",
+            "severity": "error",
+            "messagePattern": "(?:The use statement with non-compound name|Class ['\"]?(?<className>[^'\"]+)['\"]? not found).*namespace",
+            "match": "Fatal error:.*namespace.*not found",
+            "captures": [
+              { "name": "className", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.9,
+            "confidence": "heuristic",
+            "refinements": [
+              { "check": { "type": "is_external", "target": "className" }, "adjustedProbability": 0.95, "traceDepth": "none", "traceTarget": "external_package" }
+            ],
+            "fixHint": {
+              "primaryStrategy": "update_import_path",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "file_header"
+            },
+            "coOccurrence": [
+              { "code": "PHP_CLASS_NOT_FOUND", "relationship": "same_root_cause", "sharedCapture": "className", "resolution": "fix_either" }
+            ],
+            "rootCause": "The namespace referenced in a use statement or class reference does not match any autoloaded class. The namespace path is wrong or the package is not installed.",
+            "prescription": "1. Verify the fully-qualified class name and namespace.\n2. Check composer.json for the correct PSR-4 mapping.\n3. If the class is from a package, install it: composer require vendor/package.\n4. Run 'composer dump-autoload'.",
+            "codeBlock": null,
+            "conditions": []
+          }
+        ]
+      },
+      {
+        "id": "phpstan_errors",
+        "name": "PHPStan Static Analysis Errors",
+        "description": "Errors reported by PHPStan levels 0-9",
+        "defaultTracingBehavior": "trace_import_source",
+        "errors": [
+          {
+            "code": "PHPSTAN_UNDEFINED_METHOD",
+            "category": "phpstan_errors",
+            "severity": "error",
+            "messagePattern": "Call to an undefined method\\s+(?<className>[^:]+)::(?<methodName>\\w+)\\(\\)",
+            "match": "Call to an undefined method\\s+([^:]+)::(\\w+)\\(\\)",
+            "captures": [
+              { "name": "className", "role": "type_name" },
+              { "name": "methodName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.75,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "className" }, "adjustedProbability": 0.9, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "className" }, "adjustedProbability": 0.3, "traceDepth": "none", "traceTarget": "same_file" },
+              { "check": { "type": "is_inherited", "target": "methodName" }, "adjustedProbability": 0.85, "traceDepth": "transitive", "traceTarget": "inherited_parent" }
+            ],
+            "fixHint": {
+              "primaryStrategy": "add_property",
+              "requiresCrossFileEdit": true,
+              "typicalScope": "type_definition"
+            },
+            "coOccurrence": [
+              { "code": "PHP_UNDEFINED_METHOD", "relationship": "same_root_cause", "sharedCapture": "methodName", "resolution": "fix_either" }
+            ],
+            "rootCause": "PHPStan reports that method '{methodName}' does not exist on class '{className}'. This may be a real missing method, or the class uses __call() magic that PHPStan cannot detect without proper annotations.",
+            "prescription": "1. Add the method to class '{className}'.\n2. If the method exists via __call() magic, add a @method PHPDoc annotation to the class: /** @method returnType {methodName}(params) */.\n3. Check for typos in the method name.\n4. If the type is a union, narrow it first: if ($obj instanceof SpecificClass) { $obj->{methodName}(); }.\n5. If this is a Laravel model using dynamic methods, install larastan/larastan for better type support.",
+            "codeBlock": "// BEFORE\n/** Class without method declaration */\nclass Gateway { /* uses __call magic */ }\n$gateway->processPayment(); // PHPStan: undefined method\n\n// AFTER — Add @method annotation\n/**\n * @method PaymentResult processPayment(float $amount)\n */\nclass Gateway { /* uses __call magic */ }",
+            "conditions": [
+              {
+                "when": "className contains Eloquent",
+                "rootCause": "PHPStan cannot resolve dynamic methods on Laravel Eloquent models. Eloquent uses __call() for query scopes, relationships, and other dynamic methods.",
+                "prescription": "1. Install larastan (composer require --dev larastan/larastan).\n2. Add @method PHPDoc annotations for custom scopes and relationships.\n3. Use Eloquent IDE Helper to generate docblocks: composer require --dev barryvdh/laravel-ide-helper.",
+                "codeBlock": null
+              },
+              {
+                "when": "className contains Facade",
+                "rootCause": "PHPStan cannot resolve methods on Laravel Facades because they use __callStatic() to proxy to a resolved service.",
+                "prescription": "1. Install larastan for automatic Facade resolution.\n2. Import the underlying class instead of using the Facade.\n3. Use dependency injection instead of Facades.",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "PHPSTAN_UNDEFINED_VARIABLE",
+            "category": "phpstan_errors",
+            "severity": "error",
+            "messagePattern": "Undefined variable:?\\s*\\$(?<variableName>\\w+)",
+            "match": "Undefined variable:?\\s*\\$(\\w+)",
+            "captures": [
+              { "name": "variableName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.05,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_local", "target": "variableName" }, "adjustedProbability": 0.02, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": {
+              "primaryStrategy": "initialize_variable",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "function_body"
+            },
+            "coOccurrence": [
+              { "code": "PHP_UNDEFINED_VARIABLE", "relationship": "same_root_cause", "sharedCapture": "variableName", "resolution": "fix_either" },
+              { "code": "PSALM_UNDEFINED_VARIABLE", "relationship": "same_root_cause", "sharedCapture": "variableName", "resolution": "fix_either" }
+            ],
+            "rootCause": "PHPStan detected that variable '${variableName}' might be used before being defined. Not all code paths assign a value to this variable.",
+            "prescription": "1. Initialize the variable before the branching code (e.g., $variableName = null; or appropriate default).\n2. Ensure every branch of conditional logic (if/else, switch, try/catch) assigns the variable.\n3. Check for typos — PHP variables are case-sensitive ($Name vs $name).",
+            "codeBlock": "// BEFORE\nif ($condition) {\n    $value = getData();\n}\nreturn $value; // Might be undefined\n\n// AFTER\n$value = null;\nif ($condition) {\n    $value = getData();\n}\nreturn $value;",
+            "conditions": []
+          },
+          {
+            "code": "PHPSTAN_RETURN_TYPE",
+            "category": "phpstan_errors",
+            "severity": "error",
+            "messagePattern": "Method\\s+(?<className>[^:]+)::(?<methodName>\\w+)\\(\\) should return\\s+(?<expectedType>[^\\s]+)\\s+but\\s+(?:returns?\\s+)?(?<actualType>.+)",
+            "match": "Method\\s+([^:]+)::(\\w+)\\(\\) should return\\s+([^\\s]+)\\s+but\\s+(?:returns?\\s+)?(.+)",
+            "captures": [
+              { "name": "className", "role": "type_name" },
+              { "name": "methodName", "role": "symbol_name" },
+              { "name": "expectedType", "role": "expected_type" },
+              { "name": "actualType", "role": "actual_type" }
+            ],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_local", "target": "className" }, "adjustedProbability": 0.15, "traceDepth": "none", "traceTarget": "same_file" },
+              { "check": { "type": "is_imported", "target": "expectedType" }, "adjustedProbability": 0.6, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": {
+              "primaryStrategy": "update_type_annotation",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "function_body"
+            },
+            "coOccurrence": [
+              { "code": "PHP_RETURN_TYPE_ERROR", "relationship": "same_root_cause", "sharedCapture": "expectedType", "resolution": "fix_either" },
+              { "code": "PHPSTAN_MISSING_RETURN", "relationship": "sometimes_together", "sharedCapture": "methodName", "resolution": "fix_either" }
+            ],
+            "rootCause": "Method {className}::{methodName}() is declared to return '{expectedType}' but PHPStan determined it actually returns '{actualType}'.",
+            "prescription": "1. If the return type declaration is correct, fix the method body to return '{expectedType}' in all code paths.\n2. If the actual return type is correct, update the return type declaration.\n3. If null is being returned, add nullable type: ?{expectedType}.\n4. If the type comes from a called method, check that method's return type.",
+            "codeBlock": "// BEFORE\nfunction findUser(int $id): User {\n    $user = $this->repo->find($id);\n    return $user; // PHPStan: should return User but returns User|null\n}\n\n// AFTER\nfunction findUser(int $id): ?User {\n    return $this->repo->find($id);\n}",
+            "conditions": [
+              {
+                "when": "actualType contains null",
+                "rootCause": "Method {className}::{methodName}() may return null but the return type '{expectedType}' does not include null.",
+                "prescription": "Add null to the return type: change '{expectedType}' to '?{expectedType}' or '{expectedType}|null'. Or add a null check and throw an exception instead of returning null.",
+                "codeBlock": null
+              },
+              {
+                "when": "actualType contains void",
+                "rootCause": "Method {className}::{methodName}() has a code path that returns nothing (void/implicit null) but is declared to return '{expectedType}'.",
+                "prescription": "Ensure every code path returns a value of type '{expectedType}'. Add a return statement to branches that currently fall through without returning.",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "PHPSTAN_ARGUMENT_TYPE",
+            "category": "phpstan_errors",
+            "severity": "error",
+            "messagePattern": "Parameter\\s*#(?<argNum>\\d+)\\s*(?:\\$(?<paramName>\\w+)\\s*)?of\\s+(?:method\\s+(?<className>[^:]+)::(?<methodName>\\w+)|function\\s+(?<functionName>[^(]+))\\(\\)\\s*expects\\s+(?<expectedType>[^,]+),\\s*(?<actualType>.+?)\\s*given",
+            "match": "Parameter\\s*#(\\d+).*expects\\s+([^,]+),\\s*(.+?)\\s*given",
+            "captures": [
+              { "name": "argNum", "role": "literal_value" },
+              { "name": "paramName", "role": "symbol_name" },
+              { "name": "className", "role": "type_name" },
+              { "name": "methodName", "role": "symbol_name" },
+              { "name": "functionName", "role": "symbol_name" },
+              { "name": "expectedType", "role": "expected_type" },
+              { "name": "actualType", "role": "actual_type" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "className" }, "adjustedProbability": 0.75, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "className" }, "adjustedProbability": 0.2, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": {
+              "primaryStrategy": "cast_type",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [
+              { "code": "PHP_TYPE_ERROR", "relationship": "same_root_cause", "sharedCapture": "expectedType", "resolution": "fix_either" },
+              { "code": "PSALM_INVALID_ARGUMENT", "relationship": "same_root_cause", "sharedCapture": "expectedType", "resolution": "fix_either" }
+            ],
+            "rootCause": "Parameter #{argNum} of {className}::{methodName}() expects type '{expectedType}', but '{actualType}' was given. The argument value does not match the function's type declaration.",
+            "prescription": "1. Cast or convert the argument to type '{expectedType}' before passing it.\n2. If null is being passed, add a null check or use the null coalescing operator: $value ?? $default.\n3. If the parameter type is too strict, widen it in the function signature.\n4. If using PHPStan generics (@template), ensure the template resolution is correct.\n5. Narrow the type with instanceof or type checks before the call.",
+            "codeBlock": "// BEFORE\nfunction save(User $user): void { }\n$result = $repo->find($id); // returns User|null\nsave($result); // PHPStan: expects User, User|null given\n\n// AFTER\n$result = $repo->find($id);\nif ($result !== null) {\n    save($result);\n}",
+            "conditions": [
+              {
+                "when": "actualType contains null",
+                "rootCause": "A nullable value of type '{actualType}' is being passed where '{expectedType}' (non-nullable) is expected.",
+                "prescription": "Add a null check before the function call, or use the null coalescing operator ($value ?? $default).",
+                "codeBlock": null
+              }
+            ]
+          },
+          {
+            "code": "PHPSTAN_PROPERTY_TYPE",
+            "category": "phpstan_errors",
+            "severity": "error",
+            "messagePattern": "Property\\s+(?<className>[^:]+)::\\$(?<propertyName>\\w+)\\s+\\((?<declaredType>[^)]+)\\)\\s+does not accept\\s+(?<actualType>.+)",
+            "match": "Property\\s+([^:]+)::\\$(\\w+).*does not accept\\s+(.+)",
+            "captures": [
+              { "name": "className", "role": "type_name" },
+              { "name": "propertyName", "role": "property_name" },
+              { "name": "declaredType", "role": "expected_type" },
+              { "name": "actualType", "role": "actual_type" }
+            ],
+            "baseCrossFileProbability": 0.4,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "className" }, "adjustedProbability": 0.7, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "className" }, "adjustedProbability": 0.15, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": {
+              "primaryStrategy": "update_type_annotation",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [],
+            "rootCause": "Property {className}::${propertyName} is declared as type '{declaredType}' but a value of type '{actualType}' is being assigned to it.",
+            "prescription": "1. Cast the value to '{declaredType}' before assignment.\n2. If the property should accept '{actualType}', widen the type declaration.\n3. Add a null check if assigning a potentially null value to a non-nullable property.\n4. Verify the source of the value returns the expected type.",
+            "codeBlock": "// BEFORE\nclass Config {\n    public int $port;\n}\n$config->port = getenv('PORT'); // string|false assigned to int\n\n// AFTER\n$config->port = (int) (getenv('PORT') ?: 8080);",
+            "conditions": []
+          },
+          {
+            "code": "PHPSTAN_MISSING_RETURN",
+            "category": "phpstan_errors",
+            "severity": "error",
+            "messagePattern": "Method\\s+(?<className>[^:]+)::(?<methodName>\\w+)\\(\\)\\s+should return\\s+(?<returnType>[^\\s]+)\\s+but\\s+return statement is missing",
+            "match": "Method\\s+([^:]+)::(\\w+)\\(\\).*return statement is missing",
+            "captures": [
+              { "name": "className", "role": "type_name" },
+              { "name": "methodName", "role": "symbol_name" },
+              { "name": "returnType", "role": "expected_type" }
+            ],
+            "baseCrossFileProbability": 0.1,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_local", "target": "className" }, "adjustedProbability": 0.05, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": {
+              "primaryStrategy": "add_missing_return",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "function_body"
+            },
+            "coOccurrence": [
+              { "code": "PHPSTAN_RETURN_TYPE", "relationship": "same_root_cause", "sharedCapture": "methodName", "resolution": "fix_either" }
+            ],
+            "rootCause": "Method {className}::{methodName}() declares return type '{returnType}' but has a code path that reaches the end of the method without a return statement.",
+            "prescription": "1. Add a return statement at the end of the method.\n2. Ensure all branches (if/else, switch, try/catch) return a value.\n3. If the method should not return a value in some cases, change the return type to nullable: ?{returnType}.\n4. Consider throwing an exception for unreachable code paths.",
+            "codeBlock": "// BEFORE\npublic function getStatus(): string {\n    if ($this->active) {\n        return 'active';\n    }\n    // Missing return for the else case\n}\n\n// AFTER\npublic function getStatus(): string {\n    if ($this->active) {\n        return 'active';\n    }\n    return 'inactive';\n}",
+            "conditions": []
+          },
+          {
+            "code": "PHPSTAN_ACCESS_PROPERTY_NOT_FOUND",
+            "category": "phpstan_errors",
+            "severity": "error",
+            "messagePattern": "Access to an undefined property\\s+(?<className>[^:]+)::\\$(?<propertyName>\\w+)",
+            "match": "Access to an undefined property\\s+([^:]+)::\\$(\\w+)",
+            "captures": [
+              { "name": "className", "role": "type_name" },
+              { "name": "propertyName", "role": "property_name" }
+            ],
+            "baseCrossFileProbability": 0.6,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "className" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "className" }, "adjustedProbability": 0.2, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": {
+              "primaryStrategy": "add_property",
+              "requiresCrossFileEdit": true,
+              "typicalScope": "type_definition"
+            },
+            "coOccurrence": [
+              { "code": "PHP_UNDEFINED_PROPERTY", "relationship": "same_root_cause", "sharedCapture": "propertyName", "resolution": "fix_either" }
+            ],
+            "rootCause": "Property '${propertyName}' is not declared in class '{className}'. PHPStan cannot find a property declaration, @property PHPDoc annotation, or __get/__set magic method.",
+            "prescription": "1. Declare the property in the class: public type ${propertyName};\n2. If the property is dynamic (set via __set), add @property annotation: /** @property type ${propertyName} */.\n3. If the property comes from a parent class or trait, verify the parent/trait is properly referenced.\n4. Check for typos in the property name.",
+            "codeBlock": "// BEFORE (PHPStan level 2+)\nclass User {\n    public string $name;\n}\n$user->email; // Access to an undefined property\n\n// AFTER\nclass User {\n    public string $name;\n    public string $email;\n}",
+            "conditions": []
+          },
+          {
+            "code": "PHPSTAN_FUNCTION_NOT_FOUND",
+            "category": "phpstan_errors",
+            "severity": "error",
+            "messagePattern": "Function\\s+(?<functionName>[\\w\\\\]+)\\s+not found",
+            "match": "Function\\s+([\\w\\\\]+)\\s+not found",
+            "captures": [
+              { "name": "functionName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.7,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_external", "target": "functionName" }, "adjustedProbability": 0.95, "traceDepth": "none", "traceTarget": "external_package" },
+              { "check": { "type": "is_local", "target": "functionName" }, "adjustedProbability": 0.5, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": {
+              "primaryStrategy": "add_import",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "file_header"
+            },
+            "coOccurrence": [
+              { "code": "PHP_UNDEFINED_FUNCTION", "relationship": "same_root_cause", "sharedCapture": "functionName", "resolution": "fix_either" }
+            ],
+            "rootCause": "PHPStan could not find the function '{functionName}'. It may be defined in a file that is not scanned, or requires a 'use function' import.",
+            "prescription": "1. Add 'use function {functionName};' at the top of the file.\n2. If the function is from a PHP extension, add the extension to phpstan.neon's scanFiles or stubFiles.\n3. Verify the function exists and its file is included in PHPStan's scan paths.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "PHPSTAN_CLASS_NOT_FOUND",
+            "category": "phpstan_errors",
+            "severity": "error",
+            "messagePattern": "(?:Class|Interface|Trait)\\s+(?<className>[\\w\\\\]+)\\s+not found",
+            "match": "(?:Class|Interface|Trait)\\s+([\\w\\\\]+)\\s+not found",
+            "captures": [
+              { "name": "className", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.9,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_external", "target": "className" }, "adjustedProbability": 0.98, "traceDepth": "none", "traceTarget": "external_package" },
+              { "check": { "type": "is_local", "target": "className" }, "adjustedProbability": 0.85, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": {
+              "primaryStrategy": "add_import",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "file_header"
+            },
+            "coOccurrence": [
+              { "code": "PHP_CLASS_NOT_FOUND", "relationship": "same_root_cause", "sharedCapture": "className", "resolution": "fix_either" },
+              { "code": "PHPSTAN_UNDEFINED_METHOD", "relationship": "causes_this", "sharedCapture": "className", "resolution": "fix_this_first" }
+            ],
+            "rootCause": "PHPStan cannot find the class/interface/trait '{className}'. It is not in the autoload map or the namespace/path is wrong.",
+            "prescription": "1. Add 'use {className};' at the top of the file.\n2. Verify the class exists and matches the PSR-4 autoload mapping.\n3. If it is from a package, ensure the package is installed.\n4. Add the class directory to PHPStan's scanDirectories in phpstan.neon.\n5. Run 'composer dump-autoload'.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "PHPSTAN_COMPARISON_ALWAYS",
+            "category": "phpstan_errors",
+            "severity": "warning",
+            "messagePattern": "(?:Strict comparison using ===|Comparison using ==) between (?<leftType>[^\\s]+) and (?<rightType>[^\\s]+) will always evaluate to (?<result>true|false)",
+            "match": "(?:Strict comparison|Comparison).*between ([^\\s]+) and ([^\\s]+) will always evaluate to (true|false)",
+            "captures": [
+              { "name": "leftType", "role": "actual_type" },
+              { "name": "rightType", "role": "expected_type" },
+              { "name": "result", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.2,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "restructure_code",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [],
+            "rootCause": "A comparison between '{leftType}' and '{rightType}' will always be {result}. This indicates dead code or a logic error in the condition.",
+            "prescription": "1. If always true: the condition is unnecessary, simplify the code by removing it.\n2. If always false: the branch is unreachable dead code. Either the logic is wrong or the comparison should be against a different value.\n3. Verify the variable types — the variable may have been narrowed by a previous check.",
+            "codeBlock": "// BEFORE\nfunction process(string $name): void {\n    if ($name === null) { // Always false: $name cannot be null\n        return;\n    }\n}\n\n// AFTER\nfunction process(?string $name): void { // Allow null if needed\n    if ($name === null) {\n        return;\n    }\n}",
+            "conditions": []
+          },
+          {
+            "code": "PHPSTAN_DEAD_CODE",
+            "category": "phpstan_errors",
+            "severity": "warning",
+            "messagePattern": "(?:Dead code|Unreachable statement)\\s*(?:-\\s*(?<detail>.+))?",
+            "match": "(?:Dead code|Unreachable statement)",
+            "captures": [
+              { "name": "detail", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.1,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "restructure_code",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "function_body"
+            },
+            "coOccurrence": [],
+            "rootCause": "PHPStan detected unreachable code. A return, throw, or exit statement before this code means it can never execute.",
+            "prescription": "1. Remove the unreachable code if it is truly dead.\n2. If the code should be reachable, fix the control flow above it (e.g., the early return condition may be wrong).\n3. This often indicates refactoring remnants that should be cleaned up.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "PHPSTAN_PHPSTAN_LEVEL_MISMATCH",
+            "category": "phpstan_errors",
+            "severity": "error",
+            "messagePattern": "(?:PHPDoc tag @(?<tag>\\w+) has invalid type|PHPDoc tag @(?<tag2>\\w+) contains unresolvable type)",
+            "match": "PHPDoc tag @(\\w+).*(?:invalid type|unresolvable type)",
+            "captures": [
+              { "name": "tag", "role": "literal_value" },
+              { "name": "tag2", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "tag" }, "adjustedProbability": 0.6, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": {
+              "primaryStrategy": "update_type_annotation",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [],
+            "rootCause": "A PHPDoc type annotation references a type that PHPStan cannot resolve. The type class may not be imported, or the PHPDoc syntax may be incorrect.",
+            "prescription": "1. Add a 'use' import for the referenced type.\n2. Use the fully qualified class name in the PHPDoc (\\Vendor\\Package\\ClassName).\n3. Check for typos in the type name.\n4. If using generics (array<Key, Value>), ensure the syntax is correct.\n5. If using Psalm/PHPStan extensions (@phpstan-type, @phpstan-import-type), verify the syntax.",
+            "codeBlock": "// BEFORE\n/** @param Collection $items */ // PHPStan: unresolvable type\n\n// AFTER\nuse Illuminate\\Support\\Collection;\n/** @param Collection<int, User> $items */",
+            "conditions": []
+          },
+          {
+            "code": "PHPSTAN_UNSAFE_CALL_ON_NULLABLE",
+            "category": "phpstan_errors",
+            "severity": "error",
+            "messagePattern": "Cannot (?:call method|access property) (?<member>\\w+)\\(\\)? on (?<type>[^.]+?)(?:\\.|$)",
+            "match": "Cannot (?:call method|access property).*on (?:null|([^.]+?)(?:\\.|$))",
+            "captures": [
+              { "name": "member", "role": "symbol_name" },
+              { "name": "type", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "type" }, "adjustedProbability": 0.5, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": {
+              "primaryStrategy": "add_null_check",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [],
+            "rootCause": "Trying to call a method or access a property on a value that may be null or a non-object type '{type}'. This can cause a fatal error at runtime.",
+            "prescription": "1. Add a null check: if ($variable !== null) { $variable->{member}(); }\n2. Use the nullsafe operator (PHP 8.0+): $variable?->{member}();\n3. Narrow the type with instanceof: if ($variable instanceof ClassName) { ... }\n4. Fix the source to never return null if null is not a valid state.",
+            "codeBlock": "// BEFORE\n$user = $repo->find($id); // returns User|null\n$name = $user->getName(); // Error: cannot call on null\n\n// AFTER — Option 1: Null check\n$user = $repo->find($id);\nif ($user !== null) {\n    $name = $user->getName();\n}\n\n// AFTER — Option 2: Nullsafe operator (PHP 8.0+)\n$name = $repo->find($id)?->getName();",
+            "conditions": []
+          }
+        ]
+      },
+      {
+        "id": "psalm_errors",
+        "name": "Psalm Static Analysis Errors",
+        "description": "Errors reported by Psalm type checker",
+        "defaultTracingBehavior": "trace_import_source",
+        "errors": [
+          {
+            "code": "PSALM_UNDEFINED_VARIABLE",
+            "category": "psalm_errors",
+            "severity": "error",
+            "messagePattern": "UndefinedVariable\\s*-\\s*[^:]+:\\d+:\\d+\\s*-\\s*Cannot find referenced variable\\s*\\$(?<variableName>\\w+)",
+            "match": "ERROR:\\s*UndefinedVariable.*Cannot find referenced variable\\s*\\$(\\w+)",
+            "captures": [
+              { "name": "variableName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.05,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "initialize_variable",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "function_body"
+            },
+            "coOccurrence": [
+              { "code": "PHP_UNDEFINED_VARIABLE", "relationship": "same_root_cause", "sharedCapture": "variableName", "resolution": "fix_either" },
+              { "code": "PHPSTAN_UNDEFINED_VARIABLE", "relationship": "same_root_cause", "sharedCapture": "variableName", "resolution": "fix_either" }
+            ],
+            "rootCause": "Psalm cannot find variable '${variableName}' in the current scope. It is either undefined, defined only in some branches, or there is a typo.",
+            "prescription": "1. Initialize the variable before use.\n2. Ensure all code paths define the variable.\n3. Check for typos (PHP variables are case-sensitive).",
+            "codeBlock": "// BEFORE\nforeach ($items as $item) {\n    $total += $item->price; // $total not initialized\n}\n\n// AFTER\n$total = 0;\nforeach ($items as $item) {\n    $total += $item->price;\n}",
+            "conditions": []
+          },
+          {
+            "code": "PSALM_TYPE_MISMATCH",
+            "category": "psalm_errors",
+            "severity": "error",
+            "messagePattern": "(?:InvalidArgument|InvalidReturnType|InvalidReturnStatement)\\s*-.*?(?<expectedType>[\\w\\\\|]+).*?(?<actualType>[\\w\\\\|]+)",
+            "match": "ERROR:\\s*(?:InvalidArgument|InvalidReturnType|InvalidReturnStatement).*",
+            "captures": [
+              { "name": "expectedType", "role": "expected_type" },
+              { "name": "actualType", "role": "actual_type" }
+            ],
+            "baseCrossFileProbability": 0.4,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "expectedType" }, "adjustedProbability": 0.7, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "expectedType" }, "adjustedProbability": 0.15, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": {
+              "primaryStrategy": "update_type_annotation",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [
+              { "code": "PHPSTAN_ARGUMENT_TYPE", "relationship": "same_root_cause", "sharedCapture": "expectedType", "resolution": "fix_either" },
+              { "code": "PHP_TYPE_ERROR", "relationship": "same_root_cause", "sharedCapture": "expectedType", "resolution": "fix_either" }
+            ],
+            "rootCause": "Psalm detected a type mismatch: expected '{expectedType}' but got '{actualType}'. The value does not satisfy the declared type constraint.",
+            "prescription": "1. Ensure the value matches the expected type '{expectedType}'.\n2. Add appropriate type casting or conversion.\n3. Narrow the type with assertions (assert($x instanceof Type)) or conditionals.\n4. If the type declaration is wrong, update it.\n5. Use @psalm-suppress InvalidArgument as a last resort with a comment explaining why.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "PSALM_INVALID_ARGUMENT",
+            "category": "psalm_errors",
+            "severity": "error",
+            "messagePattern": "InvalidArgument\\s*-.*?Argument\\s+(?<argNum>\\d+)\\s+of\\s+(?<functionName>[^\\s]+)\\s+expects\\s+(?<expectedType>[^,]+),\\s*(?:but\\s+)?(?<actualType>[^\\s]+)\\s*(?:provided|given)",
+            "match": "ERROR:\\s*InvalidArgument.*Argument\\s+(\\d+)\\s+of\\s+([^\\s]+)\\s+expects\\s+([^,]+)",
+            "captures": [
+              { "name": "argNum", "role": "literal_value" },
+              { "name": "functionName", "role": "symbol_name" },
+              { "name": "expectedType", "role": "expected_type" },
+              { "name": "actualType", "role": "actual_type" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "functionName" }, "adjustedProbability": 0.75, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "functionName" }, "adjustedProbability": 0.2, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": {
+              "primaryStrategy": "cast_type",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [
+              { "code": "PHPSTAN_ARGUMENT_TYPE", "relationship": "same_root_cause", "sharedCapture": "expectedType", "resolution": "fix_either" },
+              { "code": "PHP_TYPE_ERROR", "relationship": "same_root_cause", "sharedCapture": "expectedType", "resolution": "fix_either" }
+            ],
+            "rootCause": "Argument {argNum} of {functionName} expects '{expectedType}' but '{actualType}' was provided.",
+            "prescription": "1. Convert the argument to type '{expectedType}' before passing.\n2. If null is the issue, add a null check or coalescing operator.\n3. If the function signature should accept the given type, update it.\n4. Narrow the type with instanceof or type assertions.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "PSALM_MISSING_RETURN_TYPE",
+            "category": "psalm_errors",
+            "severity": "error",
+            "messagePattern": "MissingReturnType\\s*-.*?Method\\s+(?<className>[^:]+)::(?<methodName>\\w+)\\s+does not have a return type",
+            "match": "ERROR:\\s*MissingReturnType.*Method\\s+([^:]+)::(\\w+)",
+            "captures": [
+              { "name": "className", "role": "type_name" },
+              { "name": "methodName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.1,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "update_type_annotation",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [],
+            "rootCause": "Method {className}::{methodName}() does not declare a return type. Psalm requires explicit return types for better type safety.",
+            "prescription": "1. Add a return type declaration to the method.\n2. Analyze what the method returns and declare the appropriate type.\n3. If the method returns nothing, add ': void'.\n4. If the method returns multiple types, use a union type: int|string.",
+            "codeBlock": "// BEFORE\nclass UserService {\n    public function findById(int $id) {\n        return $this->repo->find($id);\n    }\n}\n\n// AFTER\nclass UserService {\n    public function findById(int $id): ?User {\n        return $this->repo->find($id);\n    }\n}",
+            "conditions": []
+          },
+          {
+            "code": "PSALM_POSSIBLY_NULL",
+            "category": "psalm_errors",
+            "severity": "error",
+            "messagePattern": "PossiblyNull(?:Reference|Argument|PropertyFetch|FunctionCall)\\s*-.*?(?<expression>.+?)\\s+(?:is possibly null|on a possibly null)",
+            "match": "ERROR:\\s*PossiblyNull(?:Reference|Argument|PropertyFetch|FunctionCall).*",
+            "captures": [
+              { "name": "expression", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "expression" }, "adjustedProbability": 0.5, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": {
+              "primaryStrategy": "add_null_check",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [
+              { "code": "PHPSTAN_UNSAFE_CALL_ON_NULLABLE", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+            "rootCause": "Psalm detected that '{expression}' could be null at this point, but is being used in a context that does not accept null.",
+            "prescription": "1. Add a null check before using the value: if ($value !== null) { ... }\n2. Use the nullsafe operator (PHP 8.0+): $obj?->method().\n3. Use null coalescing: $value ?? $default.\n4. If the value can never be null at this point, add an assertion: assert($value !== null).",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "PSALM_POSSIBLY_UNDEFINED",
+            "category": "psalm_errors",
+            "severity": "error",
+            "messagePattern": "PossiblyUndefinedVariable\\s*-.*?\\$(?<variableName>\\w+)\\s+is possibly undefined",
+            "match": "ERROR:\\s*PossiblyUndefinedVariable.*\\$(\\w+)\\s+is possibly undefined",
+            "captures": [
+              { "name": "variableName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.05,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "initialize_variable",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "function_body"
+            },
+            "coOccurrence": [
+              { "code": "PSALM_UNDEFINED_VARIABLE", "relationship": "same_root_cause", "sharedCapture": "variableName", "resolution": "fix_either" }
+            ],
+            "rootCause": "Variable '${variableName}' may not be defined on all code paths. Psalm found branches where this variable is not assigned.",
+            "prescription": "1. Initialize the variable with a default value before the conditional blocks.\n2. Ensure every branch assigns the variable.\n3. If only one branch is expected, add an else clause with a default.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "PSALM_INVALID_CLASS_CONSTANT_TYPE",
+            "category": "psalm_errors",
+            "severity": "error",
+            "messagePattern": "InvalidClassConstantType\\s*-.*?constant\\s+(?<className>[^:]+)::(?<constName>\\w+)",
+            "match": "ERROR:\\s*InvalidClassConstantType.*constant\\s+([^:]+)::(\\w+)",
+            "captures": [
+              { "name": "className", "role": "type_name" },
+              { "name": "constName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.4,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "className" }, "adjustedProbability": 0.7, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": {
+              "primaryStrategy": "update_type_annotation",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [],
+            "rootCause": "The value of constant {className}::{constName} does not match the expected type from the parent class or interface.",
+            "prescription": "1. Verify the constant value matches the type declared in the parent/interface.\n2. Update the constant value to be the correct type.\n3. If the type was narrowed, ensure it is still compatible with the parent's declaration.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "PSALM_UNDEFINED_METHOD",
+            "category": "psalm_errors",
+            "severity": "error",
+            "messagePattern": "UndefinedMethod\\s*-.*?Method\\s+(?<className>[^:]+)::(?<methodName>\\w+)\\s+does not exist",
+            "match": "ERROR:\\s*UndefinedMethod.*Method\\s+([^:]+)::(\\w+)\\s+does not exist",
+            "captures": [
+              { "name": "className", "role": "type_name" },
+              { "name": "methodName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.75,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "className" }, "adjustedProbability": 0.9, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "className" }, "adjustedProbability": 0.3, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": {
+              "primaryStrategy": "add_property",
+              "requiresCrossFileEdit": true,
+              "typicalScope": "type_definition"
+            },
+            "coOccurrence": [
+              { "code": "PHPSTAN_UNDEFINED_METHOD", "relationship": "same_root_cause", "sharedCapture": "methodName", "resolution": "fix_either" },
+              { "code": "PHP_UNDEFINED_METHOD", "relationship": "same_root_cause", "sharedCapture": "methodName", "resolution": "fix_either" }
+            ],
+            "rootCause": "Psalm reports method {className}::{methodName}() does not exist. The method is missing from the class, or the type is too broad for Psalm to find it.",
+            "prescription": "1. Add the method to class '{className}'.\n2. If the method exists via __call(), add @method PHPDoc annotation.\n3. Narrow the variable type with instanceof or @var annotation.\n4. Check for typos in the method name.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "PSALM_MISSING_PARAM_TYPE",
+            "category": "psalm_errors",
+            "severity": "error",
+            "messagePattern": "MissingParamType\\s*-.*?Parameter\\s+\\$(?<paramName>\\w+).*?(?<functionName>[\\w:]+)",
+            "match": "ERROR:\\s*MissingParamType.*Parameter\\s+\\$(\\w+)",
+            "captures": [
+              { "name": "paramName", "role": "symbol_name" },
+              { "name": "functionName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.1,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "update_type_annotation",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [],
+            "rootCause": "Parameter ${paramName} has no type declaration. Psalm requires all parameters to have explicit types for full type safety.",
+            "prescription": "1. Add a type hint to the parameter: function foo(string ${paramName}).\n2. If the type is complex, add a @param PHPDoc annotation.\n3. Use union types (int|string) for parameters that accept multiple types.\n4. Use mixed only as a last resort.",
+            "codeBlock": "// BEFORE\npublic function setName($name) { $this->name = $name; }\n\n// AFTER\npublic function setName(string $name): void { $this->name = $name; }",
+            "conditions": []
+          },
+          {
+            "code": "PSALM_REDUNDANT_CONDITION",
+            "category": "psalm_errors",
+            "severity": "warning",
+            "messagePattern": "RedundantCondition\\s*-.*?(?<condition>.+?)\\s+(?:is always|will always be)\\s+(?<result>true|false)",
+            "match": "ERROR:\\s*RedundantCondition.*(?:is always|will always be)",
+            "captures": [
+              { "name": "condition", "role": "literal_value" },
+              { "name": "result", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.1,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "restructure_code",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [
+              { "code": "PHPSTAN_COMPARISON_ALWAYS", "relationship": "same_root_cause", "sharedCapture": null, "resolution": "fix_either" }
+            ],
+            "rootCause": "The condition '{condition}' is always {result} based on type analysis. This indicates dead code or an unnecessary check.",
+            "prescription": "1. Remove the redundant condition if it is always true.\n2. Remove the unreachable branch if it is always false.\n3. If the condition should sometimes be false, check the variable type — it may have been narrowed earlier.",
+            "codeBlock": null,
+            "conditions": []
+          }
+        ]
+      },
+      {
+        "id": "type_errors",
+        "name": "Type System Errors",
+        "description": "PHP 8.x type system errors including union types, intersection types, enums, and readonly properties",
+        "defaultTracingBehavior": "trace_import_source",
+        "errors": [
+          {
+            "code": "PHP_READONLY_MODIFICATION",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "Cannot modify readonly property\\s+(?<className>[^:]+)::\\$(?<propertyName>\\w+)",
+            "match": "(?:Fatal error|Error):.*Cannot modify readonly property\\s+([^:]+)::\\$(\\w+)",
+            "captures": [
+              { "name": "className", "role": "type_name" },
+              { "name": "propertyName", "role": "property_name" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "className" }, "adjustedProbability": 0.75, "traceDepth": "direct", "traceTarget": "imported_file" },
+              { "check": { "type": "is_local", "target": "className" }, "adjustedProbability": 0.15, "traceDepth": "none", "traceTarget": "same_file" }
+            ],
+            "fixHint": {
+              "primaryStrategy": "restructure_code",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [],
+            "rootCause": "Property {className}::${propertyName} is declared as 'readonly' (PHP 8.1+) and cannot be modified after initialization. Readonly properties can only be assigned once, in the constructor.",
+            "prescription": "1. Set the property value in the constructor instead of modifying it later.\n2. If the property needs to be mutable, remove the 'readonly' modifier.\n3. Create a new instance with the modified value (immutable pattern): $new = new ClassName(newValue: $value).\n4. Use a 'with' method pattern: public function withName(string $name): static { return new static($name); }.",
+            "codeBlock": "// BEFORE\nreadonly class User {\n    public function __construct(public string $name) {}\n}\n$user = new User('Alice');\n$user->name = 'Bob'; // Error: Cannot modify readonly property\n\n// AFTER — Create a new instance\n$user = new User('Alice');\n$newUser = new User('Bob');",
+            "conditions": []
+          },
+          {
+            "code": "PHP_ENUM_ERROR",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "(?<className>[\\w\\\\]+)\\s+is not a valid backing value for enum\\s+['\"]?(?<enumName>[^'\"]+)['\"]?",
+            "match": "(?:Fatal error|ValueError):.*is not a valid backing value for enum",
+            "captures": [
+              { "name": "className", "role": "literal_value" },
+              { "name": "enumName", "role": "type_name" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "enumName" }, "adjustedProbability": 0.75, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": {
+              "primaryStrategy": "fix_enum_value",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [],
+            "rootCause": "The value '{className}' does not match any case in the backed enum '{enumName}'. PHP 8.1 backed enums require exact value matches.",
+            "prescription": "1. Use EnumName::tryFrom($value) instead of EnumName::from($value) to handle invalid values gracefully.\n2. Verify the value matches one of the enum's backed values exactly.\n3. Check for type mismatches (string vs int backed enum).\n4. Add the missing case to the enum if the value should be valid.",
+            "codeBlock": "// BEFORE\nenum Status: string {\n    case Active = 'active';\n    case Inactive = 'inactive';\n}\nStatus::from('unknown'); // ValueError\n\n// AFTER — Use tryFrom for safe conversion\n$status = Status::tryFrom('unknown'); // Returns null instead of throwing\nif ($status === null) {\n    $status = Status::Active; // Default\n}",
+            "conditions": []
+          },
+          {
+            "code": "PHP_INTERSECTION_TYPE_ERROR",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "(?<className>[^\\s]+) must be of type (?<intersectionType>[^,]+&[^,]+),",
+            "match": "(?:Fatal error|TypeError):.*must be of type ([^,]+&[^,]+)",
+            "captures": [
+              { "name": "className", "role": "type_name" },
+              { "name": "intersectionType", "role": "expected_type" }
+            ],
+            "baseCrossFileProbability": 0.6,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "intersectionType" }, "adjustedProbability": 0.8, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": {
+              "primaryStrategy": "implement_interface",
+              "requiresCrossFileEdit": true,
+              "typicalScope": "type_definition"
+            },
+            "coOccurrence": [],
+            "rootCause": "The value does not satisfy the intersection type '{intersectionType}'. The object must implement ALL the interfaces/classes in the intersection.",
+            "prescription": "1. Ensure the object's class implements all interfaces in the intersection type.\n2. If using intersection types (PHP 8.1+), verify each component type is satisfied.\n3. Check that the correct object is being passed.",
+            "codeBlock": "// BEFORE\ninterface Loggable {}\ninterface Serializable {}\nfunction process(Loggable&Serializable $item): void {}\n\nclass MyItem implements Loggable {} // Missing Serializable\nprocess(new MyItem()); // TypeError\n\n// AFTER\nclass MyItem implements Loggable, Serializable {}",
+            "conditions": []
+          },
+          {
+            "code": "PHP_FIBER_ERROR",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "Cannot (?:start|resume|suspend) a (?:terminated|running|suspended) fiber",
+            "match": "(?:Fatal error|FiberError):.*Cannot (?:start|resume|suspend) a (?:terminated|running|suspended) fiber",
+            "captures": [],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "known",
+            "refinements": [],
+            "fixHint": {
+              "primaryStrategy": "restructure_code",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "function_body"
+            },
+            "coOccurrence": [],
+            "rootCause": "A Fiber (PHP 8.1+) is being used in an invalid state. You cannot start an already started fiber, resume a running fiber, or suspend a terminated fiber.",
+            "prescription": "1. Check the fiber's state before operations: $fiber->isStarted(), $fiber->isRunning(), $fiber->isTerminated(), $fiber->isSuspended().\n2. Only call start() on a new fiber, resume() on a suspended fiber, and Fiber::suspend() from within a running fiber.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "PHP_NAMED_ARGUMENT_ERROR",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "Unknown named parameter\\s+\\$(?<paramName>\\w+)",
+            "match": "(?:Fatal error|Error):.*Unknown named parameter\\s+\\$(\\w+)",
+            "captures": [
+              { "name": "paramName", "role": "symbol_name" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "paramName" }, "adjustedProbability": 0.75, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": {
+              "primaryStrategy": "rename_symbol",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [],
+            "rootCause": "The named argument '${paramName}' does not match any parameter in the function signature. PHP 8.0+ named arguments must match the parameter name exactly.",
+            "prescription": "1. Check for typos in the parameter name.\n2. Verify the parameter name matches the function signature exactly (case-sensitive).\n3. If the function was recently refactored and parameter names changed, update all call sites.",
+            "codeBlock": "// BEFORE\nfunction createUser(string $name, string $email): void {}\ncreateUser(username: 'John', email: 'john@example.com'); // Unknown parameter $username\n\n// AFTER\ncreateUser(name: 'John', email: 'john@example.com');",
+            "conditions": []
+          },
+          {
+            "code": "PHP_STATIC_PROPERTY_ON_INSTANCE",
+            "category": "type_errors",
+            "severity": "error",
+            "messagePattern": "Access to undeclared static property:?\\s+(?<className>[^:]+)::\\$(?<propertyName>\\w+)",
+            "match": "(?:Fatal error|Error):.*undeclared static property.*([^:]+)::\\$(\\w+)",
+            "captures": [
+              { "name": "className", "role": "type_name" },
+              { "name": "propertyName", "role": "property_name" }
+            ],
+            "baseCrossFileProbability": 0.5,
+            "confidence": "known",
+            "refinements": [
+              { "check": { "type": "is_imported", "target": "className" }, "adjustedProbability": 0.75, "traceDepth": "direct", "traceTarget": "imported_file" }
+            ],
+            "fixHint": {
+              "primaryStrategy": "add_property",
+              "requiresCrossFileEdit": true,
+              "typicalScope": "type_definition"
+            },
+            "coOccurrence": [],
+            "rootCause": "Static property {className}::${propertyName} does not exist. Either the property is not declared as static, or it does not exist at all.",
+            "prescription": "1. Declare the static property: private static type ${propertyName};\n2. If the property exists as an instance property, access it via $this->{propertyName} instead of self::${propertyName}.\n3. Check for typos in the property name.",
+            "codeBlock": null,
+            "conditions": []
+          },
+          {
+            "code": "PHP_DEPRECATION",
+            "category": "type_errors",
+            "severity": "warning",
+            "messagePattern": "(?<feature>.+?)\\s+is deprecated",
+            "match": "Deprecated:.*(.+?)\\s+is deprecated",
+            "captures": [
+              { "name": "feature", "role": "literal_value" }
+            ],
+            "baseCrossFileProbability": 0.3,
+            "confidence": "heuristic",
+            "refinements": [
+              { "check": { "type": "is_external", "target": "feature" }, "adjustedProbability": 0.6, "traceDepth": "none", "traceTarget": "external_package" }
+            ],
+            "fixHint": {
+              "primaryStrategy": "restructure_code",
+              "requiresCrossFileEdit": false,
+              "typicalScope": "single_line"
+            },
+            "coOccurrence": [],
+            "rootCause": "'{feature}' is deprecated and will be removed in a future PHP version.",
+            "prescription": "1. Check the PHP migration guide for the replacement of '{feature}'.\n2. Common deprecations in PHP 8.x: dynamic properties (use declared properties), ${var} string interpolation (use {$var}), utf8_encode/decode (use mb_convert_encoding).\n3. Update the code to use the recommended replacement.",
+            "codeBlock": null,
+            "conditions": [
+              {
+                "when": "feature contains dynamic property",
+                "rootCause": "Dynamic properties (setting undeclared properties on objects) are deprecated in PHP 8.2 and will cause an error in PHP 9.0.",
+                "prescription": "1. Declare the property explicitly in the class.\n2. Add #[AllowDynamicProperties] attribute to the class as a temporary fix.\n3. Use a properties array: private array $data = []; with __get/__set methods.",
+                "codeBlock": null
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+
+  "importSystem": {
+    "importPatterns": [
+      {
+        "type": "use_class",
+        "regex": "use\\s+(?<namespace>[\\w\\\\]+?)\\\\(?<className>\\w+)\\s*;",
+        "captures": [
+          { "name": "namespace", "index": 1, "isList": false },
+          { "name": "className", "index": 2, "isList": false }
+        ],
+        "example": "use App\\Models\\User;",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "use_class_alias",
+        "regex": "use\\s+(?<namespace>[\\w\\\\]+?)\\\\(?<className>\\w+)\\s+as\\s+(?<alias>\\w+)\\s*;",
+        "captures": [
+          { "name": "namespace", "index": 1, "isList": false },
+          { "name": "className", "index": 2, "isList": false },
+          { "name": "alias", "index": 3, "isList": false }
+        ],
+        "example": "use App\\Models\\User as UserModel;",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "use_function",
+        "regex": "use\\s+function\\s+(?<namespace>[\\w\\\\]+?)\\\\(?<functionName>\\w+)\\s*;",
+        "captures": [
+          { "name": "namespace", "index": 1, "isList": false },
+          { "name": "functionName", "index": 2, "isList": false }
+        ],
+        "example": "use function App\\Helpers\\formatDate;",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "use_function_alias",
+        "regex": "use\\s+function\\s+(?<namespace>[\\w\\\\]+?)\\\\(?<functionName>\\w+)\\s+as\\s+(?<alias>\\w+)\\s*;",
+        "captures": [
+          { "name": "namespace", "index": 1, "isList": false },
+          { "name": "functionName", "index": 2, "isList": false },
+          { "name": "alias", "index": 3, "isList": false }
+        ],
+        "example": "use function App\\Helpers\\formatDate as fmtDate;",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "use_const",
+        "regex": "use\\s+const\\s+(?<namespace>[\\w\\\\]+?)\\\\(?<constName>\\w+)\\s*;",
+        "captures": [
+          { "name": "namespace", "index": 1, "isList": false },
+          { "name": "constName", "index": 2, "isList": false }
+        ],
+        "example": "use const App\\Config\\APP_VERSION;",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "use_grouped",
+        "regex": "use\\s+(?<namespace>[\\w\\\\]+)\\\\\\{(?<members>[^}]+)\\}\\s*;",
+        "captures": [
+          { "name": "namespace", "index": 1, "isList": false },
+          { "name": "members", "index": 2, "isList": true, "listSeparator": "," }
+        ],
+        "example": "use App\\Models\\{User, Post, Comment};",
+        "isMultiLine": true,
+        "multiLineRegex": "use\\s+(?<namespace>[\\w\\\\]+)\\\\\\{[\\s\\S]*?(?<members>[^}]+)\\}\\s*;"
+      },
+      {
+        "type": "use_grouped_mixed",
+        "regex": "use\\s+(?<namespace>[\\w\\\\]+)\\\\\\{\\s*(?:function\\s+|const\\s+)?(?<members>[^}]+)\\}\\s*;",
+        "captures": [
+          { "name": "namespace", "index": 1, "isList": false },
+          { "name": "members", "index": 2, "isList": true, "listSeparator": "," }
+        ],
+        "example": "use App\\Utils\\{ClassName, function helperFunc, const MAX_SIZE};",
+        "isMultiLine": true,
+        "multiLineRegex": "use\\s+(?<namespace>[\\w\\\\]+)\\\\\\{[\\s\\S]*?(?<members>[^}]+)\\}\\s*;"
+      },
+      {
+        "type": "require",
+        "regex": "(?:require|require_once|include|include_once)\\s+['\"](?<filePath>[^'\"]+)['\"]\\s*;",
+        "captures": [
+          { "name": "filePath", "index": 1, "isList": false }
+        ],
+        "example": "require_once __DIR__ . '/vendor/autoload.php';",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "require_expression",
+        "regex": "(?:require|require_once|include|include_once)\\s+(?<expression>[^;]+)\\s*;",
+        "captures": [
+          { "name": "expression", "index": 1, "isList": false }
+        ],
+        "example": "require __DIR__ . '/../vendor/autoload.php';",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "namespace_declaration",
+        "regex": "namespace\\s+(?<namespace>[\\w\\\\]+)\\s*;",
+        "captures": [
+          { "name": "namespace", "index": 1, "isList": false }
+        ],
+        "example": "namespace App\\Models;",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      },
+      {
+        "type": "namespace_block",
+        "regex": "namespace\\s+(?<namespace>[\\w\\\\]+)\\s*\\{",
+        "captures": [
+          { "name": "namespace", "index": 1, "isList": false }
+        ],
+        "example": "namespace App\\Models {",
+        "isMultiLine": false,
+        "multiLineRegex": null
+      }
+    ],
+    "exportPatterns": [
+      {
+        "type": "class_declaration",
+        "regex": "(?:abstract\\s+|final\\s+|readonly\\s+)*class\\s+(?<className>\\w+)",
+        "captures": [
+          { "name": "className", "index": 1 }
+        ],
+        "isReExport": false,
+        "example": "class User {"
+      },
+      {
+        "type": "interface_declaration",
+        "regex": "interface\\s+(?<interfaceName>\\w+)",
+        "captures": [
+          { "name": "interfaceName", "index": 1 }
+        ],
+        "isReExport": false,
+        "example": "interface UserRepositoryInterface {"
+      },
+      {
+        "type": "trait_declaration",
+        "regex": "trait\\s+(?<traitName>\\w+)",
+        "captures": [
+          { "name": "traitName", "index": 1 }
+        ],
+        "isReExport": false,
+        "example": "trait HasFactory {"
+      },
+      {
+        "type": "enum_declaration",
+        "regex": "enum\\s+(?<enumName>\\w+)(?:\\s*:\\s*(?<backingType>\\w+))?",
+        "captures": [
+          { "name": "enumName", "index": 1 },
+          { "name": "backingType", "index": 2 }
+        ],
+        "isReExport": false,
+        "example": "enum Status: string {"
+      },
+      {
+        "type": "function_declaration",
+        "regex": "^function\\s+(?<functionName>\\w+)\\s*\\(",
+        "captures": [
+          { "name": "functionName", "index": 1 }
+        ],
+        "isReExport": false,
+        "example": "function formatDate(DateTimeInterface $date): string {"
+      },
+      {
+        "type": "const_declaration",
+        "regex": "(?:const|define\\s*\\(\\s*['\"])(?<constName>[\\w\\\\]+)",
+        "captures": [
+          { "name": "constName", "index": 1 }
+        ],
+        "isReExport": false,
+        "example": "const APP_VERSION = '2.0.0';"
+      }
+    ],
+    "moduleResolution": {
+      "strategy": "psr4",
+      "extensions": [".php"],
+      "indexFiles": [],
+      "aliasConfig": {
+        "file": "composer.json",
+        "path": "autoload.psr-4",
+        "format": "Namespace prefix maps to a directory. 'App\\\\' => 'src/' means App\\Models\\User resolves to src/Models/User.php"
+      },
+      "packageEntryPoints": [],
+      "relativeImportRules": "PHP does not have relative imports via use statements. require/include uses filesystem-relative paths (relative to include_path or current directory). Use __DIR__ for reliable resolution.",
+      "absoluteImportRules": "use statements are always absolute namespace references from the global namespace root. use App\\Models\\User is the fully qualified namespace path. Composer PSR-4 autoloading maps namespace prefixes to directories."
+    }
+  },
+
+  "typeTracing": {
+    "definitionPatterns": [
+      {
+        "kind": "class",
+        "regex": "(?:abstract\\s+|final\\s+|readonly\\s+)*class\\s+(?<name>\\w+)(?:\\s+extends\\s+[\\w\\\\]+)?(?:\\s+implements\\s+[\\w\\\\,\\s]+)?\\s*\\{",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "class UserService extends BaseService implements LoggerAware {"
+      },
+      {
+        "kind": "interface",
+        "regex": "interface\\s+(?<name>\\w+)(?:\\s+extends\\s+[\\w\\\\,\\s]+)?\\s*\\{",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "interface UserRepositoryInterface extends RepositoryInterface {"
+      },
+      {
+        "kind": "trait",
+        "regex": "trait\\s+(?<name>\\w+)\\s*\\{",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "trait HasTimestamps {"
+      },
+      {
+        "kind": "enum",
+        "regex": "enum\\s+(?<name>\\w+)(?:\\s*:\\s*(?:string|int))?(?:\\s+implements\\s+[\\w\\\\,\\s]+)?\\s*\\{",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "enum Status: string implements HasLabel {"
+      },
+      {
+        "kind": "function",
+        "regex": "(?:public|protected|private|static|abstract|final)?\\s*function\\s+(?<name>\\w+)\\s*\\(",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "public function getUser(int $id): ?User {"
+      },
+      {
+        "kind": "variable",
+        "regex": "(?:public|protected|private)\\s+(?:readonly\\s+)?(?:static\\s+)?(?:[\\w\\\\|?]+\\s+)?\\$(?<name>\\w+)",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "public readonly string $name;"
+      },
+      {
+        "kind": "type_alias",
+        "regex": "@(?:phpstan-type|psalm-type)\\s+(?<name>\\w+)\\s*=",
+        "captures": [{ "name": "name", "index": 1 }],
+        "canBeExported": true,
+        "example": "/** @phpstan-type UserArray array{name: string, email: string} */"
+      }
+    ],
+    "inheritancePatterns": [
+      {
+        "kind": "extends",
+        "regex": "class\\s+(?<child>\\w+)\\s+extends\\s+(?<parents>[\\w\\\\]+)",
+        "captures": [
+          { "name": "child", "index": 1, "isList": false },
+          { "name": "parents", "index": 2, "isList": false }
+        ],
+        "traceConfidence": 0.95,
+        "example": "class Admin extends User {"
+      },
+      {
+        "kind": "implements",
+        "regex": "class\\s+(?<child>\\w+)(?:\\s+extends\\s+[\\w\\\\]+)?\\s+implements\\s+(?<parents>[\\w\\\\,\\s]+?)\\s*\\{",
+        "captures": [
+          { "name": "child", "index": 1, "isList": false },
+          { "name": "parents", "index": 2, "isList": true, "listSeparator": "," }
+        ],
+        "traceConfidence": 0.90,
+        "example": "class UserService implements UserRepositoryInterface, LoggerAwareInterface {"
+      },
+      {
+        "kind": "interface_extends",
+        "regex": "interface\\s+(?<child>\\w+)\\s+extends\\s+(?<parents>[\\w\\\\,\\s]+?)\\s*\\{",
+        "captures": [
+          { "name": "child", "index": 1, "isList": false },
+          { "name": "parents", "index": 2, "isList": true, "listSeparator": "," }
+        ],
+        "traceConfidence": 0.95,
+        "example": "interface CacheableRepository extends RepositoryInterface, CacheableInterface {"
+      },
+      {
+        "kind": "trait_use",
+        "regex": "use\\s+(?<parents>[\\w\\\\]+(?:\\s*,\\s*[\\w\\\\]+)*)\\s*[;{]",
+        "captures": [
+          { "name": "parents", "index": 1, "isList": true, "listSeparator": "," }
+        ],
+        "traceConfidence": 0.90,
+        "example": "use HasFactory, SoftDeletes, HasTimestamps;"
+      },
+      {
+        "kind": "enum_implements",
+        "regex": "enum\\s+(?<child>\\w+)(?:\\s*:\\s*(?:string|int))?\\s+implements\\s+(?<parents>[\\w\\\\,\\s]+?)\\s*\\{",
+        "captures": [
+          { "name": "child", "index": 1, "isList": false },
+          { "name": "parents", "index": 2, "isList": true, "listSeparator": "," }
+        ],
+        "traceConfidence": 0.90,
+        "example": "enum Status: string implements HasLabel, HasColor {"
+      }
+    ],
+    "compositionPatterns": [
+      {
+        "kind": "union",
+        "regex": "(?:function\\s+\\w+\\s*\\([^)]*?)(?<types>[\\w\\\\]+(?:\\s*\\|\\s*[\\w\\\\]+)+)",
+        "captures": [
+          { "name": "types", "index": 1 }
+        ],
+        "decomposable": true,
+        "traceConfidence": 0.70,
+        "example": "function process(int|string $value): void {"
+      },
+      {
+        "kind": "intersection",
+        "regex": "(?:function\\s+\\w+\\s*\\([^)]*?)(?<types>[\\w\\\\]+(?:\\s*&\\s*[\\w\\\\]+)+)",
+        "captures": [
+          { "name": "types", "index": 1 }
+        ],
+        "decomposable": true,
+        "traceConfidence": 0.80,
+        "example": "function log(Countable&Iterator $collection): void {"
+      },
+      {
+        "kind": "generic_docblock",
+        "regex": "@(?:param|return|var)\\s+(?<baseType>[\\w\\\\]+)<(?<typeParams>[^>]+)>",
+        "captures": [
+          { "name": "baseType", "index": 1 },
+          { "name": "typeParams", "index": 2 }
+        ],
+        "decomposable": true,
+        "traceConfidence": 0.60,
+        "example": "/** @param Collection<int, User> $users */"
+      },
+      {
+        "kind": "template_docblock",
+        "regex": "@template\\s+(?<name>\\w+)(?:\\s+of\\s+(?<constraint>[\\w\\\\]+))?",
+        "captures": [
+          { "name": "name", "index": 1 },
+          { "name": "constraint", "index": 2 }
+        ],
+        "decomposable": false,
+        "traceConfidence": 0.50,
+        "example": "/** @template T of Model */"
+      }
+    ],
+    "confidenceTiers": {
+      "direct_import": 0.95,
+      "re_export_one_hop": 0.80,
+      "re_export_multi_hop": 0.60,
+      "inheritance_direct": 0.90,
+      "inheritance_chain": 0.75,
+      "generic_resolution": 0.50,
+      "inferred_type": 0.35,
+      "dynamic_type": 0.10,
+      "trait_import": 0.85,
+      "magic_method_resolution": 0.15,
+      "facade_resolution": 0.20
+    }
+  },
+
+  "externalDependencies": {
+    "pathIndicators": ["vendor/"],
+    "packageManifest": "composer.json",
+    "lockFile": "composer.lock",
+    "typesPackagePattern": null,
+    "typeDeclarationLocations": [
+      {
+        "description": "Package source files with inline type hints",
+        "path": "vendor/{vendor}/{package}/src/",
+        "fallback": "vendor/{vendor}/{package}/lib/",
+        "entryPointField": "autoload.psr-4 in package's composer.json"
+      },
+      {
+        "description": "PHPStan stubs for additional type information",
+        "path": "vendor/phpstan/phpstan-{framework}/stubs/",
+        "fallback": null,
+        "entryPointField": "extra.phpstan in package's composer.json"
+      }
+    ],
+    "detectionRules": [
+      {
+        "signal": "package_not_installed",
+        "condition": "use statement references a namespace prefix not in vendor/ and not in local autoload",
+        "errorCodes": ["PHP_CLASS_NOT_FOUND", "PHP_AUTOLOAD_FAILED"],
+        "suggestedActions": ["Run 'composer require vendor/package'", "Check package name spelling"],
+        "autoFixable": true,
+        "autoFixCommand": "composer require {package}"
+      },
+      {
+        "signal": "autoload_not_generated",
+        "condition": "vendor/autoload.php does not exist or is stale",
+        "errorCodes": ["PHP_CLASS_NOT_FOUND", "PHP_AUTOLOAD_FAILED"],
+        "suggestedActions": ["Run 'composer install'", "Run 'composer dump-autoload'"],
+        "autoFixable": true,
+        "autoFixCommand": "composer dump-autoload"
+      },
+      {
+        "signal": "psr4_mismatch",
+        "condition": "Class namespace does not match directory structure according to PSR-4 mapping",
+        "errorCodes": ["PHP_CLASS_NOT_FOUND", "PHPSTAN_CLASS_NOT_FOUND"],
+        "suggestedActions": ["Verify namespace in class file matches PSR-4 mapping", "Check directory name matches namespace segment exactly (case-sensitive)"],
+        "autoFixable": false,
+        "autoFixCommand": null
+      },
+      {
+        "signal": "extension_not_installed",
+        "condition": "Function or class from a PHP extension (json, mbstring, curl, etc.) is not available",
+        "errorCodes": ["PHP_UNDEFINED_FUNCTION", "PHP_CLASS_NOT_FOUND"],
+        "suggestedActions": ["Install the required PHP extension", "Check php.ini for disabled extensions"],
+        "autoFixable": false,
+        "autoFixCommand": null
+      },
+      {
+        "signal": "version_mismatch",
+        "condition": "Package is installed but API has changed due to major version update",
+        "errorCodes": ["PHP_UNDEFINED_METHOD", "PHPSTAN_UNDEFINED_METHOD", "PHP_ARGUMENT_COUNT"],
+        "suggestedActions": ["Check package CHANGELOG or UPGRADE guide", "Pin to previous major version"],
+        "autoFixable": false,
+        "autoFixCommand": null
+      }
+    ],
+    "commonBreakingPatterns": [
+      {
+        "description": "Major Laravel version upgrade changed Eloquent method signatures or removed facades",
+        "errorCodes": ["PHP_UNDEFINED_METHOD", "PHP_CLASS_NOT_FOUND", "PHP_ARGUMENT_COUNT"],
+        "resolution": "Check Laravel upgrade guide at laravel.com/docs/X.x/upgrade. Run 'php artisan clear-compiled' and 'composer dump-autoload'."
+      },
+      {
+        "description": "Symfony major version removed deprecated methods or changed service container behavior",
+        "errorCodes": ["PHP_UNDEFINED_METHOD", "PHP_CLASS_NOT_FOUND", "PHP_TYPE_ERROR"],
+        "resolution": "Check Symfony upgrade guide. Run 'composer recipes:update' for Symfony Flex projects."
+      },
+      {
+        "description": "PHP version upgrade deprecated or removed functions (e.g., create_function, each, money_format)",
+        "errorCodes": ["PHP_UNDEFINED_FUNCTION", "PHP_DEPRECATION"],
+        "resolution": "Check PHP migration guide at php.net/manual/en/migration8x.php. Use polyfills (symfony/polyfill-php8x) for backward compatibility."
+      },
+      {
+        "description": "Package switched to strict types or added PHP 8.x type hints",
+        "errorCodes": ["PHP_TYPE_ERROR", "PHP_ARGUMENT_COUNT"],
+        "resolution": "Review your calls to the package's API and ensure argument types match the new stricter signatures."
+      }
+    ]
+  },
+
+  "quirks": [
+    {
+      "id": "psr4_autoloading",
+      "name": "PSR-4 Autoloading Namespace-Directory Mapping",
+      "description": "PHP uses PSR-4 autoloading where namespace segments map directly to directory names. App\\Models\\User maps to src/Models/User.php (if 'App\\\\' => 'src/' is configured). The mapping is case-sensitive on Linux but case-insensitive on Windows/macOS, causing cross-platform bugs.",
+      "affectsTracing": true,
+      "affectsResolution": true,
+      "workaround": "Read composer.json autoload.psr-4 to build namespace-to-directory map. When resolving a class, convert namespace separators to directory separators and append .php. Always use case-sensitive comparisons.",
+      "example": "// composer.json: { \"autoload\": { \"psr-4\": { \"App\\\\\": \"src/\" } } }\n// Class App\\Models\\User -> src/Models/User.php\n// Class App\\Http\\Controllers\\UserController -> src/Http/Controllers/UserController.php",
+      "relatedErrorCodes": ["PHP_CLASS_NOT_FOUND", "PHP_AUTOLOAD_FAILED", "PHPSTAN_CLASS_NOT_FOUND"]
+    },
+    {
+      "id": "traits_method_conflict",
+      "name": "Trait Method Conflicts and Resolution",
+      "description": "When a class uses multiple traits that define the same method, PHP requires explicit conflict resolution with insteadof/as. Without resolution, it is a fatal error. Traits can also alias methods and change visibility.",
+      "affectsTracing": true,
+      "affectsResolution": false,
+      "workaround": "When tracing a method call, check all used traits for the method. If multiple traits define it, look for insteadof declarations. Aliased methods create additional valid method names.",
+      "example": "class User {\n    use HasName, HasFullName {\n        HasName::getName insteadof HasFullName;\n        HasFullName::getName as getFullName;\n    }\n}",
+      "relatedErrorCodes": ["PHP_UNDEFINED_METHOD", "PHPSTAN_UNDEFINED_METHOD", "PHP_TRAIT_NOT_FOUND"]
+    },
+    {
+      "id": "magic_methods",
+      "name": "Magic Methods (__get, __set, __call, __callStatic)",
+      "description": "PHP magic methods intercept property access and method calls on undefined members. Static analysis tools cannot trace through these without PHPDoc annotations (@property, @method). This makes error reports unreliable for classes using magic methods heavily.",
+      "affectsTracing": true,
+      "affectsResolution": true,
+      "workaround": "When PHPStan/Psalm reports 'undefined method/property' on a class that has __call/__get/__set, check for @method and @property PHPDoc annotations. If missing, suggest adding them. Do not treat these as high-confidence errors.",
+      "example": "/**\n * @property string $name\n * @property string $email\n * @method static Builder where(string $column, mixed $value)\n * @method static Collection all()\n */\nclass User extends Model { }",
+      "relatedErrorCodes": ["PHP_UNDEFINED_METHOD", "PHP_UNDEFINED_PROPERTY", "PHPSTAN_UNDEFINED_METHOD", "PHPSTAN_ACCESS_PROPERTY_NOT_FOUND"]
+    },
+    {
+      "id": "laravel_facades",
+      "name": "Laravel Facades (Static Proxies to Dynamic Services)",
+      "description": "Laravel Facades like Cache::get(), DB::table(), Route::get() are static method calls that proxy to dynamically resolved service instances. Static analysis tools see these as static calls on classes that don't have those static methods.",
+      "affectsTracing": true,
+      "affectsResolution": true,
+      "workaround": "For Laravel projects, install larastan/larastan which understands Facades. Alternatively, resolve the underlying service class by checking the facade's getFacadeAccessor() method. Map Facade::method() to the actual service class method.",
+      "example": "// Cache::get('key') actually calls:\n// app('cache')->get('key')\n// which resolves to Illuminate\\Cache\\CacheManager::get()\n\n// Install: composer require --dev larastan/larastan\n// phpstan.neon:\n// includes:\n//     - vendor/larastan/larastan/extension.neon",
+      "relatedErrorCodes": ["PHPSTAN_UNDEFINED_METHOD", "PSALM_UNDEFINED_METHOD"]
+    },
+    {
+      "id": "phpstan_levels",
+      "name": "PHPStan Analysis Levels (0-9)",
+      "description": "PHPStan has 10 strictness levels. Level 0 only checks basic errors (undefined classes, functions). Level 9 enforces strict types, no mixed, and complete PHPDoc. Errors at level 5+ may not appear at lower levels. The project's configured level determines which errors are real.",
+      "affectsTracing": false,
+      "affectsResolution": true,
+      "workaround": "Read phpstan.neon or phpstan.neon.dist for the configured level. Errors from levels above the configured level should be deprioritized. Common level breakpoints: Level 3 adds return type checks, Level 5 adds argument type checks, Level 6 adds null checks, Level 8+ enforces no mixed type.",
+      "example": "# phpstan.neon\nparameters:\n    level: 6\n    paths:\n        - src\n    excludePaths:\n        - src/Legacy\n    ignoreErrors:\n        - '#Dynamic property#'",
+      "relatedErrorCodes": ["PHPSTAN_UNDEFINED_METHOD", "PHPSTAN_ARGUMENT_TYPE", "PHPSTAN_RETURN_TYPE", "PHPSTAN_PROPERTY_TYPE"]
+    },
+    {
+      "id": "circular_dependencies",
+      "name": "Circular Dependencies via Use Statements",
+      "description": "PHP handles circular dependencies through autoloading — when class A references class B which references class A, the autoloader can handle this because classes are loaded lazily. However, circular require/include chains cause fatal errors. Circular constructor dependencies (A needs B in constructor, B needs A) cause infinite recursion.",
+      "affectsTracing": true,
+      "affectsResolution": true,
+      "workaround": "Detect cycles during dependency graph construction. For use statement cycles, the autoloader handles them — deprioritize these. For require/include cycles, suggest using require_once or restructuring. For constructor cycles, suggest using setter injection or a service container.",
+      "example": "// UserService requires PostService, PostService requires UserService\n// This works with autoloading but fails with direct require:\n// user-service.php: require 'post-service.php';\n// post-service.php: require 'user-service.php'; // infinite loop\n\n// Fix: Use Composer autoloading instead of manual requires",
+      "relatedErrorCodes": ["PHP_CANNOT_REDECLARE", "PHP_REQUIRE_FAILED"]
+    },
+    {
+      "id": "dynamic_class_instantiation",
+      "name": "Dynamic Class Instantiation and String Class References",
+      "description": "PHP allows creating objects from string class names: new $className(), $class::method(), etc. This is common in frameworks (service containers, factories) but makes static analysis impossible for those paths.",
+      "affectsTracing": true,
+      "affectsResolution": false,
+      "workaround": "When tracing encounters a variable class name ($className), check if the variable is assigned from a known class string or class-string<T> typed PHPDoc. If not traceable, mark as a weak dependency edge.",
+      "example": "$class = 'App\\\\Models\\\\User';\n$instance = new $class(); // Static analysis cannot determine the type\n\n// Better: use class-string type\n/** @var class-string<Model> $class */\n$class = User::class;\n$instance = new $class(); // PHPStan can infer Model return type",
+      "relatedErrorCodes": ["PHP_CLASS_NOT_FOUND", "PHPSTAN_UNDEFINED_METHOD"]
+    },
+    {
+      "id": "conditional_feature_flags",
+      "name": "PHP Version and Extension Feature Flags",
+      "description": "Code may use version_compare() or function_exists() to conditionally use features. Newer PHP syntax (enums, fibers, readonly, intersection types) causes parse errors on older PHP versions. Extensions like mbstring, intl, redis may or may not be available.",
+      "affectsTracing": false,
+      "affectsResolution": true,
+      "workaround": "Check the php version requirement in composer.json ('require.php'). When reporting parse errors for modern syntax, suggest checking the PHP version. When reporting missing function errors, check if the function belongs to an optional extension.",
+      "example": "// composer.json: \"require\": { \"php\": \">=8.1\" }\n// Ensures enum, readonly, fibers, intersection types are available\n\nif (function_exists('mb_strlen')) {\n    $len = mb_strlen($str);\n} else {\n    $len = strlen($str);\n}",
+      "relatedErrorCodes": ["PHP_PARSE_ERROR", "PHP_UNDEFINED_FUNCTION"]
+    },
+    {
+      "id": "generated_code",
+      "name": "Auto-Generated Code (IDE Helper, Doctrine Proxies, etc.)",
+      "description": "Many PHP tools generate code: Laravel IDE Helper generates _ide_helper.php with class stubs, Doctrine generates proxy classes, protobuf generates PHP classes, API client generators create SDK classes. These files should not be manually edited but are valid dependency targets.",
+      "affectsTracing": true,
+      "affectsResolution": false,
+      "workaround": "Look for common generated file patterns: _ide_helper.php, *Proxy.php in proxy directories, generated/ directories. When tracing symbols to these files, note they are generated and the true source is the generation config/schema.",
+      "example": "// Laravel IDE Helper generates:\n// _ide_helper.php — stubs for Facades\n// _ide_helper_models.php — PHPDoc for Eloquent models\n// Run: php artisan ide-helper:generate",
+      "relatedErrorCodes": ["PHPSTAN_UNDEFINED_METHOD", "PHPSTAN_ACCESS_PROPERTY_NOT_FOUND"]
+    },
+    {
+      "id": "anonymous_classes",
+      "name": "Anonymous Classes",
+      "description": "PHP supports anonymous classes (new class { ... }) which have no traceable class name. They can extend classes and implement interfaces but cannot be referenced by name elsewhere.",
+      "affectsTracing": true,
+      "affectsResolution": false,
+      "workaround": "Anonymous classes appear as 'class@anonymous/path/to/file.php:line' in error messages. Trace them to the file and line where they are defined. For type resolution, use the parent class or implemented interfaces.",
+      "example": "$logger = new class implements LoggerInterface {\n    public function log(string $level, string $message): void {\n        echo \"[$level] $message\";\n    }\n};",
+      "relatedErrorCodes": ["PHP_UNDEFINED_METHOD", "PHP_ABSTRACT_METHOD_NOT_IMPLEMENTED"]
+    }
+  ],
+
+  "buildTools": [
+    {
+      "name": "php",
+      "detectFiles": ["*.php"],
+      "buildCommand": "php -l {file} 2>&1",
+      "watchCommand": null,
+      "errorStream": "stderr",
+      "supportsJsonOutput": false,
+      "jsonOutputFlag": null,
+      "commonConfigs": ["php.ini", ".user.ini"]
+    },
+    {
+      "name": "phpstan",
+      "detectFiles": ["phpstan.neon", "phpstan.neon.dist", "phpstan.dist.neon"],
+      "buildCommand": "vendor/bin/phpstan analyse --no-progress --error-format=raw 2>&1",
+      "watchCommand": "vendor/bin/phpstan analyse --watch 2>&1",
+      "errorStream": "stdout",
+      "supportsJsonOutput": true,
+      "jsonOutputFlag": "--error-format=json",
+      "commonConfigs": ["phpstan.neon", "phpstan.neon.dist", "phpstan.dist.neon"]
+    },
+    {
+      "name": "psalm",
+      "detectFiles": ["psalm.xml", "psalm.xml.dist"],
+      "buildCommand": "vendor/bin/psalm --no-progress 2>&1",
+      "watchCommand": null,
+      "errorStream": "stdout",
+      "supportsJsonOutput": true,
+      "jsonOutputFlag": "--output-format=json",
+      "commonConfigs": ["psalm.xml", "psalm.xml.dist"]
+    },
+    {
+      "name": "composer",
+      "detectFiles": ["composer.json"],
+      "buildCommand": "composer validate --strict 2>&1",
+      "watchCommand": null,
+      "errorStream": "stderr",
+      "supportsJsonOutput": false,
+      "jsonOutputFlag": null,
+      "commonConfigs": ["composer.json", "composer.lock"]
+    },
+    {
+      "name": "php-cs-fixer",
+      "detectFiles": [".php-cs-fixer.php", ".php-cs-fixer.dist.php", ".php_cs", ".php_cs.dist"],
+      "buildCommand": "vendor/bin/php-cs-fixer fix --dry-run --diff 2>&1",
+      "watchCommand": null,
+      "errorStream": "stdout",
+      "supportsJsonOutput": true,
+      "jsonOutputFlag": "--format=json",
+      "commonConfigs": [".php-cs-fixer.php", ".php-cs-fixer.dist.php"]
+    },
+    {
+      "name": "phpunit",
+      "detectFiles": ["phpunit.xml", "phpunit.xml.dist"],
+      "buildCommand": "vendor/bin/phpunit 2>&1",
+      "watchCommand": null,
+      "errorStream": "stdout",
+      "supportsJsonOutput": true,
+      "jsonOutputFlag": "--log-junit=php://stdout",
+      "commonConfigs": ["phpunit.xml", "phpunit.xml.dist"]
+    }
+  ]
+}

@@ -1,0 +1,580 @@
+{
+  "technology": "typescript",
+  "version": 1,
+  "patterns": [
+    {
+      "id": "TS1005",
+      "match": "TS1005:.*?'([^']+)'\\s+expected",
+      "captures": ["token"],
+      "rootCause": "Syntax error: '{token}' expected. A required token is missing from the code.",
+      "prescription": "Add the missing '{token}' at the indicated position. This is usually a missing semicolon, closing brace, parenthesis, or angle bracket.",
+      "codeBlock": null,
+      "conditions": [
+        {
+          "when": "token contains ;",
+          "rootCause": "Missing semicolon. If you are not using semicolons by convention, check for an unterminated statement or expression on the previous line.",
+          "prescription": "Add a semicolon or check that the previous line is properly terminated. An expression on the previous line (e.g., an IIFE or array literal) may need a leading semicolon.",
+          "codeBlock": null
+        }
+      ]
+    },
+    {
+      "id": "TS1128",
+      "match": "TS1128:.*?Declaration or statement expected",
+      "captures": [],
+      "rootCause": "Declaration or statement expected. There is unexpected syntax such as an extra closing brace, a stray token, or code outside a valid context.",
+      "prescription": "Check for extra closing braces `}`, misplaced code outside functions or classes, or copy-paste artifacts. Ensure all blocks are properly balanced.",
+      "codeBlock": null,
+      "conditions": []
+    },
+    {
+      "id": "TS1192",
+      "match": "TS1192:.*?Module ['\"]([^'\"]+)['\"] has no default export",
+      "captures": ["module"],
+      "rootCause": "Module '{module}' has no default export. You are using `import x from '{module}'` but the module only has named exports.",
+      "prescription": "Use a named import instead: `import {{ something }} from '{module}'`. Alternatively, enable `esModuleInterop` or `allowSyntheticDefaultImports` in tsconfig.json.",
+      "codeBlock": "// Change from:\nimport something from '{module}';\n\n// To named import:\nimport {{ something }} from '{module}';\n\n// Or enable in tsconfig.json:\n// {{ \"compilerOptions\": {{ \"esModuleInterop\": true }} }}",
+      "conditions": []
+    },
+    {
+      "id": "TS2304",
+      "match": "TS2304:.*?Cannot find name '([^']+)'",
+      "captures": ["name"],
+      "rootCause": "Cannot find name '{name}'. The identifier is not declared in any accessible scope — it may be missing an import, a type declaration, or a global definition.",
+      "prescription": "Import '{name}' from the appropriate module, declare it, or install type definitions. If it's a global (like `window` or `process`), install the correct @types package.",
+      "codeBlock": null,
+      "conditions": [
+        {
+          "when": "name contains process",
+          "rootCause": "Cannot find name 'process'. Node.js global type declarations are not available.",
+          "prescription": "Install Node.js type definitions: `npm install -D @types/node`. Ensure `\"types\": [\"node\"]` is in your tsconfig.json.",
+          "codeBlock": "npm install -D @types/node"
+        },
+        {
+          "when": "name contains document",
+          "rootCause": "Cannot find name 'document'. DOM type declarations are not available.",
+          "prescription": "Add `\"lib\": [\"dom\"]` to your tsconfig.json compilerOptions.",
+          "codeBlock": "// tsconfig.json\n{\n  \"compilerOptions\": {\n    \"lib\": [\"es2020\", \"dom\", \"dom.iterable\"]\n  }\n}"
+        },
+        {
+          "when": "name contains describe",
+          "rootCause": "Cannot find name 'describe'. Test framework globals are not typed.",
+          "prescription": "Install test framework type definitions: `npm install -D @types/jest` or `@types/mocha`.",
+          "codeBlock": "npm install -D @types/jest"
+        }
+      ]
+    },
+    {
+      "id": "TS2305",
+      "match": "TS2305:.*?Module ['\"]([^'\"]+)['\"] has no exported member '([^']+)'",
+      "captures": ["module", "member"],
+      "rootCause": "Module '{module}' has no exported member '{member}'. The named export does not exist in the module — it may have been renamed, removed, or is a default export.",
+      "prescription": "Check the module's API for the correct export name. It may have been renamed in a newer version. Use IDE autocompletion to discover available exports.",
+      "codeBlock": null,
+      "conditions": []
+    },
+    {
+      "id": "TS2306",
+      "match": "TS2306:.*?File ['\"]([^'\"]+)['\"] is not a module",
+      "captures": ["file"],
+      "rootCause": "File '{file}' is not a module. The file does not contain any export statements, so it cannot be imported.",
+      "prescription": "Add `export` to at least one declaration in '{file}', or add `export {{}}` at the end to make it a module. If the file is a script, restructure it as a module.",
+      "codeBlock": "// Add to the file to make it a module:\nexport {};",
+      "conditions": []
+    },
+    {
+      "id": "TS2307",
+      "match": "TS2307:.*?Cannot find module '([^']+)'(?:\\s+or its corresponding type declarations)?",
+      "captures": ["module"],
+      "rootCause": "Cannot find module '{module}' or its type declarations. The module is not installed, the path is wrong, or type declarations are missing.",
+      "prescription": "Install the module: `npm install {module}`. If types are missing, install them: `npm install -D @types/{module}`. For local files, check the import path and tsconfig paths.",
+      "codeBlock": null,
+      "conditions": [
+        {
+          "when": "module contains .css",
+          "rootCause": "TypeScript cannot find type declarations for CSS module '{module}'.",
+          "prescription": "Create a type declaration file (e.g., `declarations.d.ts`) with: `declare module '*.css' {{ const styles: Record<string, string>; export default styles; }}`.",
+          "codeBlock": "// declarations.d.ts\ndeclare module '*.css' {\n  const styles: Record<string, string>;\n  export default styles;\n}"
+        },
+        {
+          "when": "module contains .svg",
+          "rootCause": "TypeScript cannot find type declarations for SVG imports '{module}'.",
+          "prescription": "Create a type declaration file with: `declare module '*.svg' {{ const content: string; export default content; }}`.",
+          "codeBlock": "// declarations.d.ts\ndeclare module '*.svg' {\n  const content: string;\n  export default content;\n}"
+        },
+        {
+          "when": "module contains @/",
+          "rootCause": "TypeScript cannot resolve path alias '{module}'. The `@/` path alias is not configured in tsconfig.json.",
+          "prescription": "Add path mapping to tsconfig.json: `\"paths\": {{ \"@/*\": [\"./src/*\"] }}`.",
+          "codeBlock": "// tsconfig.json\n{\n  \"compilerOptions\": {\n    \"baseUrl\": \".\",\n    \"paths\": {\n      \"@/*\": [\"./src/*\"]\n    }\n  }\n}"
+        }
+      ]
+    },
+    {
+      "id": "TS2314",
+      "match": "TS2314:.*?Generic type '([^']+)' requires (\\d+) type argument\\(s\\)",
+      "captures": ["type", "count"],
+      "rootCause": "Generic type '{type}' requires {count} type argument(s) but none or too few were provided.",
+      "prescription": "Supply the required {count} type argument(s) to '{type}'. For example: `{type}<TypeArg>`.",
+      "codeBlock": null,
+      "conditions": []
+    },
+    {
+      "id": "TS2322",
+      "match": "TS2322:.*?Type '([^']+)' is not assignable to type '([^']+)'",
+      "captures": ["sourceType", "targetType"],
+      "rootCause": "Type '{sourceType}' is not assignable to type '{targetType}'. The value's type does not match what is expected.",
+      "prescription": "Ensure the value matches the expected type '{targetType}'. You may need to narrow the type, add a type assertion, or fix the value being assigned.",
+      "codeBlock": null,
+      "conditions": [
+        {
+          "when": "sourceType contains undefined",
+          "rootCause": "Type includes 'undefined' which is not assignable to '{targetType}'. A value that might be undefined is being used where a definite value is required.",
+          "prescription": "Add a null/undefined check before using the value, use the non-null assertion operator `!` if you're certain it exists, or provide a default value with `??`.",
+          "codeBlock": "// Option 1: Null check\nif (value !== undefined) {\n  target = value;\n}\n\n// Option 2: Default value\ntarget = value ?? defaultValue;\n\n// Option 3: Non-null assertion (use with caution)\ntarget = value!;"
+        },
+        {
+          "when": "sourceType contains null",
+          "rootCause": "Type includes 'null' which is not assignable to '{targetType}'. A nullable value is being used where a non-null value is required.",
+          "prescription": "Add a null check, provide a fallback value with `??`, or use non-null assertion `!` if you are certain the value is not null.",
+          "codeBlock": "// Null check\nif (value !== null) {\n  target = value;\n}\n\n// Default value\ntarget = value ?? fallback;"
+        },
+        {
+          "when": "targetType contains string",
+          "rootCause": "Type '{sourceType}' is not assignable to 'string'. A non-string value is being used where a string is expected.",
+          "prescription": "Convert the value to a string using `String(value)`, template literals, or `.toString()`. If the type is a union, narrow it first.",
+          "codeBlock": null
+        }
+      ]
+    },
+    {
+      "id": "TS2339",
+      "match": "TS2339:.*?Property '([^']+)' does not exist on type '([^']+)'",
+      "captures": ["property", "type"],
+      "rootCause": "Property '{property}' does not exist on type '{type}'. You are trying to access a property that is not defined in the type.",
+      "prescription": "Check if '{property}' is spelled correctly. If the property should exist, extend the type definition or use a type assertion. If '{type}' is a union, narrow the type first.",
+      "codeBlock": null,
+      "conditions": [
+        {
+          "when": "type contains Request",
+          "rootCause": "Property '{property}' does not exist on Express Request type. Custom properties need declaration merging.",
+          "prescription": "Extend the Express Request interface using declaration merging in a `.d.ts` file.",
+          "codeBlock": "// types/express.d.ts\nimport 'express';\ndeclare module 'express' {\n  interface Request {\n    {property}?: any; // replace 'any' with proper type\n  }\n}"
+        },
+        {
+          "when": "type contains Window",
+          "rootCause": "Property '{property}' does not exist on the Window type. Custom global properties need declaration.",
+          "prescription": "Extend the Window interface using declaration merging.",
+          "codeBlock": "// global.d.ts\ndeclare global {\n  interface Window {\n    {property}: any; // replace 'any' with proper type\n  }\n}"
+        },
+        {
+          "when": "type contains HTMLElement",
+          "rootCause": "Property '{property}' does not exist on HTMLElement. You may need a more specific element type like HTMLInputElement.",
+          "prescription": "Use a more specific type: `document.querySelector<HTMLInputElement>('input')` or cast: `(el as HTMLInputElement).{property}`.",
+          "codeBlock": "const input = document.querySelector<HTMLInputElement>('#myInput');\nif (input) {\n  console.log(input.value);\n}"
+        }
+      ]
+    },
+    {
+      "id": "TS2345",
+      "match": "TS2345:.*?Argument of type '([^']+)' is not assignable to parameter of type '([^']+)'",
+      "captures": ["argType", "paramType"],
+      "rootCause": "Argument of type '{argType}' is not assignable to parameter of type '{paramType}'. The function expects a different type than what was passed.",
+      "prescription": "Ensure the argument matches the expected parameter type '{paramType}'. You may need to transform the data, narrow the type, or adjust the function signature.",
+      "codeBlock": null,
+      "conditions": [
+        {
+          "when": "argType contains null",
+          "rootCause": "A nullable value of type '{argType}' is being passed where '{paramType}' is expected. The function does not accept null.",
+          "prescription": "Add a null check before calling the function, or use the non-null assertion `!` if you are certain the value is not null.",
+          "codeBlock": "if (value !== null && value !== undefined) {\n  myFunction(value);\n}"
+        }
+      ]
+    },
+    {
+      "id": "TS2349",
+      "match": "TS2349:.*?(?:This expression is not callable|Cannot invoke an expression whose type lacks a call signature).*?Type '([^']+)'.*?has no call signatures",
+      "captures": ["type"],
+      "rootCause": "Expression of type '{type}' is not callable. You are trying to invoke something that is not a function.",
+      "prescription": "Verify that the value is actually a function. Check imports — you may have imported a type or object instead of a function. If it's a union type, narrow it first.",
+      "codeBlock": null,
+      "conditions": []
+    },
+    {
+      "id": "TS2352",
+      "match": "TS2352:.*?Conversion of type '([^']+)' to type '([^']+)' may be a mistake",
+      "captures": ["fromType", "toType"],
+      "rootCause": "Type assertion from '{fromType}' to '{toType}' may be incorrect. TypeScript cannot verify this conversion is safe because the types don't sufficiently overlap.",
+      "prescription": "Use a double assertion through `unknown` if you are certain: `value as unknown as {toType}`. Consider whether the assertion is actually correct — you may need to restructure your types.",
+      "codeBlock": "// Double assertion (use with caution)\nconst result = value as unknown as TargetType;\n\n// Better: restructure to avoid the assertion\nfunction convert(input: SourceType): TargetType {\n  return { /* map fields explicitly */ };\n}",
+      "conditions": []
+    },
+    {
+      "id": "TS2353",
+      "match": "TS2353:.*?Object literal may only specify known properties, and '([^']+)' does not exist in type '([^']+)'",
+      "captures": ["property", "type"],
+      "rootCause": "Property '{property}' does not exist in type '{type}'. Object literals are checked for excess properties — you included a property not defined in the type.",
+      "prescription": "Remove the extra property '{property}' from the object literal, or add it to the type definition '{type}' if it should be allowed.",
+      "codeBlock": null,
+      "conditions": []
+    },
+    {
+      "id": "TS2365",
+      "match": "TS2365:.*?Operator '([^']+)' cannot be applied to types '([^']+)' and '([^']+)'",
+      "captures": ["operator", "leftType", "rightType"],
+      "rootCause": "Operator '{operator}' cannot be applied to types '{leftType}' and '{rightType}'. The operator does not support these operand types.",
+      "prescription": "Convert the operands to compatible types before using the '{operator}' operator. For comparisons, ensure both sides are the same type (e.g., both numbers or both strings).",
+      "codeBlock": null,
+      "conditions": []
+    },
+    {
+      "id": "TS2416",
+      "match": "TS2416:.*?Property '([^']+)' in type '([^']+)' is not assignable to the same property in base type '([^']+)'",
+      "captures": ["property", "childType", "baseType"],
+      "rootCause": "Property '{property}' in type '{childType}' is not assignable to the same property in base type '{baseType}'. The overriding member has an incompatible type.",
+      "prescription": "Ensure the overridden property '{property}' in '{childType}' is compatible with the definition in '{baseType}'. The overriding type must be assignable to the base type's definition.",
+      "codeBlock": null,
+      "conditions": []
+    },
+    {
+      "id": "TS2430",
+      "match": "TS2430:.*?Interface '([^']+)' incorrectly extends interface '([^']+)'",
+      "captures": ["childInterface", "baseInterface"],
+      "rootCause": "Interface '{childInterface}' incorrectly extends interface '{baseInterface}'. One or more properties in the child interface are incompatible with the base interface.",
+      "prescription": "Check all properties in '{childInterface}' and ensure they are compatible with the types defined in '{baseInterface}'. Properties in the child must be subtypes of the parent's.",
+      "codeBlock": null,
+      "conditions": []
+    },
+    {
+      "id": "TS2451",
+      "match": "TS2451:.*?Cannot redeclare block-scoped variable '([^']+)'",
+      "captures": ["variable"],
+      "rootCause": "Cannot redeclare block-scoped variable '{variable}'. The variable is declared more than once in the same scope, or a script-mode file conflicts with another.",
+      "prescription": "Rename one of the declarations, or convert the file to a module by adding `export {{}}` (files without imports/exports are treated as scripts with shared global scope).",
+      "codeBlock": "// Add at the top or bottom of the file to make it a module:\nexport {};",
+      "conditions": []
+    },
+    {
+      "id": "TS2488",
+      "match": "TS2488:.*?Type '([^']+)' must have a '\\[Symbol\\.iterator\\]\\(\\)' method",
+      "captures": ["type"],
+      "rootCause": "Type '{type}' is not iterable. It does not have a [Symbol.iterator]() method, so it cannot be used in a for...of loop or spread operator.",
+      "prescription": "Ensure the value is actually iterable (Array, Set, Map, string, etc.). If '{type}' includes non-iterable types in a union, narrow the type first.",
+      "codeBlock": null,
+      "conditions": []
+    },
+    {
+      "id": "TS2531",
+      "match": "TS2531:.*?Object is possibly 'null'",
+      "captures": [],
+      "rootCause": "Object is possibly 'null'. You are accessing a property or method on a value that could be null.",
+      "prescription": "Add a null check before accessing the value, use optional chaining `?.`, the non-null assertion operator `!`, or provide a default with `??`.",
+      "codeBlock": "// Option 1: Null check\nif (obj !== null) {\n  obj.method();\n}\n\n// Option 2: Optional chaining\nobj?.method();\n\n// Option 3: Non-null assertion (if you're sure)\nobj!.method();",
+      "conditions": []
+    },
+    {
+      "id": "TS2532",
+      "match": "TS2532:.*?Object is possibly 'undefined'",
+      "captures": [],
+      "rootCause": "Object is possibly 'undefined'. You are accessing a property or method on a value that might be undefined.",
+      "prescription": "Add an undefined check, use optional chaining `?.`, provide a default value with `??`, or use the non-null assertion `!` if you are certain the value exists.",
+      "codeBlock": "// Option 1: Check\nif (obj !== undefined) {\n  obj.method();\n}\n\n// Option 2: Optional chaining\nconst result = obj?.method();\n\n// Option 3: Default value\nconst value = obj ?? defaultValue;",
+      "conditions": []
+    },
+    {
+      "id": "TS2551",
+      "match": "TS2551:.*?Property '([^']+)' does not exist on type '([^']+)'\\.\\s*Did you mean '([^']+)'\\?",
+      "captures": ["property", "type", "suggestion"],
+      "rootCause": "Property '{property}' does not exist on type '{type}'. TypeScript suggests '{suggestion}' — this is likely a typo.",
+      "prescription": "Replace '{property}' with '{suggestion}'.",
+      "codeBlock": null,
+      "conditions": []
+    },
+    {
+      "id": "TS2555",
+      "match": "TS2555:.*?Expected at least (\\d+) arguments, but got (\\d+)",
+      "captures": ["expected", "actual"],
+      "rootCause": "Expected at least {expected} arguments but got {actual}. The function call is missing required arguments.",
+      "prescription": "Provide the missing arguments. Check the function signature to see which parameters are required.",
+      "codeBlock": null,
+      "conditions": []
+    },
+    {
+      "id": "TS2556",
+      "match": "TS2556:.*?A spread argument must either have a tuple type or be passed to a rest parameter",
+      "captures": [],
+      "rootCause": "A spread argument must have a tuple type or be passed to a rest parameter. TypeScript cannot verify the spread matches the function's expected parameters.",
+      "prescription": "Use `as const` on the array to make it a tuple type, or explicitly type it as a tuple: `const args: [string, number] = [a, b]; fn(...args)`.",
+      "codeBlock": "// Use 'as const' to create a tuple\nconst args = ['hello', 42] as const;\nfn(...args);\n\n// Or explicitly type as tuple\nconst args: [string, number] = ['hello', 42];\nfn(...args);",
+      "conditions": []
+    },
+    {
+      "id": "TS2564",
+      "match": "TS2564:.*?Property '([^']+)' has no initializer and is not definitely assigned in the constructor",
+      "captures": ["property"],
+      "rootCause": "Property '{property}' has no initializer and is not definitely assigned in the constructor. With `strictPropertyInitialization`, all properties must be initialized.",
+      "prescription": "Initialize the property in the declaration or constructor. Use the definite assignment assertion `!` if it's initialized elsewhere (e.g., by a framework). Or make the property optional with `?`.",
+      "codeBlock": "class MyClass {\n  // Option 1: Initialize in declaration\n  {property}: string = '';\n\n  // Option 2: Definite assignment assertion\n  {property}!: string;\n\n  // Option 3: Optional property\n  {property}?: string;\n\n  // Option 4: Initialize in constructor\n  constructor() {\n    this.{property} = 'value';\n  }\n}",
+      "conditions": []
+    },
+    {
+      "id": "TS2571",
+      "match": "TS2571:.*?Object is of type 'unknown'",
+      "captures": [],
+      "rootCause": "Object is of type 'unknown'. You cannot access properties or call methods on 'unknown' without first narrowing the type.",
+      "prescription": "Narrow the type using type guards: `typeof`, `instanceof`, or custom type predicates. In catch blocks, use `if (error instanceof Error)` to access .message.",
+      "codeBlock": "// In catch blocks\ntry {\n  // ...\n} catch (error) {\n  if (error instanceof Error) {\n    console.error(error.message);\n  } else {\n    console.error('Unknown error:', String(error));\n  }\n}\n\n// General narrowing\nfunction handle(value: unknown) {\n  if (typeof value === 'string') {\n    console.log(value.toUpperCase());\n  }\n}",
+      "conditions": []
+    },
+    {
+      "id": "TS2590",
+      "match": "TS2590:.*?Expression produces a union type that is too complex to represent",
+      "captures": [],
+      "rootCause": "Expression produces a union type that is too complex to represent. TypeScript's type system has hit its complexity limit when evaluating this expression.",
+      "prescription": "Simplify the type by reducing union members, using type assertions, or breaking the expression into smaller parts with explicit type annotations. Consider using a simpler type structure.",
+      "codeBlock": "// Add explicit type annotation to break complexity\nconst result: ExpectedType = complexExpression;\n\n// Or simplify the union\ntype SimpleUnion = TypeA | TypeB; // instead of large computed union",
+      "conditions": []
+    },
+    {
+      "id": "TS2614",
+      "match": "TS2614:.*?Module ['\"]([^'\"]+)['\"] has no exported member '([^']+)'\\.\\s*Did you mean to use 'import ([^']+) from",
+      "captures": ["module", "member", "suggestion"],
+      "rootCause": "Module '{module}' has no named export '{member}'. You used `import {{ {member} }}` but it should be a default import.",
+      "prescription": "Use a default import instead: `import {suggestion} from '{module}'`.",
+      "codeBlock": "// Change from:\nimport {{ {member} }} from '{module}';\n\n// To:\nimport {suggestion} from '{module}';",
+      "conditions": []
+    },
+    {
+      "id": "TS2693",
+      "match": "TS2693:.*?'([^']+)' only refers to a type, but is being used as a value here",
+      "captures": ["name"],
+      "rootCause": "'{name}' only refers to a type but is being used as a value. You cannot use a type/interface as a runtime value (e.g., in instanceof checks or as a constructor).",
+      "prescription": "Types are erased at runtime. Use a class instead of an interface if you need runtime checks, or use a type guard function for type narrowing.",
+      "codeBlock": "// Wrong: using interface as value\ninterface MyType { x: number }\nif (value instanceof MyType) {} // Error!\n\n// Correct: use type guard\nfunction isMyType(value: unknown): value is MyType {\n  return typeof value === 'object' && value !== null && 'x' in value;\n}",
+      "conditions": []
+    },
+    {
+      "id": "TS2717",
+      "match": "TS2717:.*?Subsequent property declarations must have the same type\\.\\s*Property '([^']+)' must be of type '([^']+)', but here has type '([^']+)'",
+      "captures": ["property", "originalType", "newType"],
+      "rootCause": "Property '{property}' was previously declared as type '{originalType}' but is now declared as '{newType}'. Merged declarations must have compatible types.",
+      "prescription": "Ensure all declarations of '{property}' use the same type. If you are extending an interface, the property type must be compatible with the original declaration.",
+      "codeBlock": null,
+      "conditions": []
+    },
+    {
+      "id": "TS2741",
+      "match": "TS2741:.*?Property '([^']+)' is missing in type '([^']+)' but required in type '([^']+)'",
+      "captures": ["property", "sourceType", "targetType"],
+      "rootCause": "Property '{property}' is missing in type '{sourceType}' but required in type '{targetType}'. An object is missing a required property.",
+      "prescription": "Add the missing property '{property}' to the object. If the property should be optional, mark it with `?` in the type definition.",
+      "codeBlock": null,
+      "conditions": []
+    },
+    {
+      "id": "TS2749",
+      "match": "TS2749:.*?'([^']+)' refers to a value, but is being used as a type here",
+      "captures": ["name"],
+      "rootCause": "'{name}' refers to a value (variable, function, class instance) but is being used as a type. You may need `typeof` to get the type of a value.",
+      "prescription": "Use `typeof {name}` to get the type of the value, or use the correct type name. For class instances, use the class name directly as a type.",
+      "codeBlock": "// If you want the type of a variable:\nconst config = { port: 3000 };\ntype Config = typeof config; // { port: number }\n\n// If you want the return type of a function:\ntype Result = ReturnType<typeof myFunction>;",
+      "conditions": []
+    },
+    {
+      "id": "TS2769",
+      "match": "TS2769:.*?No overload matches this call",
+      "captures": [],
+      "rootCause": "No overload matches this call. The arguments passed do not match any of the function's declared overload signatures.",
+      "prescription": "Check the function's overload signatures and ensure your arguments match one of them. The error details below usually show each overload and why it failed.",
+      "codeBlock": null,
+      "conditions": [
+        {
+          "when": "No overload matches this call contains addEventListener",
+          "rootCause": "No overload of addEventListener matches the provided event type or handler signature.",
+          "prescription": "Use the correct event type string and ensure the handler parameter type matches. For custom events, use a type assertion on the event parameter.",
+          "codeBlock": "// Correct event handler typing\nelement.addEventListener('click', (e: MouseEvent) => {\n  console.log(e.clientX);\n});"
+        }
+      ]
+    },
+    {
+      "id": "TS2786",
+      "match": "TS2786:.*?'([^']+)' cannot be used as a JSX component",
+      "captures": ["component"],
+      "rootCause": "'{component}' cannot be used as a JSX component. Its return type is not a valid JSX element — possibly due to React type version mismatches.",
+      "prescription": "Ensure consistent React type versions across all dependencies. Update @types/react and @types/react-dom to matching versions. Check that the component returns valid JSX.",
+      "codeBlock": "npm install -D @types/react@latest @types/react-dom@latest",
+      "conditions": []
+    },
+    {
+      "id": "TS2792",
+      "match": "TS2792:.*?Cannot find module '([^']+)'\\.\\s*Did you mean to set the 'moduleResolution' option to '([^']+)'",
+      "captures": ["module", "resolution"],
+      "rootCause": "Cannot find module '{module}'. The current moduleResolution setting does not support the module's package.json exports map.",
+      "prescription": "Set `\"moduleResolution\": \"{resolution}\"` in your tsconfig.json compilerOptions. Modern packages require 'bundler', 'node16', or 'nodenext' module resolution.",
+      "codeBlock": "// tsconfig.json\n{\n  \"compilerOptions\": {\n    \"moduleResolution\": \"{resolution}\"\n  }\n}",
+      "conditions": []
+    },
+    {
+      "id": "TS2820",
+      "match": "TS2820:.*?Type '([^']+)' is not assignable to type '([^']+)'\\.\\s*Did you mean '([^']+)'\\?",
+      "captures": ["sourceType", "targetType", "suggestion"],
+      "rootCause": "Type '{sourceType}' is not assignable to type '{targetType}'. TypeScript suggests you meant '{suggestion}'.",
+      "prescription": "Replace '{sourceType}' with '{suggestion}'. This is often a string literal type where the casing or spelling is slightly off.",
+      "codeBlock": null,
+      "conditions": []
+    },
+    {
+      "id": "TS4111",
+      "match": "TS4111:.*?Property '([^']+)' comes from an index signature, so it must be accessed with \\['([^']+)'\\]",
+      "captures": ["property", "accessor"],
+      "rootCause": "Property '{property}' comes from an index signature and must be accessed with bracket notation `['{accessor}']` when `noPropertyAccessFromIndexSignature` is enabled.",
+      "prescription": "Use bracket notation: `obj['{accessor}']` instead of `obj.{property}`. Or disable `noPropertyAccessFromIndexSignature` in tsconfig.json.",
+      "codeBlock": "// Change from:\nobj.{property}\n\n// To:\nobj['{accessor}']",
+      "conditions": []
+    },
+    {
+      "id": "TS6133",
+      "match": "TS6133:.*?'([^']+)' is declared but its value is never read",
+      "captures": ["name"],
+      "rootCause": "'{name}' is declared but never used. The variable, import, or parameter is unused code.",
+      "prescription": "Remove the unused declaration '{name}', or prefix it with underscore `_{name}` to indicate it is intentionally unused. For unused imports, remove the import statement.",
+      "codeBlock": null,
+      "conditions": [
+        {
+          "when": "name contains React",
+          "rootCause": "'React' is imported but not used. In React 17+ with the JSX transform, `import React` is no longer needed.",
+          "prescription": "Remove `import React from 'react'` if using React 17+ with the automatic JSX runtime. Set `\"jsx\": \"react-jsx\"` in tsconfig.json.",
+          "codeBlock": "// tsconfig.json\n{\n  \"compilerOptions\": {\n    \"jsx\": \"react-jsx\"\n  }\n}"
+        }
+      ]
+    },
+    {
+      "id": "TS6196",
+      "match": "TS6196:.*?'([^']+)' is declared but never used",
+      "captures": ["name"],
+      "rootCause": "'{name}' is declared but never used. This is a type or interface that is defined but not referenced anywhere.",
+      "prescription": "Remove the unused type/interface '{name}', or export it if it is intended for use by consumers of this module.",
+      "codeBlock": null,
+      "conditions": []
+    },
+    {
+      "id": "TS7006",
+      "match": "TS7006:.*?Parameter '([^']+)' implicitly has an '([^']+)' type",
+      "captures": ["parameter", "implicitType"],
+      "rootCause": "Parameter '{parameter}' implicitly has an '{implicitType}' type. TypeScript's `noImplicitAny` requires explicit type annotations.",
+      "prescription": "Add a type annotation to parameter '{parameter}'. For example: `{parameter}: string` or `{parameter}: SomeType`.",
+      "codeBlock": "// Add explicit type\nfunction myFunction({parameter}: string) {\n  // ...\n}",
+      "conditions": [
+        {
+          "when": "parameter contains req",
+          "rootCause": "Express request parameter 'req' needs a type annotation.",
+          "prescription": "Type the parameter as `req: Request` from Express.",
+          "codeBlock": "import { Request, Response } from 'express';\n\napp.get('/path', (req: Request, res: Response) => {\n  // ...\n});"
+        },
+        {
+          "when": "parameter contains e",
+          "rootCause": "Event handler parameter 'e' needs a type annotation.",
+          "prescription": "Use the appropriate event type: `e: React.ChangeEvent<HTMLInputElement>`, `e: MouseEvent`, etc.",
+          "codeBlock": "// React event handler\nconst handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {\n  console.log(e.target.value);\n};"
+        }
+      ]
+    },
+    {
+      "id": "TS7015",
+      "match": "TS7015:.*?Element implicitly has an 'any' type because index expression is not of type '([^']+)'",
+      "captures": ["expectedType"],
+      "rootCause": "Element access with an index of the wrong type. The index expression must be of type '{expectedType}'.",
+      "prescription": "Ensure the index expression is of type '{expectedType}'. Add a type assertion or convert the index value to the correct type.",
+      "codeBlock": null,
+      "conditions": []
+    },
+    {
+      "id": "TS7016",
+      "match": "TS7016:.*?Could not find a declaration file for module '([^']+)'",
+      "captures": ["module"],
+      "rootCause": "No TypeScript declaration file found for module '{module}'. The module exists but has no type definitions.",
+      "prescription": "Install type definitions: `npm install -D @types/{module}`. If none exist, create a declaration file: `declare module '{module}';`.",
+      "codeBlock": "// Option 1: Install types\n// npm install -D @types/{module}\n\n// Option 2: Create declarations.d.ts\ndeclare module '{module}';",
+      "conditions": []
+    },
+    {
+      "id": "TS7031",
+      "match": "TS7031:.*?Binding element '([^']+)' implicitly has an '([^']+)' type",
+      "captures": ["element", "implicitType"],
+      "rootCause": "Destructured binding element '{element}' implicitly has an '{implicitType}' type. TypeScript requires an explicit type annotation.",
+      "prescription": "Add a type annotation to the destructured parameter. Type the entire destructured object: `{{ {element} }}: {{ {element}: Type }}`.",
+      "codeBlock": "// Add type to destructured parameter\nfunction myFunction({ {element} }: { {element}: string }) {\n  // ...\n}",
+      "conditions": []
+    },
+    {
+      "id": "TS7053",
+      "match": "TS7053:.*?Element implicitly has an 'any' type because expression of type '([^']+)' can't be used to index type '([^']+)'",
+      "captures": ["indexType", "objectType"],
+      "rootCause": "Cannot index type '{objectType}' with type '{indexType}'. The type does not have an index signature that accepts '{indexType}'.",
+      "prescription": "Add an index signature to the type, use a type assertion, or narrow the key type. For Record types, use `Record<string, ValueType>`.",
+      "codeBlock": "// Option 1: Add index signature\ninterface MyObject {\n  [key: string]: any;\n}\n\n// Option 2: Use Record\nconst obj: Record<string, unknown> = {};\n\n// Option 3: Type assertion on key\nconst value = obj[key as keyof typeof obj];",
+      "conditions": []
+    },
+    {
+      "id": "TS17004",
+      "match": "TS17004:.*?Cannot use JSX unless the '--jsx' flag is provided",
+      "captures": [],
+      "rootCause": "JSX syntax is not enabled. The TypeScript compiler needs the `jsx` option to process JSX/TSX files.",
+      "prescription": "Add `\"jsx\": \"react-jsx\"` (React 17+) or `\"jsx\": \"react\"` (React 16) to the `compilerOptions` in tsconfig.json.",
+      "codeBlock": "// tsconfig.json\n{\n  \"compilerOptions\": {\n    \"jsx\": \"react-jsx\"\n  }\n}",
+      "conditions": []
+    },
+    {
+      "id": "TS18046",
+      "match": "TS18046:.*?'([^']+)' is of type 'unknown'",
+      "captures": ["name"],
+      "rootCause": "'{name}' is of type 'unknown'. You must narrow the type before using it. This commonly occurs with caught errors in try/catch blocks.",
+      "prescription": "Narrow the type using `instanceof`, `typeof`, or a custom type guard before accessing properties on '{name}'.",
+      "codeBlock": "// For catch blocks\ntry {\n  // ...\n} catch (error) {\n  if (error instanceof Error) {\n    console.error(error.message);\n  } else {\n    console.error('Unknown error:', String(error));\n  }\n}",
+      "conditions": []
+    },
+    {
+      "id": "TS18047",
+      "match": "TS18047:.*?'([^']+)' is possibly 'null'",
+      "captures": ["name"],
+      "rootCause": "'{name}' is possibly 'null'. Accessing properties on a potentially null value is unsafe.",
+      "prescription": "Add a null check: `if ({name} !== null)`, use optional chaining `{name}?.property`, or use the non-null assertion `{name}!` if you are certain it is not null.",
+      "codeBlock": "// Null check\nif ({name} !== null) {\n  {name}.doSomething();\n}\n\n// Optional chaining\n{name}?.doSomething();\n\n// Non-null assertion (use with caution)\n{name}!.doSomething();",
+      "conditions": []
+    },
+    {
+      "id": "TS18048",
+      "match": "TS18048:.*?'([^']+)' is possibly 'undefined'",
+      "captures": ["name"],
+      "rootCause": "'{name}' is possibly 'undefined'. Accessing properties on a potentially undefined value is unsafe.",
+      "prescription": "Add an undefined check: `if ({name} !== undefined)`, use optional chaining `{name}?.property`, provide a default with `{name} ?? defaultValue`, or use non-null assertion `{name}!`.",
+      "codeBlock": "// Undefined check\nif ({name} !== undefined) {\n  {name}.doSomething();\n}\n\n// Optional chaining\n{name}?.doSomething();\n\n// Default value\nconst value = {name} ?? defaultValue;",
+      "conditions": []
+    },
+    {
+      "id": "TS2538",
+      "match": "TS2538:.*?Type '([^']+)' cannot be used as an index type",
+      "captures": ["type"],
+      "rootCause": "Type '{type}' cannot be used as an index type. Only `string`, `number`, `symbol`, and template literal types can be used as index types.",
+      "prescription": "Convert or narrow the value to a valid index type. Use `String(value)` or `Number(value)`, or narrow with a type guard.",
+      "codeBlock": "// Narrow the type\nif (typeof key === 'string') {\n  const value = obj[key];\n}\n\n// Or convert\nconst value = obj[String(key)];",
+      "conditions": [
+        {
+          "when": "type contains undefined",
+          "rootCause": "Trying to use a possibly undefined value as an index. The key might be undefined.",
+          "prescription": "Add an undefined check for the key before using it as an index: `if (key !== undefined) { obj[key] }`.",
+          "codeBlock": "if (key !== undefined) {\n  const value = obj[key];\n}"
+        }
+      ]
+    },
+    {
+      "id": "TS2344",
+      "match": "TS2344:.*?Type '([^']+)' does not satisfy the constraint '([^']+)'",
+      "captures": ["type", "constraint"],
+      "rootCause": "Type '{type}' does not satisfy the constraint '{constraint}'. The type argument does not extend the required constraint of the generic parameter.",
+      "prescription": "Ensure the type argument '{type}' extends '{constraint}'. Add the missing properties or methods required by the constraint, or use a different type that satisfies it.",
+      "codeBlock": "// Example: constraint requires specific shape\ninterface HasId {\n  id: string;\n}\n\nfunction getById<T extends HasId>(items: T[], id: string): T | undefined {\n  return items.find(item => item.id === id);\n}\n\n// Type passed must have 'id: string'\ngetById([{ id: '1', name: 'test' }], '1'); // OK",
+      "conditions": []
+    }
+  ]
+}
