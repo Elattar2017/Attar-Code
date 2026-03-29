@@ -47,6 +47,17 @@ const SHELL = IS_WIN ? process.env.COMSPEC || "cmd.exe" : "/bin/bash";
 const SHELL_FLAG = IS_WIN ? "/c" : "-c";
 const PYTHON = IS_WIN ? "python" : "python3";
 
+// ── Plugin System (optional — falls back to existing behavior if not available) ──
+let pluginRegistry;
+try {
+  const { PluginRegistry } = require('./plugins');
+  pluginRegistry = new PluginRegistry({
+    proxyUrl: 'http://localhost:3001',
+    ollamaUrl: 'http://localhost:11434',
+  });
+  pluginRegistry.loadAll();
+} catch (e) { pluginRegistry = null; }
+
 // ══════════════════════════════════════════════════════════════════
 // TUNING CONSTANTS
 // ══════════════════════════════════════════════════════════════════
@@ -394,6 +405,23 @@ function loadSystemPrompt() {
     ? "java → brew install --cask temurin@17, maven → brew install maven, python → brew install python3, node → brew install node"
     : "java → sudo apt install openjdk-17-jdk -y, maven → sudo apt install maven -y, python → sudo apt install python3 -y, node → sudo apt install nodejs -y";
 
+  // Build environment version block from plugin system (injected into working memory, not base prompt)
+  let envVersions = "";
+  if (pluginRegistry) {
+    try {
+      // Sync fallback — use cached/bundled versions (don't block startup with async)
+      const vr = pluginRegistry.versionResolver;
+      const cached = vr.getAllCached();
+      if (Object.keys(cached).length > 0) {
+        const lines = [];
+        for (const [key, entry] of Object.entries(cached)) {
+          if (!key.startsWith('_')) lines.push(`${key.replace(':', ' ')}: ${entry.version}`);
+        }
+        if (lines.length > 0) envVersions = "LATEST STABLE VERSIONS (use these for new projects):\n" + lines.slice(0, 15).join(", ");
+      }
+    } catch { /* no cached versions yet */ }
+  }
+
   const placeholders = {
     "{{OS}}": osName,
     "{{OS_UPPER}}": osUpper,
@@ -401,6 +429,7 @@ function loadSystemPrompt() {
     "{{WHICH_CMD}}": whichCmd,
     "{{PKG_CHECK}}": pkgCheck,
     "{{COMMON_INSTALLS}}": commonInstalls,
+    "{{ENV_VERSIONS}}": envVersions,
   };
 
   // Try loading from multiple locations (project-local first, then global, then bundled)
@@ -1503,6 +1532,49 @@ RULES: filepath REQUIRED. Use simple format when possible.`,
       }, required:["name"] }
     }
   },
+  // ── Environment & Plugin Tools ──────────────────────────────────────────────
+  {
+    type: "function", function: {
+      name: "check_environment",
+      description: `Check if the development environment has the required tools and correct versions for the detected technology stack.
+
+USE FOR: Before building/running a project for the first time, when build fails with "command not found" or version errors, before scaffolding a new project, when you suspect missing tools.
+
+Returns: A report listing runtime version, package manager, virtual environment status, missing tools with install commands, and compatibility warnings.`,
+      parameters: { type:"object", properties: {
+        technology: { type:"string", description:"Target technology (auto-detected if omitted): 'python', 'typescript', 'rust', 'go', 'java', 'cpp'" },
+        dirpath: { type:"string", description:"Project directory to check (default: cwd)" }
+      } }
+    }
+  },
+  {
+    type: "function", function: {
+      name: "setup_environment",
+      description: `Set up the development environment: create virtual environments, install dependencies, configure tools. Run check_environment FIRST.
+
+USE FOR: After check_environment shows missing setup. For Python: auto-creates venv (prefers uv over pip). For Node.js: installs packages with detected package manager.
+
+RULES: Always run check_environment first. Asks permission before installing system packages.`,
+      parameters: { type:"object", properties: {
+        technology: { type:"string", description:"Target technology (auto-detected if omitted)" },
+        dirpath: { type:"string", description:"Project directory (default: cwd)" }
+      } }
+    }
+  },
+  {
+    type: "function", function: {
+      name: "generate_tests",
+      description: `Generate a comprehensive test file for a source file using two-phase generation: Phase 1 creates a deterministic test skeleton from AST analysis (guaranteed coverage). Phase 2 uses the LLM to fill in expected values.
+
+USE FOR: When user asks to add tests, generate tests, or write tests for a file.
+
+Covers: happy path, edge cases per parameter type, error/invalid input, null/None, async rejection. Auto-generates mocks for external dependencies.`,
+      parameters: { type:"object", properties: {
+        filepath: { type:"string", description:"Source file to generate tests for" },
+        dirpath: { type:"string", description:"Project root (default: cwd)" }
+      }, required:["filepath"] }
+    }
+  },
 ];
 
 // Scan directory tree recursively (any technology)
@@ -2010,7 +2082,7 @@ async function executeTool(name, args) {
         const isBuildCmd = /\b(npm\s+run\s+build|npx\s+tsc|cargo\s+build|go\s+build|dotnet\s+build|mvn\s+compile|gradle\s+build|pytest|python\s+-m\s+pytest|npm\s+test)\b/i.test(cmd);
         let buildAnalysis = "";
         if (isBuildCmd && errorOutput.length > 20) {
-          const parsed = parseBuildErrors(errorOutput);
+          const parsed = pluginParseBuildErrors(errorOutput, SESSION._lastDetectedTech);
           if (parsed && parsed.totalErrors > 0) {
             buildAnalysis = "\n\n" + parsed.summary;
             // Run prescriptions
@@ -3647,6 +3719,32 @@ print(json.dumps({"sheet": ws.title, "headers": headers, "rows": rows[:200], "to
       const techMatch = info.match(/Technology:\s*(.+)/);
       if (techMatch) SESSION._lastDetectedTech = techMatch[1].trim();
       if (info.includes("No build system")) return `❌ ${info}`;
+
+      // ── Pre-flight environment check via plugin system ──
+      if (pluginRegistry && SESSION._lastDetectedTech) {
+        const plugin = pluginRegistry.pluginForTech(SESSION._lastDetectedTech);
+        if (plugin) {
+          try {
+            const envCheck = plugin.checkEnvironment(dir);
+            SESSION._envCheck = [{ language: plugin.id, displayName: plugin.displayName, ...envCheck }];
+            if (envCheck.runtime && !envCheck.runtime.installed) {
+              return `❌ ENVIRONMENT ERROR: ${plugin.displayName} runtime is not installed.\nInstall: ${envCheck.missing?.[0]?.installCmd || 'See check_environment for details.'}`;
+            }
+            if (envCheck.runtime && !envCheck.runtime.compatible) {
+              sections.push(`⚠ VERSION WARNING: ${plugin.displayName} ${envCheck.runtime.version} is below minimum ${envCheck.runtime.minVersion}`);
+            }
+            // Auto-create Python venv if needed
+            if (plugin.id === 'python' && envCheck.virtualEnv && !envCheck.virtualEnv.exists && !envCheck.virtualEnv.active) {
+              const setupResult = plugin.setupEnvironment(dir);
+              if (setupResult.activateCmd) {
+                if (!SESSION._envSetup) SESSION._envSetup = {};
+                SESSION._envSetup.python = { activateCmd: setupResult.activateCmd, venvPath: setupResult.venvPath };
+                sections.push(`✓ Auto-created Python venv (${envCheck.strategy || 'venv'})`);
+              }
+            }
+          } catch (e) { debugLog(`Pre-flight check failed: ${e.message}`); }
+        }
+      }
       const getCmd = (label) => { const m = info.match(new RegExp(`${label}:\\s*(.+)`)); return m?.[1]?.trim(); };
       const installCmd = getCmd("Install"); let buildCmd = getCmd("Build"); const testCmd = getCmd("Test");
 
@@ -3798,7 +3896,7 @@ print(json.dumps({"sheet": ws.title, "headers": headers, "rows": rows[:200], "to
 
         results.push(`\n[BUILD] ${build.ok === null ? "skipped" : build.ok ? "✅ PASS" : "❌ FAIL"}`);
         if (build.ok === false) {
-        const parsed = parseBuildErrors(build.out);
+        const parsed = pluginParseBuildErrors(build.out, SESSION._lastDetectedTech);
         const docsHint = getTechDocsHint(build.out);
         if (!SESSION._buildState) SESSION._buildState = { fingerprint: null, repeatCount: 0, lastParsed: null, errorHistory: [], editsBetweenBuilds: 0 };
         const fp = build.out.slice(0, 200);
@@ -3936,11 +4034,24 @@ print(json.dumps({"sheet": ws.title, "headers": headers, "rows": rows[:200], "to
               try { plugin = JSON.parse(fs.readFileSync(pluginPath, "utf-8")); } catch (e) { /* no plugin */ }
             }
 
+            // Use PluginRegistry plugin for classifyErrors if available (exposes get errorCatalog)
+            if (pluginRegistry) {
+              const regPlugin = pluginRegistry.pluginForTech(SESSION._lastDetectedTech);
+              if (regPlugin) plugin = regPlugin; // JS plugin with .errorCatalog getter
+            }
+
             if (plugin) {
               const { classifyErrors } = require("./smart-fix/error-classifier");
-              // Universal error parser: handles ALL formats from parseBuildErrors output
-              // parseBuildErrors stores errors as "  line N: CODE: message" or "  line N: message" or "  line N"
-              const structuredErrors = parsed.sorted.flatMap(({ file: f, errors: errs }) =>
+
+              // If pluginParseBuildErrors already produced structured errors, use them directly
+              let structuredErrors;
+              if (parsed._pluginErrors && parsed._pluginErrors.length > 0) {
+                structuredErrors = parsed._pluginErrors.map(e => ({
+                  file: path.resolve(dir, e.file), line: e.line, code: e.code, message: e.message,
+                }));
+              } else {
+              // Fallback: Universal error parser from parseBuildErrors string output
+              structuredErrors = parsed.sorted.flatMap(({ file: f, errors: errs }) =>
                 errs.map(e => {
                   const trimmed = e.trim();
                   const resolvedFile = path.resolve(dir, f);
@@ -4007,6 +4118,7 @@ print(json.dumps({"sheet": ws.title, "headers": headers, "rows": rows[:200], "to
                   return null;
                 }).filter(Boolean)
               );
+              } // end else (fallback parser)
               if (structuredErrors.length > 0) {
                 const classified = classifyErrors(structuredErrors, SESSION._depGraph, plugin);
                 const fixPlan = smartFix.computeFixOrder(classified, SESSION._depGraph.getRanks());
@@ -4034,11 +4146,24 @@ print(json.dumps({"sheet": ws.title, "headers": headers, "rows": rows[:200], "to
                   }
                   // Tier 3: show rich context for complex errors
                   if (fixResult.complexForLLM.length > 0) {
-                    // Use tier3 prompt blocks if available, otherwise fall back to generic analysis
-                    const withPrompt = fixResult.complexForLLM.filter(c => c.promptBlock);
+                    // Use plugin.buildFixPrompt() if available, else fall back to fix engine's promptBlock
+                    const regPlugin = pluginRegistry ? pluginRegistry.pluginForTech(SESSION._lastDetectedTech) : null;
+                    const withPrompt = fixResult.complexForLLM.map(c => {
+                      if (regPlugin && c.error) {
+                        try {
+                          const pluginPrompt = regPlugin.buildFixPrompt(c.error, {
+                            codeSnippet: c.fullContext || '',
+                            functionName: c.error.captures?.functionName || null,
+                            env: { version: SESSION._envCheck?.[0]?.runtime?.version, packageManager: SESSION._envCheck?.[0]?.packageManager?.name },
+                          });
+                          return { ...c, promptBlock: pluginPrompt };
+                        } catch { /* fall through to original */ }
+                      }
+                      return c;
+                    }).filter(c => c.promptBlock);
                     if (withPrompt.length > 0) {
                       results.push(`\n📋 ${withPrompt.length} complex error(s) — fix with full context:`);
-                      for (const cf of withPrompt.slice(0, 5)) { // Max 5 to stay within context budget
+                      for (const cf of withPrompt.slice(0, 5)) {
                         results.push(cf.promptBlock);
                       }
                       if (withPrompt.length > 5) {
@@ -4601,6 +4726,127 @@ print(json.dumps({"ok": True}))
       return `✓ Skill "${name}" activated. Here is the expert knowledge:\n\n${content.slice(0, 3000)}`;
     }
 
+    // ── Environment & Plugin Tools ──────────────────────────────────────────
+    case "check_environment": {
+      const dir = args.dirpath ? path.resolve(SESSION.cwd, args.dirpath) : SESSION.cwd;
+      printToolRunning("check_environment", dir);
+
+      if (!pluginRegistry) {
+        printToolDone("N/A");
+        return "Plugin system not available. check_environment requires the plugins/ directory.";
+      }
+
+      let reports;
+      if (args.technology || SESSION._lastDetectedTech) {
+        const tech = args.technology || SESSION._lastDetectedTech;
+        const plugin = pluginRegistry.pluginForTech(tech);
+        if (plugin) {
+          reports = [{ language: plugin.id, displayName: plugin.displayName, ...plugin.checkEnvironment(dir) }];
+        } else {
+          reports = pluginRegistry.checkAllEnvironments(dir);
+        }
+      } else {
+        reports = pluginRegistry.checkAllEnvironments(dir);
+      }
+
+      if (reports.length === 0) {
+        printToolDone("No languages detected");
+        return "No known languages detected in this project. Supported: Python, TypeScript/Node.js, Rust, Go, Java, C/C++.";
+      }
+
+      // Cache in session
+      SESSION._envCheck = reports;
+      // Update working memory if available
+      if (workingMemory && reports[0]?.runtime?.installed) {
+        workingMemory._detectedEnv = {
+          tech: reports[0].displayName,
+          version: reports[0].runtime.version,
+          venv: reports[0].virtualEnv?.path || null,
+          strategy: reports[0].strategy || null,
+        };
+      }
+
+      printToolDone(reports.map(r => `${r.displayName}: ${r.ready ? "READY" : "NOT READY"}`).join(", "));
+      return pluginRegistry.formatEnvReport(reports);
+    }
+
+    case "setup_environment": {
+      const dir = args.dirpath ? path.resolve(SESSION.cwd, args.dirpath) : SESSION.cwd;
+      printToolRunning("setup_environment", dir);
+
+      if (!pluginRegistry) {
+        printToolDone("N/A");
+        return "Plugin system not available.";
+      }
+
+      const tech = args.technology || SESSION._lastDetectedTech;
+      const plugin = tech ? pluginRegistry.pluginForTech(tech) : (pluginRegistry.detectLanguages(dir)[0] || null);
+      if (!plugin) {
+        printToolDone("No language detected");
+        return "Cannot determine technology. Specify technology parameter or run check_environment first.";
+      }
+
+      const result = plugin.setupEnvironment(dir);
+      const lines = [`Environment Setup: ${plugin.displayName}`, "─".repeat(40)];
+
+      for (const step of result.steps) {
+        const status = step.success !== false ? "✓" : "✗";
+        lines.push(`  ${status} ${step.action}: ${step.command || step.path || ""}`);
+        if (step.error) lines.push(`    Error: ${step.error}`);
+      }
+
+      // Store venv activation prefix in session for build_and_test
+      if (result.activateCmd) {
+        if (!SESSION._envSetup) SESSION._envSetup = {};
+        SESSION._envSetup[plugin.id] = {
+          venvPath: result.venvPath,
+          activateCmd: result.activateCmd,
+          strategy: plugin._detectStrategy ? plugin._detectStrategy() : null,
+        };
+        lines.push("", `Virtual environment: ${result.venvPath}`);
+        lines.push(`Activation: ${result.activateCmd}`);
+      }
+
+      printToolDone("Done");
+      return lines.join("\n");
+    }
+
+    case "generate_tests": {
+      const filePath = args.filepath ? path.resolve(SESSION.cwd, args.filepath) : null;
+      if (!filePath || !fs.existsSync(filePath)) {
+        return `❌ File not found: ${args.filepath || "(none specified)"}`;
+      }
+      const dir = args.dirpath ? path.resolve(SESSION.cwd, args.dirpath) : SESSION.cwd;
+      printToolRunning("generate_tests", path.basename(filePath));
+
+      if (!pluginRegistry) {
+        printToolDone("N/A");
+        return "Plugin system not available.";
+      }
+
+      const plugin = pluginRegistry.pluginForFile(filePath);
+      if (!plugin) {
+        printToolDone("Unsupported");
+        return `No plugin available for ${path.extname(filePath)} files. Supported: .py, .ts, .js, .rs, .go, .java, .cpp`;
+      }
+
+      let TestGenerator;
+      try { ({ TestGenerator } = require("./plugins/test-generator")); } catch { printToolDone("N/A"); return "Test generator not available."; }
+      const generator = new TestGenerator({ ollamaUrl: CONFIG.ollamaUrl || "http://localhost:11434", model: SESSION.model });
+
+      const skeleton = generator.generateSkeleton(plugin, filePath, dir);
+      if (skeleton.error || !skeleton.cases.length) {
+        printToolDone("No cases");
+        return `No test cases generated for ${path.basename(filePath)}. ${skeleton.error || "No exportable functions or classes found."}`;
+      }
+
+      // Phase 2: LLM completion
+      const testContent = await generator.completeSkeleton(skeleton);
+
+      printToolDone(`${skeleton.cases.length} cases`);
+      return `${generator.formatSkeletonSummary(skeleton)}\n\n--- Generated Test File ---\n\n${testContent}`;
+    }
+
     default: {
       // Minimal aliases — only the most common mistakes
       const aliases = {
@@ -4946,6 +5192,56 @@ function parseBuildErrors(output) {
     if (errors.length > 3) lines.push(`  ... and ${errors.length - 3} more`);
   });
   return { summary: lines.join("\n"), sorted, totalErrors, fileCount: sorted.length, topFile: sorted[0]?.file, topCount: sorted[0]?.count, hintMap };
+}
+
+// ── Plugin-aware error parsing dispatcher ────────────────────────────────────
+// Tries plugin.parseErrors() first, converts to parseBuildErrors shape.
+// Falls back to the original regex-based parseBuildErrors() if no plugin.
+function pluginParseBuildErrors(output, tech) {
+  if (!pluginRegistry || !tech) return parseBuildErrors(output);
+  const plugin = pluginRegistry.pluginForTech(tech);
+  if (!plugin) return parseBuildErrors(output);
+
+  try {
+    const pluginErrors = plugin.parseErrors(output, 'compiler');
+    if (!pluginErrors || pluginErrors.length === 0) return parseBuildErrors(output);
+
+    // Convert PluginError[] → parseBuildErrors shape: { summary, sorted, totalErrors, ... }
+    const fileMap = {};
+    for (const e of pluginErrors) {
+      const file = e.file || '(unknown)';
+      if (!fileMap[file]) fileMap[file] = [];
+      const msg = e.code ? `${e.code}: ${e.message}` : e.message;
+      fileMap[file].push(`  line ${e.line || 0}: ${msg}`);
+    }
+
+    const sorted = Object.entries(fileMap)
+      .map(([file, errors]) => ({ file, errors, count: errors.length }))
+      .sort((a, b) => b.count - a.count);
+    const totalErrors = sorted.reduce((s, e) => s + e.count, 0);
+    if (sorted.length === 0) return parseBuildErrors(output); // fallback
+
+    const lines = [`BUILD FAILED: ${totalErrors} error(s) in ${sorted.length} file(s). Fix IN THIS ORDER:`];
+    sorted.forEach(({ file, errors, count }, i) => {
+      lines.push(`${i + 1}. ${file} — ${count} error(s):`);
+      errors.slice(0, 3).forEach(e => lines.push(e));
+      if (errors.length > 3) lines.push(`  ... and ${errors.length - 3} more`);
+    });
+
+    return {
+      summary: lines.join("\n"),
+      sorted,
+      totalErrors,
+      fileCount: sorted.length,
+      topFile: sorted[0]?.file,
+      topCount: sorted[0]?.count,
+      hintMap: {},
+      _pluginErrors: pluginErrors, // preserve structured errors for smart-fix
+    };
+  } catch (e) {
+    debugLog("Plugin parseErrors failed: " + e.message);
+    return parseBuildErrors(output);
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -5798,7 +6094,7 @@ IMPORTANT: Do NOT skip steps. Do NOT guess install commands — search the web f
 
   // Build/compile failed
   if (/build failed|compilation error|\bTS\d{4}\b|error\[E\d|\.java:\d+.*error|\.go:\d+.*error/i.test(e)) {
-    const parsed = parseBuildErrors(errorText);
+    const parsed = pluginParseBuildErrors(errorText, SESSION._lastDetectedTech);
     const docsHint = getTechDocsHint(errorText);
     const topFile = parsed?.topFile || "(see errors above)";
     const topCount = parsed?.topCount || "?";
@@ -6612,6 +6908,20 @@ function selectToolsForContext(userMessage, messages) {
     selected.add("build_and_test");
     selected.add("detect_build_system");
   }
+
+  // Environment & plugin tools
+  if (/\b(create|scaffold|new project|setup|environment|install|version|venv|virtual.?env|nvm|pyenv|toolchain|uv\b|poetry)\b/i.test(msg)) {
+    selected.add("check_environment");
+    selected.add("setup_environment");
+  }
+  if (selected.has("build_and_test")) {
+    selected.add("check_environment");
+  }
+
+  // Test generation
+  if (/\b(generate tests|write tests|add tests|test generation|test skeleton|create tests)\b/i.test(msg)) {
+    selected.add("generate_tests");
+  }
   // Auto-include when server is running
   if (SESSION._servers && Object.keys(SESSION._servers).length > 0) {
     selected.add("test_endpoint");
@@ -6681,6 +6991,7 @@ function selectToolsForContext(userMessage, messages) {
       web_search: 70, web_fetch: 68, search_docs: 65,
       todo_write: 60, todo_done: 58, todo_list: 55,
       research: 50, deep_search: 48, search_all: 45,
+      check_environment: 77, setup_environment: 76, generate_tests: 74,
       kb_search: 72, kb_add: 40, kb_list: 38, github_search: 36,
       memory_write: 25, memory_read: 23,
       create_pdf: 20, create_docx: 18, create_excel: 16, create_pptx: 14, create_chart: 12,
@@ -7661,6 +7972,7 @@ function printHelp() {
     ]],
     ["Smart Fix & Debugging", [
       ["/errors",              "Show recent build errors with fix prescriptions"],
+      ["/env",                 "Check environment / setup / versions / update cache"],
       ["/skills",              "List available expert skills (auto-injected by topic)"],
       ["/hooks",               "Show active lifecycle hooks and their status"],
     ]],
@@ -8074,6 +8386,70 @@ Use the [phase] prefix in each todo_write call. Do NOT implement anything yet �
         console.log(co(C.dim, `\n  Location: ${OUTPUTS_DIR}\n`));
       } catch (_) { console.log(co(C.dim, "\n  No outputs directory.\n")); }
       break;
+    }
+
+    case "/env": {
+      const sub = parts[1]?.toLowerCase();
+      if (!pluginRegistry) {
+        console.log(co(C.bRed, "\n  Plugin system not available. Ensure plugins/ directory exists.\n"));
+        return null;
+      }
+
+      if (!sub || sub === "check") {
+        const dir = parts[2] ? path.resolve(SESSION.cwd, parts[2]) : SESSION.cwd;
+        const reports = pluginRegistry.checkAllEnvironments(dir);
+        if (reports.length === 0) {
+          console.log(co(C.dim, "\n  No known languages detected in this project.\n"));
+        } else {
+          console.log(co(C.bold, "\n  Environment Check\n"));
+          console.log(pluginRegistry.formatEnvReport(reports));
+          SESSION._envCheck = reports;
+        }
+        console.log();
+      } else if (sub === "setup") {
+        const dir = SESSION.cwd;
+        const detected = pluginRegistry.detectLanguages(dir);
+        if (detected.length === 0) {
+          console.log(co(C.dim, "\n  No languages detected.\n"));
+        } else {
+          for (const plugin of detected) {
+            console.log(co(C.bold, `\n  Setting up ${plugin.displayName}...`));
+            const result = plugin.setupEnvironment(dir);
+            for (const step of result.steps) {
+              const icon = step.success !== false ? co(C.bGreen, "✓") : co(C.bRed, "✗");
+              console.log(`  ${icon} ${step.action}: ${step.command || step.path || ""}`);
+            }
+            if (result.activateCmd) {
+              if (!SESSION._envSetup) SESSION._envSetup = {};
+              SESSION._envSetup[plugin.id] = { activateCmd: result.activateCmd, venvPath: result.venvPath };
+              console.log(co(C.bGreen, `  Venv: ${result.venvPath}`));
+            }
+          }
+          console.log();
+        }
+      } else if (sub === "versions") {
+        console.log(co(C.bold, "\n  Resolving latest versions...\n"));
+        (async () => {
+          const block = await pluginRegistry.getVersionBlock();
+          console.log(block || co(C.dim, "  No versions resolved."));
+          console.log();
+        })();
+      } else if (sub === "update") {
+        console.log(co(C.bold, "\n  Refreshing version cache...\n"));
+        (async () => {
+          const count = await pluginRegistry.versionResolver.refreshAll();
+          console.log(co(C.bGreen, `  Refreshed ${count} cached versions.\n`));
+        })();
+      } else {
+        console.log(co(C.bold, "\n  /env commands:\n"));
+        console.log("  /env              Show environment for current project");
+        console.log("  /env check        Run full environment check");
+        console.log("  /env setup        Set up environment (venv, deps)");
+        console.log("  /env versions     Show latest stable versions");
+        console.log("  /env update       Refresh version cache from registries");
+        console.log();
+      }
+      return null;
     }
 
     case "/skills": {

@@ -6,3 +6,4 @@ node_modules/
 .claude/
 .qdrant-initialized
 .remember/
+plugins/version-cache.json

@@ -1,0 +1,80 @@
+{
+  "technology": "environment",
+  "version": 1,
+  "description": "Environment-specific error patterns. These trigger check_environment recommendations instead of code fixes.",
+  "patterns": [
+    {
+      "id": "WRONG_PYTHON_VERSION",
+      "category": "environment",
+      "severity": "error",
+      "match": "(?:SyntaxError.*:=|walrus|match\\s+.*case\\s+.*:|f-string.*\\{.*=)|requires\\s+Python\\s+>=?\\s*(\\d+\\.\\d+)",
+      "captures": ["requiredVersion"],
+      "rootCause": "Code uses Python features not available in the installed version (walrus operator needs 3.8+, match/case needs 3.10+, f-string = needs 3.8+).",
+      "prescription": "Run check_environment to verify Python version. Upgrade Python or use pyenv to switch versions.",
+      "codeBlock": "# Check Python version:\npython3 --version\n\n# If too old, upgrade:\n# Windows: choco install python3 -y\n# macOS: brew install python@3.12\n# Linux: sudo apt install python3 -y"
+    },
+    {
+      "id": "NO_VENV_ACTIVE",
+      "category": "environment",
+      "severity": "error",
+      "match": "ModuleNotFoundError:.*No module named '(?:django|flask|fastapi|numpy|pandas|requests|sqlalchemy|pytest|pydantic|uvicorn|httpx|celery|boto3|tensorflow|torch|scikit)'",
+      "captures": [],
+      "rootCause": "Module not found — likely no virtual environment is active, so packages installed globally or in another venv are not accessible.",
+      "prescription": "Run setup_environment to create a virtual environment and install dependencies. For manual setup: python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt"
+    },
+    {
+      "id": "NODE_VERSION_TOO_OLD",
+      "category": "environment",
+      "severity": "error",
+      "match": "SyntaxError: Unexpected token '\\?\\.'|structuredClone is not defined|fetch is not defined|requires Node\\.js\\s+>=?\\s*(\\d+)|ERR_UNKNOWN_BUILTIN_MODULE",
+      "captures": ["requiredVersion"],
+      "rootCause": "Code uses Node.js features not available in the installed version. Optional chaining (?.) needs Node 14+, structuredClone needs 17+, fetch needs 18+.",
+      "prescription": "Run check_environment to verify Node.js version. Use nvm or fnm to switch to a compatible version."
+    },
+    {
+      "id": "JAVA_HOME_NOT_SET",
+      "category": "environment",
+      "severity": "error",
+      "match": "JAVA_HOME is not set|No such file or directory.*java|JAVA_HOME environment variable is not defined|JAVA_HOME is not valid",
+      "captures": [],
+      "rootCause": "JAVA_HOME environment variable is not set. Java build tools (Maven, Gradle) require it to locate the JDK.",
+      "prescription": "Run setup_environment for Java to configure JAVA_HOME. Set it to your JDK installation directory."
+    },
+    {
+      "id": "RUST_TOOLCHAIN_MISSING",
+      "category": "environment",
+      "severity": "error",
+      "match": "error: toolchain '.*' is not installed|error\\[E0658\\]: .* is experimental|edition (\\d{4}) is unsupported|can't find crate",
+      "captures": ["edition"],
+      "rootCause": "The Rust toolchain or edition required by this project is not installed or configured.",
+      "prescription": "Run rustup show to see installed toolchains. Use rustup default stable to install the latest stable toolchain."
+    },
+    {
+      "id": "GO_VERSION_MISMATCH",
+      "category": "environment",
+      "severity": "error",
+      "match": "go: go\\.mod requires go >= (\\d+\\.\\d+)|cannot find package|module requires Go (\\d+\\.\\d+)",
+      "captures": ["requiredVersion"],
+      "rootCause": "The Go module requires a newer version of Go than what is installed.",
+      "prescription": "Run check_environment to verify Go version. Update Go to the required version."
+    },
+    {
+      "id": "NPM_PEER_DEPS",
+      "category": "environment",
+      "severity": "warning",
+      "match": "npm warn.*peer dep|ERESOLVE unable to resolve dependency tree|Could not resolve dependency",
+      "captures": [],
+      "rootCause": "npm dependency resolution conflict. Peer dependencies are incompatible.",
+      "prescription": "Try: npm install --legacy-peer-deps. Or switch to pnpm which handles peer deps better: npx pnpm install."
+    },
+    {
+      "id": "COMMAND_NOT_FOUND_ENV",
+      "category": "environment",
+      "severity": "error",
+      "match": "'(\\w+)'\\s+is not recognized|command not found:\\s+(\\w+)|No such file or directory.*/(\\w+)$",
+      "captures": ["command"],
+      "rootCause": "A required tool is not installed on this system.",
+      "prescription": "Run check_environment to see what's missing and get OS-specific install instructions."
+    }
+  ]
+}

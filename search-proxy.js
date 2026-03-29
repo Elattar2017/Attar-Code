@@ -835,6 +835,49 @@ app.post("/search-multi", async (req, res) => {
   res.json({ query, ...combined });
 });
 
+// ─── Environment Version Resolution ──────────────────────────────────────────
+
+let _versionResolver;
+try {
+  const { VersionResolver } = require("./plugins/version-resolver");
+  _versionResolver = new VersionResolver({ proxyUrl: null }); // proxy IS this server, use direct fetch
+} catch { _versionResolver = null; }
+
+// POST /env/versions — Batch resolve package versions from registries
+app.post("/env/versions", async (req, res) => {
+  if (!_versionResolver) return res.status(503).json({ error: "Version resolver not available" });
+  const { packages } = req.body; // [{ registry: 'npm', pkg: 'express' }, ...]
+  if (!Array.isArray(packages)) return res.status(400).json({ error: "packages must be an array" });
+  try {
+    const results = await _versionResolver.resolveAll(packages);
+    res.json({ versions: results, cached: Object.keys(_versionResolver.getAllCached()).length });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /env/versions/cache — Return current version cache
+app.get("/env/versions/cache", (req, res) => {
+  if (!_versionResolver) return res.status(503).json({ error: "Version resolver not available" });
+  const cached = _versionResolver.getAllCached();
+  const entries = {};
+  for (const [key, val] of Object.entries(cached)) {
+    entries[key] = { version: val.version, age: Math.round((Date.now() - val.timestamp) / 60000) + "m" };
+  }
+  res.json({ entries, count: Object.keys(entries).length });
+});
+
+// POST /env/versions/refresh — Force refresh cached entries
+app.post("/env/versions/refresh", async (req, res) => {
+  if (!_versionResolver) return res.status(503).json({ error: "Version resolver not available" });
+  try {
+    const count = await _versionResolver.refreshAll();
+    res.json({ refreshed: count });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ─── Start ────────────────────────────────────────────────────────────────────
 app.listen(PORT, async () => {
   console.log(`

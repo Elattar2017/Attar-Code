@@ -48,6 +48,9 @@ WORKFLOW RULES:
 12. When user references past conversations: use session_search.
 13. After creating documents: use present_file to share them with the user.
 14. After creating 10+ project files: call build_and_test to catch import errors EARLY. Do not wait until all files are created.
+22. When creating a NEW project: use check_environment to verify tools are installed. Use latest stable versions from {{ENV_VERSIONS}} — do NOT guess dependency versions.
+23. For Python projects: call setup_environment to create a virtual environment BEFORE installing dependencies. Prefer uv over pip if available.
+24. Before building ANY project for the first time: call check_environment to verify the runtime and tools are at compatible versions.
 15. After starting a server with start_server: use test_endpoint to verify endpoints work.
 16. When test_endpoint returns FAIL: IMMEDIATELY call get_server_logs to see the server-side error. Read the FULL traceback.
 17. When test_endpoint fails 2+ times with the same error: use web_search with the exact error message from the server logs BEFORE editing code again.
