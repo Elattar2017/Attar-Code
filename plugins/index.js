@@ -116,12 +116,18 @@ class PluginRegistry {
    */
   pluginForFile(filePath) {
     const ext = path.extname(filePath).toLowerCase();
+    // Prefer base language plugins over framework plugins for shared extensions.
+    // Framework plugins (nestjs, nextjs, reactnative) share .ts/.tsx/.js/.jsx with
+    // the TypeScript plugin — for file-level matching the base plugin should win.
+    const BASE_IDS = new Set(['typescript', 'python', 'rust', 'go', 'java', 'cpp', 'php', 'csharp']);
+    let fallback = null;
     for (const plugin of this._plugins.values()) {
       if (plugin.extensions.includes(ext)) {
-        return plugin;
+        if (BASE_IDS.has(plugin.id)) return plugin;
+        if (!fallback) fallback = plugin;
       }
     }
-    return null;
+    return fallback;
   }
 
   /**
@@ -135,6 +141,13 @@ class PluginRegistry {
     const lower = tech.toLowerCase();
 
     const techMap = {
+      'nestjs':             'nestjs',
+      'nest.js':            'nestjs',
+      'next.js':            'nextjs',
+      'nextjs':             'nextjs',
+      'react native':       'reactnative',
+      'react-native':       'reactnative',
+      'expo':               'reactnative',
       'node.js':           'typescript',
       'node.js/typescript': 'typescript',
       'typescript':         'typescript',
@@ -145,9 +158,17 @@ class PluginRegistry {
       'java':               'java',
       'java/maven':         'java',
       'java/gradle':        'java',
+      'c#':                 'csharp',
+      'csharp':             'csharp',
+      'asp.net':            'csharp',
+      '.net':               'csharp',
+      'dotnet':             'csharp',
       'c/c++':              'cpp',
       'c++':                'cpp',
       'c':                  'cpp',
+      'php':                'php',
+      'laravel':            'php',
+      'symfony':            'php',
     };
 
     for (const [key, id] of Object.entries(techMap)) {

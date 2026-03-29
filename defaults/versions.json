@@ -28,6 +28,15 @@
   "go:github.com/gin-gonic/gin": "1.10.0",
   "go:github.com/gofiber/fiber/v2": "2.52.6",
   "maven:org.springframework.boot:spring-boot-starter-web": "3.4.4",
+  "packagist:laravel/laravel": "11.4.0",
+  "packagist:symfony/skeleton": "7.2.3",
+  "packagist:phpunit/phpunit": "11.5.3",
+  "nuget:Microsoft.AspNetCore.App": "8.0.0",
+  "npm:@nestjs/core": "10.4.15",
+  "npm:@nestjs/cli": "10.4.9",
+  "npm:expo": "52.0.0",
+  "npm:react-native": "0.76.6",
+  "npm:@react-navigation/native": "7.0.14",
   "_meta": {
     "description": "Bundled fallback versions for offline use. Updated with CLI releases.",
     "lastUpdated": "2026-03-29"

@@ -35,6 +35,24 @@ const REGISTRIES = {
     urlTemplate: 'https://proxy.golang.org/{pkg}/@latest',
     extractVersion: (data) => data.Version && data.Version.replace(/^v/, ''),
   },
+  packagist: {
+    urlTemplate: 'https://packagist.org/packages/{pkg}.json',
+    extractVersion: (data) => {
+      const versions = data?.package?.versions;
+      if (!versions) return null;
+      // Find latest stable (not dev-*, alpha, beta, RC)
+      const stable = Object.keys(versions).filter(v => !v.includes('dev') && !v.includes('alpha') && !v.includes('beta') && !v.includes('RC'));
+      return stable[0]?.replace(/^v/, '') || null;
+    },
+  },
+  nuget: {
+    urlTemplate: 'https://api.nuget.org/v3-flatcontainer/{pkg}/index.json',
+    extractVersion: (data) => {
+      const versions = data?.versions;
+      if (!versions || !versions.length) return null;
+      return versions[versions.length - 1]; // latest
+    },
+  },
 };
 
 // 24-hour cache TTL
