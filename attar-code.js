@@ -7626,23 +7626,25 @@ async function chat(userMessage) {
         // Fall through to "Genuinely done" below
       }
 
-      // ── Detect: cross-turn text repetition ──────────────
-      // Track last 3 text-only responses. If similar (Jaccard > 0.6), force stop.
-      if (toolCalls.length === 0 && responseText.length > 50) {
+      // ── Detect: cross-turn text repetition (MUST run before planning check) ──
+      // Track text-only responses. If 2 consecutive are very similar, force stop.
+      if (toolCalls.length === 0 && responseText.length > 30) {
         if (!SESSION._recentTexts) SESSION._recentTexts = [];
-        SESSION._recentTexts.push(responseText.slice(0, 300));
+        SESSION._recentTexts.push(responseText.slice(0, 300).toLowerCase());
         if (SESSION._recentTexts.length > 5) SESSION._recentTexts.shift();
 
-        if (SESSION._recentTexts.length >= 3) {
-          const last3 = SESSION._recentTexts.slice(-3);
-          const words0 = new Set(last3[0].toLowerCase().split(/\s+/));
-          const words1 = new Set(last3[1].toLowerCase().split(/\s+/));
-          const words2 = new Set(last3[2].toLowerCase().split(/\s+/));
-          const jaccard01 = [...words0].filter(w => words1.has(w)).length / new Set([...words0, ...words1]).size;
-          const jaccard12 = [...words1].filter(w => words2.has(w)).length / new Set([...words1, ...words2]).size;
-          if (jaccard01 > 0.6 && jaccard12 > 0.6) {
-            console.log(co(C.bYellow, "\n  ⚡ Repeated text detected — stopping loop"));
-            process.stdout.write("\n\n");
+        if (SESSION._recentTexts.length >= 2) {
+          const last = SESSION._recentTexts.slice(-2);
+          const words0 = new Set(last[0].split(/\s+/));
+          const words1 = new Set(last[1].split(/\s+/));
+          const intersection = [...words0].filter(w => words1.has(w)).length;
+          const union = new Set([...words0, ...words1]).size;
+          const jaccard = union > 0 ? intersection / union : 0;
+          if (jaccard > 0.7) {
+            // Two consecutive near-identical text responses — model is looping
+            console.log(co(C.bRed, "\n  ⚡ Model stuck in text loop — stopping"));
+            console.log(co(C.dim, "  Try rephrasing your request or switching to a different model.\n"));
+            process.stdout.write("\n");
             printDivider();
             return;
           }
@@ -7661,18 +7663,26 @@ async function chat(userMessage) {
       const hasToolHistory = SESSION.messages.some(m => m.tool_calls?.length > 0);
 
       if (isStillPlanning && hasToolHistory) {
+        if (!SESSION._thinkingWithoutActing) SESSION._thinkingWithoutActing = 0;
+        SESSION._thinkingWithoutActing++;
+
+        // HARD STOP after 5 failed nudges — model is stuck, stop wasting tokens
+        if (SESSION._thinkingWithoutActing >= 5) {
+          console.log(co(C.bRed, `\n  ⚡ Model stuck after ${SESSION._thinkingWithoutActing} nudges — stopping`));
+          console.log(co(C.dim, "  The model is unable to proceed. Try rephrasing your request or using a different model.\n"));
+          process.stdout.write("\n");
+          printDivider();
+          return;
+        }
+
         // Model was working on a multi-step task but stopped mid-plan
         SESSION.messages.pop(); // remove the thinking-only response
         retryCount++;
-        if (!SESSION._thinkingWithoutActing) SESSION._thinkingWithoutActing = 0;
-        SESSION._thinkingWithoutActing++;
         let thinkNudge;
         if (SESSION._thinkingWithoutActing <= 2) {
           thinkNudge = "You were thinking but didn't call a tool. STOP THINKING and CALL THE NEXT TOOL NOW. Pick the single most important next step and execute it.";
-        } else if (SESSION._thinkingWithoutActing <= 4) {
-          thinkNudge = `You have been thinking without acting ${SESSION._thinkingWithoutActing} times. This means you are STUCK. You MUST do one of:\n1. edit_file — if you know what to change\n2. web_search — if you don't know the fix\n3. grep_search — if you need to find something\nDo NOT think or plan. Call a tool RIGHT NOW.`;
         } else {
-          thinkNudge = `CRITICAL: ${SESSION._thinkingWithoutActing} thinking loops without action. You are wasting time. Call web_search with your current error message. If no error, call build_and_test to get one.`;
+          thinkNudge = `FINAL WARNING (attempt ${SESSION._thinkingWithoutActing}/5): Call a tool RIGHT NOW or I will stop. Use todo_write, write_file, run_bash, or web_search. Do NOT respond with text only.`;
         }
         SESSION.messages.push({ role: "user", content: thinkNudge });
         console.log(co(C.bYellow, `\n  ⚡ Model thinking without acting (${SESSION._thinkingWithoutActing}x) — nudging...`));
