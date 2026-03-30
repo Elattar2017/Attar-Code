@@ -7513,19 +7513,28 @@ async function chat(userMessage) {
   const recentToolResults = SESSION.messages.slice(-6).filter(m => m.role === "tool").map(m => m.content || "").join(" ");
   skillMatchText += " " + recentToolResults;
   const matchedSkills = matchSkills(skillMatchText);
+  // Limit: only inject 1 NEW skill per turn to save context for small models
+  // Skills already injected this session are in _injectedSkills — don't re-add
+  let skillsInjectedThisTurn = 0;
   for (const skill of matchedSkills) {
-    if (!SESSION._injectedSkills.has(skill.name)) {
-      sysPrompt += `\n\n## Skill: ${skill.name}\n${skill.content}`;
+    if (!SESSION._injectedSkills.has(skill.name) && skillsInjectedThisTurn < 1) {
+      // Truncate skill to 2KB max (was 4KB — too much for small models)
+      sysPrompt += `\n\n## Skill: ${skill.name}\n${skill.content.slice(0, 2000)}`;
       SESSION._injectedSkills.add(skill.name);
+      skillsInjectedThisTurn++;
       console.log(co(C.dim, `  📚 Skill activated: ${skill.name}`));
     }
   }
   const pending = SESSION.todoList.filter(t => t.status !== "done");
   if (pending.length > 0) {
-    sysPrompt += `\n\n## Current TODO list:\n` + pending.map(t => {
+    // Only inject first 10 pending todos to save context for small models
+    sysPrompt += `\n\n## Current TODO list:\n` + pending.slice(0, 10).map(t => {
       const icon = t.status === "in_progress" ? "►" : t.status === "blocked" ? "⊘" : "○";
       return `- [${icon}] #${t.id} ${t.text}${t.phase !== "implement" ? ` [${t.phase}]` : ""}`;
     }).join("\n");
+    if (pending.length > 10) sysPrompt += `\n... and ${pending.length - 10} more tasks`;
+    const doneCount = SESSION.todoList.filter(t => t.status === "done").length;
+    if (doneCount > 0) sysPrompt += `\n(${doneCount} tasks completed)`;
   }
   // Inject plan phase prompt if plan is active
   if (SESSION.plan && SESSION.planMode) {
@@ -7910,6 +7919,21 @@ async function chat(userMessage) {
         console.log(co(C.bYellow, "\n  ⚡ Empty response detected — regenerating..."));
         startSpinner("regenerating");
         continue;
+      }
+
+      // Compact todo_write/todo_done messages to save context
+      // Replace old tool results for todo_write/todo_done with short summaries
+      if (SESSION.messages.length > 30) {
+        for (let i = 0; i < SESSION.messages.length - 10; i++) {
+          const m = SESSION.messages[i];
+          if (m.role === "tool" && m.content && (m.content.includes("Task #") || m.content.includes("todo_write") || m.content.includes("todo_done"))) {
+            if (m.content.length > 50) m.content = m.content.slice(0, 50);
+          }
+          // Also compact old skill activation messages
+          if (m.role === "user" && m.content?.startsWith("[SKILL ACTIVATED:")) {
+            m.content = m.content.slice(0, 100) + "...";
+          }
+        }
       }
 
       // Trim history if too long
