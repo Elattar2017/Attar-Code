@@ -7740,9 +7740,19 @@ async function chat(userMessage) {
         : (CONFIG._userSetTemp || _mp.temperature);
       const effectiveCtx = CONFIG.numCtx !== 40960 ? CONFIG.numCtx : _mp.preferredCtx;
 
+      // Nemotron thinking mode control:
+      // - Plan mode: let it think (no prefix) → better reasoning for plans
+      // - Normal mode: force instruct mode (prepend <think></think>) → fast tool calling
+      let ollMessages = [{ role:"system", content: sysPrompt }, ...compressedMessages];
+      const isNemotronModel = _mn.includes("nemotron");
+      if (isNemotronModel && !SESSION.planMode) {
+        // Instruct mode: add partial assistant message with empty think block
+        ollMessages.push({ role: "assistant", content: "<think>\n</think>\n" });
+      }
+
       const reqBody = {
         model:    CONFIG.model,
-        messages: [{ role:"system", content: sysPrompt }, ...compressedMessages],
+        messages: ollMessages,
         ...(selectedTools.length > 0 ? { tools: selectedTools } : {}),
         options:  {
           temperature:       effectiveTemp,
@@ -7783,7 +7793,8 @@ async function chat(userMessage) {
       let   chunkCount = 0;
 
       let streamStartTime = Date.now();
-      const THINKING_TIMEOUT = 120000; // 2 minutes max for thinking
+      // Nemotron in plan mode needs more thinking time (complex reasoning)
+      const THINKING_TIMEOUT = (isNemotronModel && SESSION.planMode) ? 300000 : 120000; // 5min plan, 2min normal
       let hasProducedContent = false;
 
       while (true) {
