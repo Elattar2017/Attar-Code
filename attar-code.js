@@ -7567,17 +7567,22 @@ async function chat(userMessage) {
 
     // ════════════════════════════════════════════════════════════════
     // ABSOLUTE HARD WALL — checked FIRST, impossible to bypass
-    // If 8+ steps pass without any real work, the model is stuck. Stop.
-    // "Real work" = write_file, edit_file, run_bash, build_and_test,
-    // start_server, setup_environment, generate_tests, create_*
-    // NOT real work: text-only responses, todo_write, read_file, grep
+    // If N steps pass without any relevant work, the model is stuck.
+    // In plan mode (design phase): todo_write/check_environment count
+    // In normal/implement mode: only write_file/edit_file/run_bash count
     // ════════════════════════════════════════════════════════════════
-    if (totalSteps - _lastRealWorkStep > 8) {
-      console.log(co(C.bRed, `\n  ⚡ No progress: ${totalSteps - _lastRealWorkStep} steps without real work — stopping.`));
-      console.log(co(C.dim, "  The model is stuck. Try without /plan, or rephrase, or use a different model.\n"));
-      process.stdout.write("\n");
-      printDivider();
-      return;
+    {
+      const isPlanDesignPhase = SESSION.planMode && SESSION.plan &&
+        (SESSION.plan.status === "planning" || SESSION.plan.status === "awaiting_approval" ||
+         !SESSION._completedPhases || !SESSION._completedPhases.has("design"));
+      const hardWallLimit = isPlanDesignPhase ? 15 : 8; // More slack for planning
+      if (totalSteps - _lastRealWorkStep > hardWallLimit) {
+        console.log(co(C.bRed, `\n  ⚡ No progress: ${totalSteps - _lastRealWorkStep} steps without ${isPlanDesignPhase ? "planning actions" : "real work"} — stopping.`));
+        console.log(co(C.dim, "  The model is stuck. Try rephrasing or use a different model.\n"));
+        process.stdout.write("\n");
+        printDivider();
+        return;
+      }
     }
 
     // Safety valve — after 30 steps ask user if they want to continue
@@ -7928,14 +7933,19 @@ async function chat(userMessage) {
         // Fall through to "Genuinely done" below
       }
 
-      // ── BULLETPROOF: Count consecutive non-productive responses ────────────
-      // Track responses that don't do REAL work (write_file, edit_file, run_bash,
-      // build_and_test, start_server). Text-only AND todo_write-only both count
-      // as non-productive. After 5 non-productive responses → hard stop.
+      // ── Count consecutive non-productive responses ────────────────────────
+      // After 5 non-productive responses → hard stop.
+      // In plan mode: todo_write/check_environment count as productive.
       {
         const productiveTools = new Set(["write_file", "edit_file", "run_bash", "build_and_test",
           "start_server", "test_endpoint", "setup_environment", "generate_tests",
           "create_pdf", "create_docx", "create_excel", "create_pptx"]);
+        // During planning, planning tools are productive
+        if (SESSION.planMode && SESSION.plan) {
+          for (const t of ["todo_write","todo_done","check_environment","detect_build_system","project_structure"]) {
+            productiveTools.add(t);
+          }
+        }
         const hasProductiveCall = toolCalls.some(tc => {
           const fn = tc.function || tc;
           return productiveTools.has(fn.name);
@@ -8112,7 +8122,12 @@ async function chat(userMessage) {
       const _realWorkTools = new Set(["write_file","edit_file","run_bash","build_and_test",
         "start_server","test_endpoint","setup_environment","generate_tests",
         "create_pdf","create_docx","create_excel","create_pptx"]);
-      if (_realWorkTools.has(name) && !resultStr.includes("BLOCKED") && !resultStr.includes("Permission denied")) {
+      // In plan mode, planning tools also count as progress
+      const _planWorkTools = new Set(["todo_write","todo_done","check_environment",
+        "detect_build_system","project_structure","read_file"]);
+      const isPlanPhase = SESSION.planMode && SESSION.plan;
+      if ((_realWorkTools.has(name) || (isPlanPhase && _planWorkTools.has(name)))
+          && !resultStr.includes("BLOCKED") && !resultStr.includes("Permission denied")) {
         _lastRealWorkStep = totalSteps;
       }
 
