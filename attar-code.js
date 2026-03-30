@@ -41,6 +41,57 @@ try {
   ({ SmartFixBridge } = require('./memory/smartfix-bridge'));
 } catch (_) {}
 
+// ── Risk Levels for Action Classification ──
+// safe: never ask | low: auto in balanced+ | medium: auto in autonomous | high: always ask | blocked: never
+const RISK_LEVELS = {
+  read_file: "safe", grep_search: "safe", find_files: "safe", get_project_structure: "safe",
+  detect_build_system: "safe", check_environment: "safe", kb_search: "safe", kb_list: "safe",
+  search_docs: "safe", web_search: "safe", session_search: "safe", recent_sessions: "safe",
+  todo_write: "safe", todo_done: "safe", todo_list: "safe", memory_read: "safe", use_skill: "safe",
+  get_server_logs: "safe", present_file: "safe",
+  write_file: "low", edit_file: "low", build_and_test: "low", generate_tests: "low",
+  setup_environment: "low", memory_write: "low",
+  run_bash: "dynamic",  // evaluated per-command
+  start_server: "medium", test_endpoint: "low",
+  web_fetch: "medium", research: "medium", search_all: "medium", github_search: "medium", deep_search: "medium",
+  kb_add: "medium",
+  create_pdf: "low", create_docx: "low", create_excel: "low", create_pptx: "low", create_chart: "low",
+};
+
+/**
+ * Get the risk level for a tool + command combination.
+ * For run_bash, evaluates the actual command.
+ */
+function getRiskLevel(toolName, args) {
+  const base = RISK_LEVELS[toolName] || "medium";
+  if (base !== "dynamic") return base;
+  // Dynamic: evaluate run_bash command
+  const cmd = (args?.command || "").trim();
+  if (isSafeCommand(cmd)) return "safe";
+  if (requiresExplicitApproval(cmd)) return "high";
+  if (/\b(rm|mv|cp|install|uninstall|upgrade|npm|pip|cargo|go get)\b/i.test(cmd)) return "medium";
+  return "low"; // build, test, lint, etc.
+}
+
+/**
+ * Check if current permission mode allows auto-approval for a risk level.
+ */
+function shouldAutoApprove(riskLevel) {
+  const mode = CONFIG.permissionMode || "supervised";
+  if (riskLevel === "safe") return true;
+  if (riskLevel === "blocked") return false;
+  if (mode === "supervised") return false; // ask for everything
+  if (mode === "balanced") return riskLevel === "low"; // auto low, ask medium+
+  if (mode === "autonomous") return riskLevel === "low" || riskLevel === "medium"; // auto low+medium, ask high
+  if (mode === "locked") return false; // deny everything not in allow list
+  return false;
+}
+
+/** Helper: is current mode auto-approving? (replaces CONFIG.autoApprove checks) */
+function isAutoMode() {
+  return CONFIG.permissionMode === "autonomous" || CONFIG.autoApprove;
+}
+
 // ── Platform-aware shell selection ──
 const IS_WIN = process.platform === "win32";
 const SHELL = IS_WIN ? process.env.COMSPEC || "cmd.exe" : "/bin/bash";
@@ -362,6 +413,7 @@ const DEFAULT_CONFIG = {
   numCtx:       40960,
   systemPrompt: null, // loaded from prompt.txt at runtime
   autoApprove:  false,
+  permissionMode: "supervised",  // supervised | balanced | autonomous | locked
   theme:        "dark",
   historySize:  50,
   proxyUrl:     "http://localhost:3001",   // search-proxy server
@@ -387,6 +439,58 @@ function saveConfig() {
 }
 
 let CONFIG = loadConfig();
+
+// ── Permissions System ──────────────────────────────────────────────────────
+// Loaded from: project-local .attar-code/permissions.json → user-global → bundled defaults
+// Deny rules are ABSOLUTE — never overridden by any permission mode.
+let PERMISSIONS = { allow: [], ask: [], deny: [] };
+function loadPermissions() {
+  const paths = [
+    path.join(process.cwd(), ".attar-code", "permissions.json"),
+    path.join(HOME_DIR, "permissions.json"),
+    path.join(__dirname, "defaults", "permissions.json"),
+  ];
+  for (const p of paths) {
+    try {
+      if (fs.existsSync(p)) {
+        const data = JSON.parse(fs.readFileSync(p, "utf-8"));
+        // Merge: deny rules are cumulative (never weakened), allow/ask use first-found
+        if (!PERMISSIONS._loaded) {
+          PERMISSIONS = { ...data, _loaded: true };
+        } else {
+          // Stack deny rules from all levels
+          PERMISSIONS.deny = [...new Set([...(PERMISSIONS.deny || []), ...(data.deny || [])])];
+        }
+      }
+    } catch { /* skip unreadable */ }
+  }
+}
+loadPermissions();
+
+/**
+ * Check if an action matches a permission rule.
+ * Rules use "category:pattern" format with * wildcards.
+ * @param {string} action  e.g., "bash:sudo rm -rf /" or "edit:.env.local" or "delete:temp.txt"
+ * @param {string[]} rules  Array of "category:pattern" rules
+ * @returns {boolean}
+ */
+function matchesPermissionRule(action, rules) {
+  if (!rules || !Array.isArray(rules)) return false;
+  const [cat, ...rest] = action.split(":");
+  const detail = rest.join(":");
+  for (const rule of rules) {
+    const [rCat, ...rRest] = rule.split(":");
+    const rDetail = rRest.join(":");
+    if (rCat !== cat && rCat !== "*") continue;
+    // Wildcard matching
+    if (rDetail === "*") return true;
+    if (rDetail.endsWith("*") && detail.startsWith(rDetail.slice(0, -1))) return true;
+    if (rDetail.startsWith("*") && detail.endsWith(rDetail.slice(1))) return true;
+    if (detail === rDetail) return true;
+    if (detail.includes(rDetail.replace(/\*/g, ""))) return true;
+  }
+  return false;
+}
 
 // ══════════════════════════════════════════════════════════════════
 // SYSTEM PROMPT — loaded from prompt.txt with platform-aware placeholders
@@ -613,18 +717,48 @@ function requiresExplicitApproval(cmd) {
 
 async function askPermission(toolName, detail) {
   return new Promise(async (resolve) => {
-    // Package installs always need explicit approval (even in --auto mode)
-    const needsExplicit = requiresExplicitApproval(detail);
-    if (!needsExplicit && (CONFIG.autoApprove || isSafeCommand(detail))) { resolve(true); return; }
-    stopSpinner(); // clear spinner before showing prompt
-    if (needsExplicit && CONFIG.autoApprove) {
-      // Show install-specific prompt even in auto mode
+    const riskLevel = getRiskLevel(toolName, { command: detail });
+    const action = `${toolName === "run_bash" ? "bash" : toolName === "write_file" || toolName === "edit_file" ? "edit" : toolName}:${String(detail).slice(0, 200)}`;
+
+    // 1. DENY rules — absolute, never overridden
+    if (matchesPermissionRule(action, PERMISSIONS.deny)) {
+      console.log(co(C.bRed, `\n  ⊘ BLOCKED by deny rule: ${toolName}`));
+      console.log(co(C.dim, `  Action "${String(detail).slice(0, 80)}" is in the deny list.`));
+      console.log(co(C.dim, "  This rule cannot be overridden. Edit permissions.json to change.\n"));
+      resolve(false);
+      return;
+    }
+
+    // 2. BLOCKED risk level — never allowed
+    if (riskLevel === "blocked") { resolve(false); return; }
+
+    // 3. SAFE or auto-approved by permission mode
+    if (riskLevel === "safe" || shouldAutoApprove(riskLevel)) { resolve(true); return; }
+
+    // 4. ALLOW rules from permissions.json
+    if (matchesPermissionRule(action, PERMISSIONS.allow)) { resolve(true); return; }
+
+    // 5. Legacy autoApprove check (backward compat with --auto flag)
+    const needsExplicit = requiresExplicitApproval(String(detail));
+    if (!needsExplicit && isAutoMode()) { resolve(true); return; }
+
+    stopSpinner();
+
+    // 6. HIGH risk: install-specific prompt even in auto mode
+    if (needsExplicit && isAutoMode()) {
       console.log();
       console.log(co(C.bgBlue, C.bWhite, " 📦 INSTALL REQUEST ") + co(C.dim, " Tool: ") + co(C.bold, toolName));
       console.log(co(C.dim, "  Command: ") + co(C.yellow, String(detail).slice(0, 200)));
       console.log(co(C.dim, "  This will install software on your system."));
       process.stdout.write(co(C.bCyan, "  Proceed? [y/N] ") + C.reset);
       pendingApproval = resolve;
+      return;
+    }
+
+    // 7. LOCKED mode: deny everything not explicitly allowed
+    if (CONFIG.permissionMode === "locked") {
+      debugLog(`Locked mode: denied ${toolName} ${String(detail).slice(0, 80)}`);
+      resolve(false);
       return;
     }
     // Check PreToolUse hooks for permission decisions
@@ -1618,6 +1752,32 @@ function scanDirectory(dir, prefix, depth, maxDepth) {
 function validateToolCall(name, args) {
   const fixes = [];
 
+  // ── Safety Invariants (apply to ALL tools, ALL modes) ──────────────────
+
+  // 1. Block sudo/root commands
+  if (name === "run_bash" && args?.command) {
+    if (/\bsudo\b/i.test(args.command)) {
+      return { blocked: true, reason: "sudo commands are not allowed. Attar-Code runs without elevated privileges. Ask the developer to run this command manually." };
+    }
+  }
+
+  // 2. Block edits outside project directory
+  if ((name === "write_file" || name === "edit_file") && args?.filepath) {
+    const targetPath = path.resolve(SESSION.cwd, args.filepath);
+    const projectRoot = path.resolve(SESSION.cwd);
+    if (!targetPath.startsWith(projectRoot)) {
+      return { blocked: true, reason: `Cannot modify files outside project directory.\n  Target: ${targetPath}\n  Project: ${projectRoot}\n  Edit files within the project directory only.` };
+    }
+  }
+
+  // 3. Check permissions.json deny rules for bash commands
+  if (name === "run_bash" && args?.command) {
+    const action = `bash:${args.command}`;
+    if (matchesPermissionRule(action, PERMISSIONS.deny)) {
+      return { blocked: true, reason: `Command blocked by deny rule in permissions.json.\n  Command: ${args.command.slice(0, 80)}` };
+    }
+  }
+
   switch (name) {
     case "edit_file": {
       // Enforce read-before-edit
@@ -1946,6 +2106,10 @@ let lastError = null;
 async function executeTool(name, args) {
   SESSION.toolCount++;
 
+  // Track action history for /history command
+  if (!SESSION._actionHistory) SESSION._actionHistory = [];
+  const _actionEntry = { time: Date.now(), tool: name, arg: args?.filepath || args?.command || args?.query || args?.dirpath || "", outcome: "ok" };
+
   // Skills are injected in chat() via system prompt, not here
 
   // Guard: fix missing required args that would crash with TypeError
@@ -2009,6 +2173,8 @@ async function executeTool(name, args) {
 
     autoSaveSession();
 
+  let _toolResult;
+  try {
   switch (name) {
 
     case "run_bash": {
@@ -4952,6 +5118,16 @@ print(json.dumps({"ok": True}))
       return `❌ Unknown tool: "${name}". Available tools: ${allToolNames.join(", ")}`;
     }
   }
+  } catch (toolErr) {
+    _actionEntry.outcome = "error";
+    throw toolErr;
+  } finally {
+    // Record action in history
+    if (SESSION._actionHistory) {
+      SESSION._actionHistory.push(_actionEntry);
+      if (SESSION._actionHistory.length > 100) SESSION._actionHistory.shift();
+    }
+  }
 }
 
 function tryCmd(cmd) {
@@ -7280,7 +7456,7 @@ async function chat(userMessage) {
 
     // Safety valve — after 30 steps ask user if they want to continue
     if (totalSteps === 30 || (totalSteps > 30 && totalSteps % 20 === 0)) {
-      if (CONFIG.autoApprove) {
+      if (isAutoMode()) {
         // In --auto mode, hard stop at 60 steps to prevent infinite loops
         if (totalSteps >= 60) {
           console.log(co(C.bRed, `\n  ⚡ ${totalSteps} steps — hard stop (max reached)`));
@@ -7908,7 +8084,7 @@ async function chat(userMessage) {
             if (nextPhaseTasks.some(t => t.status !== "done")) {
               // ── APPROVAL GATE: pause before "implement" phase ──
               // After design is done, show the plan and ask user to approve before coding starts.
-              if (phaseName === "design" && nextPhase === "implement" && !CONFIG.autoApprove) {
+              if (phaseName === "design" && nextPhase === "implement" && !isAutoMode()) {
                 SESSION.plan.status = "awaiting_approval";
                 savePlan(SESSION.plan);
                 console.log(co(C.bCyan, `\n  📋 Phase "design" complete — plan ready for review\n`));
@@ -8052,7 +8228,7 @@ function printStatusBar() {
   const msgs     = co(C.dim, "  💬 ", String(SESSION.messages.length));
   const cps      = co(C.dim, "  📸 ", String(SESSION.checkpoints.length));
   const todos    = co(C.dim, "  📋 ", String(SESSION.todoList.filter(t=>!t.done).length), " pending");
-  const autoA    = CONFIG.autoApprove ? co(C.bYellow, "  ⚡AUTO") : "";
+  const autoA    = isAutoMode() ? co(C.bYellow, `  ⚡${CONFIG.permissionMode?.toUpperCase() || "AUTO"}`) : co(C.dim, `  ${CONFIG.permissionMode || "supervised"}`);
   console.log("  " + model + temp + ctx + cwd + msgs + cps + todos + autoA);
 }
 
@@ -8162,6 +8338,9 @@ function printHelp() {
     ]],
     ["Smart Fix & Debugging", [
       ["/errors",              "Show recent build errors with fix prescriptions"],
+      ["/mode <mode>",         "Set permission mode: supervised|balanced|autonomous|locked"],
+      ["/trust",               "Show trust state (approvals, denials, error budget)"],
+      ["/history",             "Show recent tool actions taken this session"],
       ["/env",                 "Check environment / setup / versions / update cache"],
       ["/skills",              "List available expert skills (auto-injected by topic)"],
       ["/hooks",               "Show active lifecycle hooks and their status"],
@@ -8564,9 +8743,9 @@ CRITICAL RULES:
     }
 
     case "/auto":
-      if (rest === "on")  { CONFIG.autoApprove = true;  saveConfig(); console.log(co(C.bYellow, "\n  ⚡ Auto-approve ON\n")); }
-      else if (rest === "off") { CONFIG.autoApprove = false; saveConfig(); console.log(co(C.bGreen, "\n  ✓ Auto-approve OFF\n")); }
-      else { console.log(co(C.dim, "\n  Auto-approve: ") + (CONFIG.autoApprove ? co(C.bYellow,"ON") : co(C.dim,"off")) + "\n"); }
+      if (rest === "on")  { CONFIG.autoApprove = true; CONFIG.permissionMode = "autonomous"; saveConfig(); console.log(co(C.bYellow, "\n  ⚡ Mode: autonomous (auto-approve ON)\n")); }
+      else if (rest === "off") { CONFIG.autoApprove = false; CONFIG.permissionMode = "supervised"; saveConfig(); console.log(co(C.bGreen, "\n  ✓ Mode: supervised (auto-approve OFF)\n")); }
+      else { console.log(co(C.dim, "\n  Mode: ") + co(C.bold, CONFIG.permissionMode || "supervised") + co(C.dim, " | Auto-approve: ") + (isAutoMode() ? co(C.bYellow,"ON") : co(C.dim,"off")) + "\n"); }
       break;
 
     case "/outputs": {
@@ -8583,6 +8762,70 @@ CRITICAL RULES:
         console.log(co(C.dim, `\n  Location: ${OUTPUTS_DIR}\n`));
       } catch (_) { console.log(co(C.dim, "\n  No outputs directory.\n")); }
       break;
+    }
+
+    case "/mode": {
+      const mode = parts[1]?.toLowerCase();
+      const validModes = ["supervised", "balanced", "autonomous", "locked"];
+      if (mode && validModes.includes(mode)) {
+        CONFIG.permissionMode = mode;
+        CONFIG.autoApprove = (mode === "autonomous");
+        saveConfig();
+        const modeColors = { supervised: C.bGreen, balanced: C.bCyan, autonomous: C.bYellow, locked: C.bRed };
+        console.log(co(modeColors[mode], `\n  Permission mode: ${mode}\n`));
+        const descriptions = {
+          supervised: "All file writes and commands require approval.",
+          balanced: "File writes and builds auto-approved. Installs and deletes ask.",
+          autonomous: "Everything auto-approved except high-risk (sudo, force-push, global installs). Error budget: 3 strikes.",
+          locked: "Only explicitly allowed actions execute. Everything else denied.",
+        };
+        console.log(co(C.dim, `  ${descriptions[mode]}\n`));
+      } else {
+        console.log(co(C.bold, "\n  Permission Modes\n"));
+        for (const m of validModes) {
+          const current = CONFIG.permissionMode === m ? co(C.bGreen, " ← current") : "";
+          console.log(`  ${m.padEnd(14)}${current}`);
+        }
+        console.log(co(C.dim, `\n  Usage: /mode <supervised|balanced|autonomous|locked>\n`));
+      }
+      return null;
+    }
+
+    case "/trust": {
+      if (!SESSION._trustState) SESSION._trustState = { approvals: 0, denials: 0, consecutiveDenials: 0, errors: 0, autoFixSuccesses: 0 };
+      const sub = parts[1]?.toLowerCase();
+      if (sub === "reset") {
+        SESSION._trustState = { approvals: 0, denials: 0, consecutiveDenials: 0, errors: 0, autoFixSuccesses: 0 };
+        console.log(co(C.bGreen, "\n  ✓ Trust state reset. Error budget restored.\n"));
+      } else {
+        const ts = SESSION._trustState;
+        console.log(co(C.bold, "\n  Trust State\n"));
+        console.log(`  Approvals:           ${ts.approvals}`);
+        console.log(`  Denials:             ${ts.denials} (${ts.consecutiveDenials} consecutive)`);
+        console.log(`  Errors:              ${ts.errors}`);
+        console.log(`  Auto-fix successes:  ${ts.autoFixSuccesses}`);
+        console.log(`  Error budget:        ${Math.max(0, (PERMISSIONS.autonomousErrorBudget || 3) - ts.errors)} remaining`);
+        console.log(`  Permission mode:     ${CONFIG.permissionMode}`);
+        console.log(co(C.dim, `\n  /trust reset — reset error budget and counters\n`));
+      }
+      return null;
+    }
+
+    case "/history": {
+      if (!SESSION._actionHistory || SESSION._actionHistory.length === 0) {
+        console.log(co(C.dim, "\n  No actions recorded yet.\n"));
+        return null;
+      }
+      console.log(co(C.bold, `\n  Action History (${SESSION._actionHistory.length} actions)\n`));
+      const recent = SESSION._actionHistory.slice(-20);
+      for (const a of recent) {
+        const time = new Date(a.time).toLocaleTimeString();
+        const icon = a.outcome === "error" ? co(C.bRed, "✗") : co(C.bGreen, "✓");
+        const arg = a.arg ? co(C.dim, ` ${String(a.arg).slice(0, 50)}`) : "";
+        console.log(`  ${co(C.dim, time)} ${icon} ${a.tool}${arg}`);
+      }
+      console.log();
+      return null;
     }
 
     case "/env": {
@@ -9331,7 +9574,7 @@ async function main() {
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--model" || args[i] === "-m") { CONFIG.model = args[++i]; }
     if (args[i] === "--name"  || args[i] === "-n") { SESSION.name = args[++i]; }
-    if (args[i] === "--auto")  { CONFIG.autoApprove = true; }
+    if (args[i] === "--auto")  { CONFIG.autoApprove = true; CONFIG.permissionMode = "autonomous"; }
     if (args[i] === "--temp")  { CONFIG.temperature = parseFloat(args[++i]); }
     if (args[i] === "--effort" || args[i] === "-e") {
       const level = args[++i];
@@ -9507,7 +9750,7 @@ async function main() {
     if (pendingApproval) {
       const resolve = pendingApproval;
       pendingApproval = null;
-      if (input.toLowerCase() === "always") { CONFIG.autoApprove = true; saveConfig(); resolve(true); }
+      if (input.toLowerCase() === "always") { CONFIG.autoApprove = true; CONFIG.permissionMode = "autonomous"; saveConfig(); resolve(true); }
       else { resolve(input.toLowerCase() === "y"); }
       prompt(); return;
     }
