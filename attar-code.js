@@ -8176,10 +8176,13 @@ async function chat(userMessage) {
 
     // ── Plan phase transition check ──
     if (SESSION.plan && SESSION.planMode) {
+      if (!SESSION._completedPhases) SESSION._completedPhases = new Set();
       const phaseOrder = ["understand", "design", "implement", "verify"];
       for (const phaseName of phaseOrder) {
+        if (SESSION._completedPhases.has(phaseName)) continue; // Already transitioned
         const phaseTasks = SESSION.todoList.filter(t => t.phase === phaseName);
         if (phaseTasks.length > 0 && phaseTasks.every(t => t.status === "done")) {
+          SESSION._completedPhases.add(phaseName); // Mark as transitioned
           const nextPhaseIdx = phaseOrder.indexOf(phaseName) + 1;
           if (nextPhaseIdx < phaseOrder.length) {
             const nextPhase = phaseOrder[nextPhaseIdx];
@@ -8187,7 +8190,8 @@ async function chat(userMessage) {
             if (nextPhaseTasks.some(t => t.status !== "done")) {
               // ── APPROVAL GATE: pause before "implement" phase ──
               // After design is done, show the plan and ask user to approve before coding starts.
-              if (phaseName === "design" && nextPhase === "implement" && !isAutoMode()) {
+              if (phaseName === "design" && nextPhase === "implement" && !isAutoMode()
+                && SESSION.plan.status !== "executing" && SESSION.plan.status !== "verifying") {
                 SESSION.plan.status = "awaiting_approval";
                 savePlan(SESSION.plan);
                 console.log(co(C.bCyan, `\n  📋 Phase "design" complete — plan ready for review\n`));
