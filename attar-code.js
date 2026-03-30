@@ -8887,6 +8887,15 @@ CRITICAL RULES:
 - After DESIGN phase: STOP and wait for user approval before implementing
 - Do NOT create any project files during planning — only todo_write and exploration tools
 - Do NOT skip to implementation — the user must approve the plan first`);
+      // Auto-exit plan mode when the plan chat completes
+      // This prevents plan mode from persisting into the next user message
+      if (SESSION.planMode && SESSION.plan) {
+        const allDone = SESSION.todoList.every(t => t.status === "done");
+        if (allDone || SESSION.plan.status === "executing" || SESSION.plan.status === "verifying") {
+          SESSION.planMode = false;
+          console.log(co(C.dim, "  📋 Plan completed — exiting plan mode\n"));
+        }
+      }
       break;
     }
 
