@@ -605,10 +605,21 @@ function loadSystemPrompt() {
   };
 
   // Try loading from multiple locations (project-local first, then global, then bundled)
+  // Smart models (Nemotron, DeepSeek) get compact prompt; others get verbose prompt
+  const modelName = (CONFIG.model || "").toLowerCase();
+  const isSmartModel = modelName.includes("nemotron") || modelName.includes("deepseek");
+  const promptFile = isSmartModel ? "prompt-nemotron.txt" : "prompt.txt";
+
   const promptPaths = [
-    path.join(process.cwd(), ".attar-code", "prompt.txt"),       // project-local override
-    path.join(HOME_DIR, "prompt.txt"),                            // user global override
-    path.join(__dirname, "prompt.txt"),                            // bundled with CLI
+    path.join(process.cwd(), ".attar-code", promptFile),         // project-local override
+    path.join(HOME_DIR, promptFile),                              // user global override
+    path.join(__dirname, promptFile),                              // bundled with CLI
+    // Fallback to default prompt.txt if model-specific not found
+    ...(isSmartModel ? [
+      path.join(process.cwd(), ".attar-code", "prompt.txt"),
+      path.join(HOME_DIR, "prompt.txt"),
+      path.join(__dirname, "prompt.txt"),
+    ] : []),
   ];
 
   for (const fp of promptPaths) {
@@ -1804,6 +1815,48 @@ Covers: happy path, edge cases per parameter type, error/invalid input, null/Non
     }
   },
 ];
+
+// ── Compact tool definitions for smart models (Nemotron, DeepSeek) ──
+// Same tool names + params, but short descriptions. Saves ~5,000 tokens per request.
+const TOOLS_COMPACT = [
+  { type:"function", function:{ name:"run_bash", description:"Run shell command (git, npm, pip, tests, builds). Not for servers (use start_server) or file reads (use read_file).", parameters:{ type:"object", properties:{ command:{type:"string",description:"Command"}, cwd:{type:"string",description:"Working dir"} }, required:["command"] }}},
+  { type:"function", function:{ name:"read_file", description:"Read file contents. Supports source code, PDF, Word, Excel.", parameters:{ type:"object", properties:{ filepath:{type:"string",description:"Path"}, offset:{type:"number",description:"Start line"}, limit:{type:"number",description:"Lines to read"} }, required:["filepath"] }}},
+  { type:"function", function:{ name:"write_file", description:"Create new file or overwrite. Prefer edit_file for existing files.", parameters:{ type:"object", properties:{ filepath:{type:"string",description:"Path"}, content:{type:"string",description:"Full content"} }, required:["filepath","content"] }}},
+  { type:"function", function:{ name:"edit_file", description:"Replace text in existing file. Must read_file first.", parameters:{ type:"object", properties:{ filepath:{type:"string",description:"Path"}, old_str:{type:"string",description:"Text to find"}, new_str:{type:"string",description:"Replacement"} }, required:["filepath","old_str","new_str"] }}},
+  { type:"function", function:{ name:"grep_search", description:"Search file contents with regex.", parameters:{ type:"object", properties:{ pattern:{type:"string",description:"Regex pattern"}, dirpath:{type:"string",description:"Directory"}, include:{type:"string",description:"Glob filter"} }, required:["pattern"] }}},
+  { type:"function", function:{ name:"find_files", description:"Find files by name pattern.", parameters:{ type:"object", properties:{ pattern:{type:"string",description:"Glob pattern"}, dirpath:{type:"string",description:"Directory"} }, required:["pattern"] }}},
+  { type:"function", function:{ name:"get_project_structure", description:"Show directory tree.", parameters:{ type:"object", properties:{ dirpath:{type:"string",description:"Directory"} } }}},
+  { type:"function", function:{ name:"start_server", description:"Start server in background. Monitors readiness.", parameters:{ type:"object", properties:{ command:{type:"string",description:"Start command"}, port:{type:"number",description:"Port"}, cwd:{type:"string",description:"Dir"} }, required:["command"] }}},
+  { type:"function", function:{ name:"test_endpoint", description:"Test HTTP endpoint. Checks status and body.", parameters:{ type:"object", properties:{ url:{type:"string",description:"URL"}, method:{type:"string",description:"HTTP method"}, body:{type:"string",description:"JSON body"}, expected_status:{type:"number",description:"Expected status"} }, required:["url"] }}},
+  { type:"function", function:{ name:"build_and_test", description:"Auto-detect build system, install deps, build, test.", parameters:{ type:"object", properties:{ dirpath:{type:"string",description:"Project dir"}, skip_build:{type:"boolean"}, skip_test:{type:"boolean"} } }}},
+  { type:"function", function:{ name:"detect_build_system", description:"Detect project type and build/test commands.", parameters:{ type:"object", properties:{ dirpath:{type:"string",description:"Dir"} } }}},
+  { type:"function", function:{ name:"check_environment", description:"Check tools, versions, and get scaffold commands for a technology.", parameters:{ type:"object", properties:{ technology:{type:"string",description:"nestjs|nextjs|python|typescript|rust|go|java|php|csharp|cpp"}, dirpath:{type:"string",description:"Dir"} } }}},
+  { type:"function", function:{ name:"setup_environment", description:"Set up environment: create venv, install deps.", parameters:{ type:"object", properties:{ technology:{type:"string"}, dirpath:{type:"string"} } }}},
+  { type:"function", function:{ name:"generate_tests", description:"Generate test file from source analysis (AST skeleton + LLM).", parameters:{ type:"object", properties:{ filepath:{type:"string",description:"Source file"}, dirpath:{type:"string"} }, required:["filepath"] }}},
+  { type:"function", function:{ name:"web_search", description:"Search the web.", parameters:{ type:"object", properties:{ query:{type:"string",description:"Search query"}, num:{type:"number",description:"Results"} }, required:["query"] }}},
+  { type:"function", function:{ name:"web_fetch", description:"Fetch and clean a URL.", parameters:{ type:"object", properties:{ url:{type:"string",description:"URL"} }, required:["url"] }}},
+  { type:"function", function:{ name:"kb_search", description:"Search local knowledge base (books, docs).", parameters:{ type:"object", properties:{ query:{type:"string",description:"Query"}, num:{type:"number"} }, required:["query"] }}},
+  { type:"function", function:{ name:"todo_write", description:"Add a task to the todo list.", parameters:{ type:"object", properties:{ text:{type:"string",description:"Task description"} }, required:["text"] }}},
+  { type:"function", function:{ name:"todo_done", description:"Mark a task complete.", parameters:{ type:"object", properties:{ id:{type:"number",description:"Task ID"} }, required:["id"] }}},
+  { type:"function", function:{ name:"memory_write", description:"Save persistent memory.", parameters:{ type:"object", properties:{ content:{type:"string"}, type:{type:"string"} }, required:["content"] }}},
+  { type:"function", function:{ name:"present_file", description:"Share a file with the user.", parameters:{ type:"object", properties:{ filepath:{type:"string"} }, required:["filepath"] }}},
+  { type:"function", function:{ name:"get_server_logs", description:"Get logs from running server.", parameters:{ type:"object", properties:{ port:{type:"number"} } }}},
+  { type:"function", function:{ name:"create_pdf", description:"Create PDF from markdown.", parameters:{ type:"object", properties:{ filepath:{type:"string"}, content:{type:"string"} }, required:["filepath","content"] }}},
+  { type:"function", function:{ name:"create_docx", description:"Create Word doc from markdown.", parameters:{ type:"object", properties:{ filepath:{type:"string"}, content:{type:"string"} }, required:["filepath","content"] }}},
+];
+
+/**
+ * Get the right tool definitions for the active model.
+ * Smart models (Nemotron, DeepSeek) use compact descriptions.
+ * Others use verbose descriptions with USE FOR/DO NOT USE/RULES.
+ */
+function getToolsForModel() {
+  const name = (CONFIG.model || "").toLowerCase();
+  if (name.includes("nemotron") || name.includes("deepseek")) {
+    return TOOLS_COMPACT;
+  }
+  return TOOLS;
+}
 
 // Scan directory tree recursively (any technology)
 function scanDirectory(dir, prefix, depth, maxDepth) {
@@ -7396,7 +7449,8 @@ function selectToolsForContext(userMessage, messages) {
   // Research: Qwen3-Coder breaks at ~5 tools, GLM handles 8-10.
   // Cap at 12 to stay safe. Priority: core file ops > build/test > search > docs
   const MAX_TOOLS = 12;
-  const allSelected = TOOLS.filter(t => selected.has(t.function.name));
+  const activeTools = getToolsForModel();
+  const allSelected = activeTools.filter(t => selected.has(t.function.name));
 
   if (allSelected.length > MAX_TOOLS) {
     // Priority tiers: higher = kept first
@@ -7721,7 +7775,7 @@ async function chat(userMessage) {
       // ── Model-specific sampling profiles ──
       // Each model family has optimal params. User overrides (e.g., /temp 0.5) take precedence.
       const _modelProfiles = {
-        nemotron: { temperature: 1.0, top_k: 40, top_p: 0.95, repeat_penalty: 1.1, repeat_last_n: 256, presence_penalty: 0.0, frequency_penalty: 0.0, num_predict: 8192, preferredCtx: 131072 },
+        nemotron: { temperature: 1.0, top_k: 40, top_p: 0.95, repeat_penalty: 1.1, repeat_last_n: 256, presence_penalty: 0.0, frequency_penalty: 0.0, num_predict: 8192, preferredCtx: 32768 },
         qwen:     { temperature: 0.15, top_k: 20, top_p: 0.8, repeat_penalty: 1.3, repeat_last_n: 128, presence_penalty: 1.5, frequency_penalty: 0.0, num_predict: 4096, preferredCtx: 40960 },
         glm:      { temperature: 0.15, top_k: 20, top_p: 0.8, repeat_penalty: 1.3, repeat_last_n: 128, presence_penalty: 1.5, frequency_penalty: 0.0, num_predict: 4096, preferredCtx: 40960 },
         deepseek: { temperature: 0.6, top_k: 40, top_p: 0.95, repeat_penalty: 1.1, repeat_last_n: 256, presence_penalty: 0.0, frequency_penalty: 0.0, num_predict: 8192, preferredCtx: 65536 },

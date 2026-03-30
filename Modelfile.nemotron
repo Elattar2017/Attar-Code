@@ -1,8 +1,8 @@
 FROM nemotron-cascade-2:latest
 
 # ─── Context ───
-# 131K tokens (half of max 262K — leaves VRAM for KV cache)
-PARAMETER num_ctx 131072
+# 32K tokens — fits fully in GPU (no CPU overflow), fast inference
+PARAMETER num_ctx 32768
 
 # ─── Sampling (NVIDIA official recommendations) ───
 PARAMETER temperature 1
