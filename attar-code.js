@@ -2946,6 +2946,15 @@ print(json.dumps({"sheet": ws.title, "headers": headers, "rows": rows[:200], "to
     }
 
     case "todo_write": {
+      // Cap: max 10 pending tasks to prevent context bloat
+      const pendingCount = SESSION.todoList.filter(t => t.status !== "done").length;
+      if (pendingCount >= 10) {
+        return `⚠ Too many pending tasks (${pendingCount}). Complete existing tasks before adding more. Use todo_done to mark tasks complete.`;
+      }
+      // Total cap: max 15 tasks per session (including done)
+      if (SESSION.todoList.length >= 15) {
+        return `⚠ Task limit reached (${SESSION.todoList.length}). Stop adding tasks and start implementing. For simple operations, use run_bash directly instead of planning.`;
+      }
       // Extract phase from [phase] prefix if present
       let taskText = args.text;
       let phase = "implement";
@@ -7949,7 +7958,7 @@ async function chat(userMessage) {
       // ── Detect: task completion — STOP the loop ──────────────
       // If model says "done"/"completed"/"ready for next" without tool calls, it's finished.
       // This MUST be checked BEFORE the planning detection to prevent false continuation.
-      const completionSignals = /\b(task completed|successfully created|project is ready|all files are ready|ready for your next|what would you like|what else|is there anything else|i'm ready for|ready for any future|what can i help|how can i help)\b/i;
+      const completionSignals = /\b(task completed|successfully created|project is ready|all files are ready|ready for your next|what would you like|what else|is there anything else|i'm ready for|ready for any future|what can i help|how can i help|do you approve|approve this plan|waiting for approval|waiting for your approval|ready for approval|once you say|once approved|plan saved|approve\?)\b/i;
       const isCompletion = completionSignals.test(responseText) && toolCalls.length === 0;
       if (isCompletion) {
         // Model is done — don't nudge, don't continue
@@ -8889,28 +8898,24 @@ async function handleCommand(input) {
 
       await chat(`GOAL: ${rest}
 
-You are in PLAN MODE. Create a plan with these phases using todo_write for EVERY step.
+PLAN MODE — create a SHORT plan (max 8 steps total), then execute.
 
-PHASE 1 - UNDERSTAND: Read/explore the project.
-  todo_write("[understand] Read package.json")
-  Then mark each done with todo_done as you complete them.
+RULES:
+1. First: explore the project (read_file, project_structure). Do NOT create todo items for exploration — just do it.
+2. Then: create 3-8 todo_write items for the IMPLEMENTATION steps only. These are HIGH-LEVEL steps, not micro-actions.
+3. STOP planning and show the plan. Wait for user to say "yes" before implementing.
+4. Do NOT create todo items for reading files, checking versions, or anything you can just DO immediately.
+5. MAXIMUM 8 todo_write items. If the task needs more, you're over-planning.
+6. For SIMPLE tasks (copy a directory, rename a file, install a package): just DO IT with run_bash. No plan needed.
+7. After showing the plan, STOP. Do not continue until user approves.
 
-PHASE 2 - DESIGN: Plan what files and changes are needed.
-  todo_write("[design] Plan routes structure")
-  Call check_environment with the right technology parameter.
-
-PHASE 3 - IMPLEMENT: List exact implementation steps.
-  todo_write("[implement] Create src/routes.js with Express endpoints")
-
-PHASE 4 - VERIFY: List verification steps.
-  todo_write("[verify] Run build_and_test and test all endpoints")
-
-CRITICAL RULES:
-- Use [phase] prefix in EVERY todo_write call
-- Complete UNDERSTAND and DESIGN phases first
-- After DESIGN phase: STOP and wait for user approval before implementing
-- Do NOT create any project files during planning — only todo_write and exploration tools
-- Do NOT skip to implementation — the user must approve the plan first`);
+EXAMPLE for "create a FastAPI project":
+  - Explore: read existing files, check_environment (do this NOW, no todos)
+  - Then create only these todos:
+    todo_write("[implement] Create requirements.txt with FastAPI deps")
+    todo_write("[implement] Create main.py with 2 endpoints")
+    todo_write("[verify] Install deps and test server")
+  That's it. 3 steps. NOT 20.`);
       // Auto-exit plan mode when the plan chat completes
       // This prevents plan mode from persisting into the next user message
       if (SESSION.planMode && SESSION.plan) {
