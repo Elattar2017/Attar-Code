@@ -135,9 +135,13 @@ function shouldAutoApprove(riskLevel) {
   return false;
 }
 
-/** Helper: is current mode auto-approving? (replaces CONFIG.autoApprove checks) */
+/** Helper: is current mode auto-approving? Mode takes precedence over legacy flag. */
 function isAutoMode() {
-  return CONFIG.permissionMode === "autonomous" || CONFIG.autoApprove;
+  // If permissionMode is explicitly set, it takes precedence over legacy autoApprove
+  if (CONFIG.permissionMode && CONFIG.permissionMode !== "supervised") {
+    return CONFIG.permissionMode === "autonomous";
+  }
+  return CONFIG.autoApprove === true;
 }
 
 // ── Platform-aware shell selection ──
@@ -490,6 +494,10 @@ function saveConfig() {
 }
 
 let CONFIG = loadConfig();
+// Sync legacy autoApprove with permissionMode (mode takes precedence on startup)
+if (CONFIG.permissionMode) {
+  CONFIG.autoApprove = (CONFIG.permissionMode === "autonomous");
+}
 
 // ── Permissions System ──────────────────────────────────────────────────────
 // Loaded from: project-local .attar-code/permissions.json → user-global → bundled defaults
@@ -7903,53 +7911,23 @@ async function chat(userMessage) {
         // Fall through to "Genuinely done" below
       }
 
-      // ── Detect: cross-turn text repetition (MUST run before planning check) ──
-      // Track ALL response text (even with tool calls) to catch repeated preambles.
-      if (responseText.length > 30) {
-        if (!SESSION._recentTexts) SESSION._recentTexts = [];
-        SESSION._recentTexts.push(responseText.slice(0, 200).toLowerCase().trim());
-        if (SESSION._recentTexts.length > 6) SESSION._recentTexts.shift();
-
-        if (SESSION._recentTexts.length >= 2) {
-          const last = SESSION._recentTexts.slice(-2);
-          const words0 = new Set(last[0].split(/\s+/).filter(w => w.length > 2));
-          const words1 = new Set(last[1].split(/\s+/).filter(w => w.length > 2));
-          const intersection = [...words0].filter(w => words1.has(w)).length;
-          const union = new Set([...words0, ...words1]).size;
-          const jaccard = union > 0 ? intersection / union : 0;
-
-          if (jaccard > 0.7 && toolCalls.length === 0) {
-            // Two consecutive near-identical text-only responses — hard stop
-            console.log(co(C.bRed, "\n  ⚡ Model stuck in text loop — stopping"));
-            console.log(co(C.dim, "  Try rephrasing your request or switching to a different model.\n"));
-            process.stdout.write("\n");
-            printDivider();
-            return;
-          }
-
-          // Also check for 3+ similar texts even WITH tool calls (repeated preamble pattern)
-          if (SESSION._recentTexts.length >= 3 && jaccard > 0.6) {
-            const prev2 = SESSION._recentTexts.slice(-3, -1);
-            const words2 = new Set(prev2[0].split(/\s+/).filter(w => w.length > 2));
-            const j2 = (() => { const i = [...words2].filter(w => words1.has(w)).length; const u = new Set([...words2, ...words1]).size; return u > 0 ? i / u : 0; })();
-            if (j2 > 0.6) {
-              // 3 consecutive similar responses (even with different tool calls) — inject anti-repetition nudge
-              if (!SESSION._antiRepNudged) {
-                SESSION._antiRepNudged = true;
-                SESSION.messages.push({ role: "user", content: "STOP repeating the same introduction. You've said the same thing 3 times. Just call the next tool directly without any preamble text. No explanations — ONLY tool calls." });
-                console.log(co(C.bYellow, "\n  ⚡ Repeated preamble detected — nudging to stop"));
-                startSpinner("continuing");
-                continue;
-              } else {
-                // Already nudged once and still repeating — hard stop
-                console.log(co(C.bRed, "\n  ⚡ Model stuck repeating preamble — stopping"));
-                process.stdout.write("\n");
-                printDivider();
-                return;
-              }
-            }
-          }
+      // ── BULLETPROOF: Count consecutive text-only responses ──────────────
+      // If the model produces 3+ text-only responses in a row (NO tool calls),
+      // it is stuck. Hard stop. No Jaccard, no similarity — just count.
+      // This is the LAST LINE OF DEFENSE against infinite text loops.
+      if (toolCalls.length === 0 && responseText.length > 20) {
+        if (!SESSION._consecutiveTextOnly) SESSION._consecutiveTextOnly = 0;
+        SESSION._consecutiveTextOnly++;
+        if (SESSION._consecutiveTextOnly >= 3) {
+          console.log(co(C.bRed, `\n  ⚡ Model produced ${SESSION._consecutiveTextOnly} text-only responses — stuck. Stopping.`));
+          console.log(co(C.dim, "  The model is not calling any tools. Try rephrasing or use a different model.\n"));
+          process.stdout.write("\n");
+          printDivider();
+          return;
         }
+      } else if (toolCalls.length > 0) {
+        // Reset counter when model produces tool calls
+        SESSION._consecutiveTextOnly = 0;
       }
 
       // ── Detect: model is PLANNING but not ACTING ──────────────
@@ -7960,7 +7938,7 @@ async function chat(userMessage) {
       const planningWords = /\b(let me|i need to|i'll|i will|now i|next i|let's|going to|should|set up)\b/i;
       const pastTenseCompletion = /\b(created|completed|installed|finished|done|ready|set up successfully|built successfully)\b/i;
       const isStillPlanning = planningWords.test(responseText) && !pastTenseCompletion.test(responseText)
-        && !isCompletion && totalSteps < 40 && retryCount < 4;
+        && !isCompletion && retryCount < 4;
       const hasToolHistory = SESSION.messages.some(m => m.tool_calls?.length > 0);
 
       if (isStillPlanning && hasToolHistory) {
