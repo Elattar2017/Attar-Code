@@ -1,0 +1,48 @@
+# .attar-code/ignore — files and directories Attar-Code must never read, write, or analyze
+# Copy this to .attar-code/ignore in your project root to customize.
+
+# Secrets
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+credentials/
+secrets/
+
+# Build artifacts (no point analyzing)
+node_modules/
+dist/
+build/
+out/
+target/
+__pycache__/
+.venv/
+venv/
+vendor/
+.next/
+.nuxt/
+coverage/
+
+# Large binary files
+*.zip
+*.tar.gz
+*.rar
+*.7z
+*.iso
+*.dmg
+*.exe
+*.dll
+*.so
+*.dylib
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Attar-Code's own data
+.attar-code/history.json
+.attar-code/sessions/

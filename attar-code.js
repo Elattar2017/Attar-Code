@@ -41,6 +41,50 @@ try {
   ({ SmartFixBridge } = require('./memory/smartfix-bridge'));
 } catch (_) {}
 
+// ── Ignore File (.attar-code/ignore) ────────────────────────────────────────
+// Files and directories Attar-Code should never read, write, or analyze.
+let IGNORE_PATTERNS = [];
+function loadIgnoreFile() {
+  const paths = [
+    path.join(process.cwd(), ".attar-code", "ignore"),
+    path.join(HOME_DIR, "ignore"),
+    path.join(__dirname, "defaults", "ignore"),
+  ];
+  for (const p of paths) {
+    try {
+      if (fs.existsSync(p)) {
+        const lines = fs.readFileSync(p, "utf-8").split("\n")
+          .map(l => l.trim())
+          .filter(l => l && !l.startsWith("#"));
+        IGNORE_PATTERNS = [...new Set([...IGNORE_PATTERNS, ...lines])];
+      }
+    } catch { /* skip */ }
+  }
+}
+loadIgnoreFile();
+
+/**
+ * Check if a file path should be ignored.
+ * @param {string} filePath
+ * @returns {boolean}
+ */
+function isIgnoredPath(filePath) {
+  const normalized = filePath.replace(/\\/g, "/");
+  for (const pattern of IGNORE_PATTERNS) {
+    if (pattern.endsWith("/")) {
+      // Directory pattern
+      if (normalized.includes(pattern) || normalized.includes(pattern.slice(0, -1))) return true;
+    } else if (pattern.startsWith("*.")) {
+      // Extension pattern
+      if (normalized.endsWith(pattern.slice(1))) return true;
+    } else {
+      // Exact or partial match
+      if (normalized.includes(pattern)) return true;
+    }
+  }
+  return false;
+}
+
 // ── Risk Levels for Action Classification ──
 // safe: never ask | low: auto in balanced+ | medium: auto in autonomous | high: always ask | blocked: never
 const RISK_LEVELS = {
@@ -715,7 +759,7 @@ function requiresExplicitApproval(cmd) {
   return installPatterns.test(cmd) || dangerousPatterns.test(cmd);
 }
 
-async function askPermission(toolName, detail) {
+async function askPermission(toolName, detail, args_for_diff) {
   return new Promise(async (resolve) => {
     const riskLevel = getRiskLevel(toolName, { command: detail });
     const action = `${toolName === "run_bash" ? "bash" : toolName === "write_file" || toolName === "edit_file" ? "edit" : toolName}:${String(detail).slice(0, 200)}`;
@@ -779,9 +823,35 @@ async function askPermission(toolName, detail) {
       } catch (err) { debugLog(err.message); }
     }
     console.log();
-    console.log(co(C.bgRed, C.bWhite, " ⚠ PERMISSION ") + co(C.dim, " Tool: ") + co(C.bold, toolName));
-    console.log(co(C.dim, "  ") + co(C.yellow, String(detail).slice(0, 120)));
-    process.stdout.write(co(C.bYellow, "  Allow? [y/N/always] "));
+
+    // Rich confirmation: show context based on tool type
+    const riskColors = { low: C.bCyan, medium: C.bYellow, high: C.bRed };
+    const riskLabel = riskLevel === "high" ? "HIGH RISK" : riskLevel === "medium" ? "MEDIUM" : "PERMISSION";
+    const riskColor = riskColors[riskLevel] || C.bYellow;
+    console.log(co(riskLevel === "high" ? C.bgRed : C.bgYellow, C.bWhite, ` ⚠ ${riskLabel} `) + co(C.dim, " Tool: ") + co(C.bold, toolName));
+    console.log(co(C.dim, "  ") + co(C.yellow, String(detail).slice(0, 200)));
+
+    // Show diff preview for edit_file
+    if (toolName === "edit_file" && args_for_diff) {
+      const { old_str, new_str } = args_for_diff;
+      if (old_str && new_str) {
+        console.log(co(C.dim, "  Changes:"));
+        const oldLines = old_str.split("\n").slice(0, 3);
+        const newLines = new_str.split("\n").slice(0, 3);
+        for (const l of oldLines) console.log(co(C.bRed, `  - ${l.slice(0, 80)}`));
+        for (const l of newLines) console.log(co(C.bGreen, `  + ${l.slice(0, 80)}`));
+        if (old_str.split("\n").length > 3) console.log(co(C.dim, `  ... (${old_str.split("\n").length} lines total)`));
+      }
+    }
+
+    // Show reversibility hint
+    const isGitTracked = (() => { try { return !!execSync(`git ls-files "${String(detail).split("/").pop()}"`, { cwd: SESSION.cwd, encoding: "utf-8", stdio: ["pipe","pipe","pipe"], timeout: 3000 }).trim(); } catch { return false; } })();
+    if (riskLevel === "high" || riskLevel === "medium") {
+      const rev = isGitTracked ? co(C.dim, "  Reversible: yes (git tracked)") : co(C.bYellow, "  ⚠ Not git tracked — changes may be difficult to reverse");
+      console.log(rev);
+    }
+
+    process.stdout.write(co(riskColor, `  Allow? [y/N/always] `));
     pendingApproval = resolve;
   });
 }
@@ -1754,6 +1824,13 @@ function validateToolCall(name, args) {
 
   // ── Safety Invariants (apply to ALL tools, ALL modes) ──────────────────
 
+  // 0. Block access to ignored files (.attar-code/ignore patterns)
+  if ((name === "read_file" || name === "write_file" || name === "edit_file") && args?.filepath) {
+    if (isIgnoredPath(args.filepath)) {
+      return { blocked: true, reason: `File "${args.filepath}" is in the ignore list (.attar-code/ignore). This file cannot be read, written, or analyzed.` };
+    }
+  }
+
   // 1. Block sudo/root commands
   if (name === "run_bash" && args?.command) {
     if (/\bsudo\b/i.test(args.command)) {
@@ -2149,6 +2226,23 @@ async function executeTool(name, args) {
       console.log(co(C.bYellow, `  ⚡ ${fix}`));
     }
     if (validation.args) args = validation.args;
+  }
+
+  // Git safety net: track file count and auto-stash before large batch changes
+  if (["write_file","edit_file"].includes(name)) {
+    if (!SESSION._batchFileCount) SESSION._batchFileCount = 0;
+    SESSION._batchFileCount++;
+    // At 3+ file modifications, create git stash if working tree is clean
+    if (SESSION._batchFileCount === 3 && PERMISSIONS.gitCheckpointBeforeMultiFileChange !== false) {
+      try {
+        const gitStatus = execSync("git status --porcelain", { cwd: SESSION.cwd, encoding: "utf-8", timeout: 5000, shell: IS_WIN ? true : "/bin/bash", stdio: ["pipe","pipe","pipe"] }).trim();
+        if (!gitStatus) {
+          // Clean tree — create a safety commit
+          execSync('git add -A && git commit -m "attar-code: auto-checkpoint before multi-file change" --allow-empty', { cwd: SESSION.cwd, timeout: 10000, shell: IS_WIN ? true : "/bin/bash", stdio: ["pipe","pipe","pipe"] });
+          console.log(co(C.dim, "  🔒 Git checkpoint created (3+ files being modified)"));
+        }
+      } catch { /* not a git repo or git not available — skip */ }
+    }
   }
 
   // Smart auto-checkpoint before destructive operations
@@ -2725,7 +2819,7 @@ print(json.dumps({"sheet": ws.title, "headers": headers, "rows": rows[:200], "to
           return `❌ EDIT LOOP: "${basename}" edited ${SESSION._editCounts[fp]} times without build success.\nSTOP. Fix the next file instead: ${next.file} (${next.count} errors)\n${next.errors.slice(0, 3).join("\n")}\nUse read_file("${next.file}") then fix those errors.`;
         }
       }
-      const approved = await askPermission("edit_file", fp);
+      const approved = await askPermission("edit_file", fp, { old_str: args.old_str, new_str: args.new_str });
       if (!approved) return "Permission denied.";
 
       // Auto checkpoint before editing
