@@ -7897,26 +7897,50 @@ async function chat(userMessage) {
       }
 
       // ── Detect: cross-turn text repetition (MUST run before planning check) ──
-      // Track text-only responses. If 2 consecutive are very similar, force stop.
-      if (toolCalls.length === 0 && responseText.length > 30) {
+      // Track ALL response text (even with tool calls) to catch repeated preambles.
+      if (responseText.length > 30) {
         if (!SESSION._recentTexts) SESSION._recentTexts = [];
-        SESSION._recentTexts.push(responseText.slice(0, 300).toLowerCase());
-        if (SESSION._recentTexts.length > 5) SESSION._recentTexts.shift();
+        SESSION._recentTexts.push(responseText.slice(0, 200).toLowerCase().trim());
+        if (SESSION._recentTexts.length > 6) SESSION._recentTexts.shift();
 
         if (SESSION._recentTexts.length >= 2) {
           const last = SESSION._recentTexts.slice(-2);
-          const words0 = new Set(last[0].split(/\s+/));
-          const words1 = new Set(last[1].split(/\s+/));
+          const words0 = new Set(last[0].split(/\s+/).filter(w => w.length > 2));
+          const words1 = new Set(last[1].split(/\s+/).filter(w => w.length > 2));
           const intersection = [...words0].filter(w => words1.has(w)).length;
           const union = new Set([...words0, ...words1]).size;
           const jaccard = union > 0 ? intersection / union : 0;
-          if (jaccard > 0.7) {
-            // Two consecutive near-identical text responses — model is looping
+
+          if (jaccard > 0.7 && toolCalls.length === 0) {
+            // Two consecutive near-identical text-only responses — hard stop
             console.log(co(C.bRed, "\n  ⚡ Model stuck in text loop — stopping"));
             console.log(co(C.dim, "  Try rephrasing your request or switching to a different model.\n"));
             process.stdout.write("\n");
             printDivider();
             return;
+          }
+
+          // Also check for 3+ similar texts even WITH tool calls (repeated preamble pattern)
+          if (SESSION._recentTexts.length >= 3 && jaccard > 0.6) {
+            const prev2 = SESSION._recentTexts.slice(-3, -1);
+            const words2 = new Set(prev2[0].split(/\s+/).filter(w => w.length > 2));
+            const j2 = (() => { const i = [...words2].filter(w => words1.has(w)).length; const u = new Set([...words2, ...words1]).size; return u > 0 ? i / u : 0; })();
+            if (j2 > 0.6) {
+              // 3 consecutive similar responses (even with different tool calls) — inject anti-repetition nudge
+              if (!SESSION._antiRepNudged) {
+                SESSION._antiRepNudged = true;
+                SESSION.messages.push({ role: "user", content: "STOP repeating the same introduction. You've said the same thing 3 times. Just call the next tool directly without any preamble text. No explanations — ONLY tool calls." });
+                console.log(co(C.bYellow, "\n  ⚡ Repeated preamble detected — nudging to stop"));
+                startSpinner("continuing");
+                continue;
+              } else {
+                // Already nudged once and still repeating — hard stop
+                console.log(co(C.bRed, "\n  ⚡ Model stuck repeating preamble — stopping"));
+                process.stdout.write("\n");
+                printDivider();
+                return;
+              }
+            }
           }
         }
       }
