@@ -405,13 +405,22 @@ function loadSystemPrompt() {
     ? "java → brew install --cask temurin@17, maven → brew install maven, python → brew install python3, node → brew install node"
     : "java → sudo apt install openjdk-17-jdk -y, maven → sudo apt install maven -y, python → sudo apt install python3 -y, node → sudo apt install nodejs -y";
 
-  // Build environment version block from plugin system (injected into working memory, not base prompt)
+  // Build environment version block — use cached versions, fall back to bundled defaults/versions.json
   let envVersions = "";
   if (pluginRegistry) {
     try {
-      // Sync fallback — use cached/bundled versions (don't block startup with async)
       const vr = pluginRegistry.versionResolver;
-      const cached = vr.getAllCached();
+      let cached = vr.getAllCached();
+      // If cache is empty, seed from bundled defaults/versions.json
+      if (Object.keys(cached).length === 0) {
+        try {
+          const bundled = JSON.parse(fs.readFileSync(path.join(__dirname, "defaults", "versions.json"), "utf-8"));
+          for (const [key, ver] of Object.entries(bundled)) {
+            if (key !== "_meta" && typeof ver === "string") vr.updateCache(key, ver);
+          }
+          cached = vr.getAllCached();
+        } catch { /* no bundled file */ }
+      }
       if (Object.keys(cached).length > 0) {
         const lines = [];
         for (const [key, entry] of Object.entries(cached)) {
@@ -3693,23 +3702,12 @@ print(json.dumps({"sheet": ws.title, "headers": headers, "rows": rows[:200], "to
           const pm = hasPnpm ? "pnpm" : hasYarn ? "yarn" : "npm";
           return { tech: "NestJS", pm, install: `${pm} install`, build: "nest build", test: `${pm} run test`, start: "nest start --watch", lint: `${pm} run lint`, config: "nest-cli.json" };
         }},
-        { marker: "next.config.js", fn: () => {
+        { marker: "next.config.*", fn: () => {
           const hasPnpm = fs.existsSync(path.join(dir, "pnpm-lock.yaml"));
           const hasYarn = fs.existsSync(path.join(dir, "yarn.lock"));
           const pm = hasPnpm ? "pnpm" : hasYarn ? "yarn" : "npm";
-          return { tech: "Next.js", pm, install: `${pm} install`, build: "next build", test: `${pm} test`, start: "next dev", lint: "next lint", config: "next.config.js" };
-        }},
-        { marker: "next.config.mjs", fn: () => {
-          const hasPnpm = fs.existsSync(path.join(dir, "pnpm-lock.yaml"));
-          const hasYarn = fs.existsSync(path.join(dir, "yarn.lock"));
-          const pm = hasPnpm ? "pnpm" : hasYarn ? "yarn" : "npm";
-          return { tech: "Next.js", pm, install: `${pm} install`, build: "next build", test: `${pm} test`, start: "next dev", lint: "next lint", config: "next.config.mjs" };
-        }},
-        { marker: "next.config.ts", fn: () => {
-          const hasPnpm = fs.existsSync(path.join(dir, "pnpm-lock.yaml"));
-          const hasYarn = fs.existsSync(path.join(dir, "yarn.lock"));
-          const pm = hasPnpm ? "pnpm" : hasYarn ? "yarn" : "npm";
-          return { tech: "Next.js", pm, install: `${pm} install`, build: "next build", test: `${pm} test`, start: "next dev", lint: "next lint", config: "next.config.ts" };
+          const configFile = ["next.config.ts", "next.config.mjs", "next.config.js"].find(f => fs.existsSync(path.join(dir, f))) || "next.config.js";
+          return { tech: "Next.js", pm, install: `${pm} install`, build: "next build", test: `${pm} test`, start: "next dev", lint: "next lint", config: configFile };
         }},
         { marker: "package.json", fn: () => {
           const pkg = JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf-8"));
@@ -3752,8 +3750,14 @@ print(json.dumps({"sheet": ws.title, "headers": headers, "rows": rows[:200], "to
       for (const det of detectors) {
         let found = false;
         if (det.marker.includes("*")) {
-          // Glob pattern (e.g., "*.csproj") — scan directory
-          try { found = fs.readdirSync(dir).some(f => f.endsWith(det.marker.replace("*", ""))); } catch { found = false; }
+          // Glob pattern — supports "*.csproj" (suffix) and "next.config.*" (prefix)
+          try {
+            const prefix = det.marker.split("*")[0];
+            const suffix = det.marker.split("*")[1] || "";
+            found = fs.readdirSync(dir).some(f =>
+              (prefix ? f.startsWith(prefix) : true) && (suffix ? f.endsWith(suffix) : true) && f !== det.marker
+            );
+          } catch { found = false; }
         } else {
           found = fs.existsSync(path.join(dir, det.marker));
         }
@@ -4853,7 +4857,7 @@ print(json.dumps({"ok": True}))
         SESSION._envSetup[plugin.id] = {
           venvPath: result.venvPath,
           activateCmd: result.activateCmd,
-          strategy: plugin._detectStrategy ? plugin._detectStrategy() : null,
+          strategy: (plugin.getStrategyOrder() || [])[0] || null,
         };
         lines.push("", `Virtual environment: ${result.venvPath}`);
         lines.push(`Activation: ${result.activateCmd}`);
@@ -4884,7 +4888,7 @@ print(json.dumps({"ok": True}))
 
       let TestGenerator;
       try { ({ TestGenerator } = require("./plugins/test-generator")); } catch { printToolDone("N/A"); return "Test generator not available."; }
-      const generator = new TestGenerator({ ollamaUrl: CONFIG.ollamaUrl || "http://localhost:11434", model: SESSION.model });
+      const generator = new TestGenerator({ ollamaUrl: CONFIG.ollamaUrl || "http://localhost:11434", model: CONFIG.model });
 
       const skeleton = generator.generateSkeleton(plugin, filePath, dir);
       if (skeleton.error || !skeleton.cases.length) {
@@ -5287,7 +5291,16 @@ function pluginParseBuildErrors(output, tech) {
       fileCount: sorted.length,
       topFile: sorted[0]?.file,
       topCount: sorted[0]?.count,
-      hintMap: {},
+      hintMap: (() => {
+        const h = {};
+        for (const e of pluginErrors) {
+          if (e.prescription && e.file) {
+            if (!h[e.file]) h[e.file] = {};
+            h[e.file][e.line || 0] = { suggestion: e.prescription, applicability: 0.8 };
+          }
+        }
+        return h;
+      })(),
       _pluginErrors: pluginErrors, // preserve structured errors for smart-fix
     };
   } catch (e) {
@@ -5374,6 +5387,8 @@ function loadErrorPatternsExternal(projectType) {
     "Java/Gradle": ["java"],
     "C/C++": ["cpp"],
     "PHP": ["php"],
+    "PHP/Laravel": ["php"],
+    "PHP/Symfony": ["php"],
     "C#": ["csharp"],
     "NestJS": ["nestjs", "typescript", "nodejs"],
     "Next.js": ["nextjs", "typescript", "nodejs"],
@@ -5392,12 +5407,15 @@ function loadErrorPatternsExternal(projectType) {
     "Node.js": "typescript", "Node.js/TypeScript": "typescript",
     "Python": "python", "Go": "go", "Rust": "rust",
     "Java": "java", "Java/Maven": "java", "Java/Gradle": "java",
-    "C/C++": "cpp", "PHP": "php", "C#": "csharp",
+    "C/C++": "cpp", "PHP": "php", "PHP/Laravel": "php", "PHP/Symfony": "php", "C#": "csharp",
     "NestJS": "typescript", "Next.js": "typescript", "React Native": "typescript",
   };
   const pluginName = pluginTechMap[projectType];
   if (pluginName) {
-    const pluginPath = path.join(HOME_DIR, "plugins", `${pluginName}.json`);
+    // Check user home first, then bundled defaults
+    const userPluginPath = path.join(HOME_DIR, "plugins", `${pluginName}.json`);
+    const defaultPluginPath = path.join(__dirname, "defaults", "plugins", `${pluginName}.json`);
+    const pluginPath = fs.existsSync(userPluginPath) ? userPluginPath : defaultPluginPath;
     if (fs.existsSync(pluginPath)) {
       const pluginPatterns = loadPluginAsPatterns(pluginPath);
       // Only add plugin patterns for error codes not already covered by old patterns
@@ -6969,7 +6987,7 @@ function selectToolsForContext(userMessage, messages) {
   }
 
   // Environment & plugin tools
-  if (/\b(create|scaffold|new project|setup|environment|install|version|venv|virtual.?env|nvm|pyenv|toolchain|uv\b|poetry)\b/i.test(msg)) {
+  if (/\b(create|scaffold|new project|setup|environment|install|version|venv|virtual.?env|nvm|pyenv|toolchain|uv\b|poetry|nestjs|nest\.?js|next\.?js|react.?native|expo|django|fastapi|flask|laravel|symfony|spring.?boot|express|dotnet|\.net|blazor|rails)\b/i.test(msg)) {
     selected.add("check_environment");
     selected.add("setup_environment");
   }

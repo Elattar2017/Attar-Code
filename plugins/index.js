@@ -180,19 +180,6 @@ class PluginRegistry {
   }
 
   /**
-   * Dispatch a method call to the plugin matching a technology.
-   * @param {string} tech     Technology name (from SESSION._lastDetectedTech)
-   * @param {string} method   Method name on the plugin
-   * @param  {...any} args    Arguments to pass
-   * @returns {any}           Result from plugin method, or null if no plugin found
-   */
-  dispatch(tech, method, ...args) {
-    const plugin = this.pluginForTech(tech);
-    if (!plugin || typeof plugin[method] !== 'function') return null;
-    return plugin[method](...args);
-  }
-
-  /**
    * Run environment checks for ALL detected languages in a project.
    * @param {string} projectRoot
    * @returns {object[]}  Array of EnvReport objects (one per detected language)

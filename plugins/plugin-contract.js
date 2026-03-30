@@ -380,27 +380,6 @@ class LanguagePlugin {
     return parts.join(' ');
   }
 
-  // ─── Helper: Proxy Fetch ───────────────────────────────────────────────────
-
-  /**
-   * POST to the search-proxy.
-   * @param {string} endpoint  e.g., '/kb/recipe/search'
-   * @param {object} body
-   * @returns {Promise<object|null>}
-   */
-  async _proxyPost(endpoint, body) {
-    if (!this._proxyUrl) return null;
-    try {
-      const res = await fetch(`${this._proxyUrl}${endpoint}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(15000),
-      });
-      if (res.ok) return await res.json();
-    } catch { /* proxy unavailable */ }
-    return null;
-  }
 }
 
 module.exports = { LanguagePlugin };

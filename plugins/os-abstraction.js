@@ -230,31 +230,11 @@ class OSAbstraction {
   }
 
   /**
-   * Get all install hints for the current platform.
-   * @returns {Object<string, string>}
-   */
-  static getAllInstallHints() {
-    const result = {};
-    for (const [tool, hints] of Object.entries(INSTALL_HINTS)) {
-      result[tool] = hints[PLATFORM] || hints.linux || '';
-    }
-    return result;
-  }
-
-  /**
    * Get the platform-correct Python binary name.
    * @returns {string} 'python' on Windows, 'python3' on Unix
    */
   static get pythonBinary() {
     return IS_WIN ? 'python' : 'python3';
-  }
-
-  /**
-   * Get the platform-correct package manager check command.
-   * @returns {string}
-   */
-  static get packageManagerCheck() {
-    return IS_WIN ? 'where choco' : IS_MAC ? 'which brew' : 'which apt';
   }
 
   /**
