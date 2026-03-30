@@ -8582,11 +8582,73 @@ CRITICAL RULES:
         return null;
       }
 
-      if (!sub || sub === "check") {
+      if (!sub) {
+        // /env with no args: show ALL installed runtimes system-wide + project detection
+        const dir = SESSION.cwd;
+        const { OSAbstraction } = require('./plugins/os-abstraction');
+        console.log(co(C.bold, "\n  System Runtimes\n"));
+
+        const runtimeChecks = [
+          { name: 'Node.js',  bin: 'node',    flag: '--version', pattern: /v(\d+\.\d+\.\d+)/ },
+          { name: 'Python',   bin: OSAbstraction.pythonBinary, flag: '--version', pattern: /Python\s+(\d+\.\d+\.\d+)/ },
+          { name: 'Rust',     bin: 'rustc',   flag: '--version', pattern: /rustc\s+(\d+\.\d+\.\d+)/ },
+          { name: 'Go',       bin: 'go',      flag: 'version',   pattern: /go(\d+\.\d+\.\d+)/ },
+          { name: 'Java',     bin: 'java',    flag: '-version',  pattern: /version\s+"(\d+[\d.]*)/ },
+          { name: 'C/C++',    bin: 'gcc',     flag: '--version', pattern: /(\d+\.\d+\.\d+)/ },
+          { name: 'PHP',      bin: 'php',     flag: '--version', pattern: /PHP\s+(\d+\.\d+\.\d+)/ },
+          { name: '.NET',     bin: 'dotnet',  flag: '--version', pattern: /(\d+\.\d+\.\d+)/ },
+        ];
+
+        for (const rt of runtimeChecks) {
+          const ver = OSAbstraction.getVersion(rt.bin, rt.flag, rt.pattern);
+          if (ver) {
+            console.log(`  ${co(C.bGreen, '✓')} ${rt.name.padEnd(10)} ${ver.version}`);
+          } else {
+            console.log(`  ${co(C.dim, '✗')} ${co(C.dim, rt.name.padEnd(10) + 'not installed')}`);
+          }
+        }
+
+        // Also check common tools
+        console.log(co(C.bold, "\n  Package Managers\n"));
+        const pmChecks = [
+          { name: 'npm',      bin: 'npm' },
+          { name: 'pnpm',     bin: 'pnpm' },
+          { name: 'yarn',     bin: 'yarn' },
+          { name: 'bun',      bin: 'bun' },
+          { name: 'pip',      bin: OSAbstraction.isWin ? 'pip' : 'pip3' },
+          { name: 'uv',       bin: 'uv' },
+          { name: 'cargo',    bin: 'cargo' },
+          { name: 'composer',  bin: 'composer' },
+          { name: 'dotnet',   bin: 'dotnet' },
+        ];
+        for (const pm of pmChecks) {
+          const ver = OSAbstraction.getVersion(pm.bin);
+          if (ver) {
+            console.log(`  ${co(C.bGreen, '✓')} ${pm.name.padEnd(10)} ${ver.version}`);
+          }
+        }
+
+        // Show project detection
+        const detected = pluginRegistry.detectLanguages(dir);
+        if (detected.length > 0) {
+          console.log(co(C.bold, "\n  Detected in Current Project\n"));
+          for (const p of detected) {
+            console.log(`  ${co(C.bCyan, '→')} ${p.displayName}`);
+          }
+        } else {
+          console.log(co(C.dim, "\n  No languages detected in current directory.\n"));
+        }
+
+        console.log(co(C.dim, "\n  /env check   — detailed compatibility check"));
+        console.log(co(C.dim, "  /env setup   — set up environment (venv, deps)"));
+        console.log(co(C.dim, "  /env versions — latest stable package versions\n"));
+
+      } else if (sub === "check") {
         const dir = parts[2] ? path.resolve(SESSION.cwd, parts[2]) : SESSION.cwd;
         const reports = pluginRegistry.checkAllEnvironments(dir);
         if (reports.length === 0) {
           console.log(co(C.dim, "\n  No known languages detected in this project.\n"));
+          console.log(co(C.dim, "  Tip: Use /env to see all installed runtimes system-wide.\n"));
         } else {
           console.log(co(C.bold, "\n  Environment Check\n"));
           console.log(pluginRegistry.formatEnvReport(reports));
