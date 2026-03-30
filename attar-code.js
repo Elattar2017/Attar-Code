@@ -61,7 +61,7 @@ function loadIgnoreFile() {
     } catch { /* skip */ }
   }
 }
-loadIgnoreFile();
+// NOTE: loadIgnoreFile() is called AFTER HOME_DIR is defined (~line 200)
 
 /**
  * Check if a file path should be ignored.
@@ -70,16 +70,20 @@ loadIgnoreFile();
  */
 function isIgnoredPath(filePath) {
   const normalized = filePath.replace(/\\/g, "/");
+  const filename = normalized.split("/").pop() || "";
   for (const pattern of IGNORE_PATTERNS) {
     if (pattern.endsWith("/")) {
-      // Directory pattern
-      if (normalized.includes(pattern) || normalized.includes(pattern.slice(0, -1))) return true;
+      // Directory pattern: match directory segment in path
+      if (normalized.includes("/" + pattern) || normalized.includes("/" + pattern.slice(0, -1) + "/")) return true;
     } else if (pattern.startsWith("*.")) {
-      // Extension pattern
-      if (normalized.endsWith(pattern.slice(1))) return true;
+      // Extension pattern: match file extension
+      if (filename.endsWith(pattern.slice(1))) return true;
+    } else if (pattern.startsWith("*")) {
+      // Suffix wildcard: match end of filename
+      if (filename.includes(pattern.slice(1))) return true;
     } else {
-      // Exact or partial match
-      if (normalized.includes(pattern)) return true;
+      // Exact filename match (not substring — ".env.local" should NOT match ".env.local.bak")
+      if (filename === pattern || normalized.endsWith("/" + pattern)) return true;
     }
   }
   return false;
@@ -207,6 +211,9 @@ const OUTPUTS_DIR = path.join(HOME_DIR, "outputs");
 for (const d of [HOME_DIR, SESSIONS_DIR, CHECKPOINTS_DIR, CMDS_DIR, PLANS_DIR, SKILLS_DIR, OUTPUTS_DIR]) {
   fs.mkdirSync(d, { recursive: true });
 }
+
+// Now that HOME_DIR exists, load ignore patterns
+loadIgnoreFile();
 
 const DEFAULTS_DIR = path.join(__dirname, "defaults");
 const ERROR_PATTERNS_DIR = path.join(HOME_DIR, "error-patterns");

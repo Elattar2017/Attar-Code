@@ -1,15 +1,20 @@
 # .attar-code/ignore — files and directories Attar-Code must never read, write, or analyze
 # Copy this to .attar-code/ignore in your project root to customize.
 
-# Secrets
-.env
-.env.*
+# Secrets (actual env files with values, NOT templates)
+.env.local
+.env.production
+.env.staging
+.env.development
+# NOTE: .env and .env.example are NOT ignored — they're needed for project setup
+# If your .env has real secrets, add it to your project's .attar-code/ignore
 *.pem
 *.key
 *.p12
 *.pfx
 credentials/
 secrets/
+*id_rsa*
 
 # Build artifacts (no point analyzing)
 node_modules/
