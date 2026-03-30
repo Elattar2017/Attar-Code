@@ -7560,8 +7560,25 @@ async function chat(userMessage) {
   let stopHookActive = false; // prevents Stop hook infinite loops
 
   // ── Never-Give-Up Loop ────────────────────────────────────────────
+  let _lastRealWorkStep = 0; // step number when last REAL work was done (write/edit/bash/build)
+
   while (true) {
     totalSteps++;
+
+    // ════════════════════════════════════════════════════════════════
+    // ABSOLUTE HARD WALL — checked FIRST, impossible to bypass
+    // If 8+ steps pass without any real work, the model is stuck. Stop.
+    // "Real work" = write_file, edit_file, run_bash, build_and_test,
+    // start_server, setup_environment, generate_tests, create_*
+    // NOT real work: text-only responses, todo_write, read_file, grep
+    // ════════════════════════════════════════════════════════════════
+    if (totalSteps - _lastRealWorkStep > 8) {
+      console.log(co(C.bRed, `\n  ⚡ No progress: ${totalSteps - _lastRealWorkStep} steps without real work — stopping.`));
+      console.log(co(C.dim, "  The model is stuck. Try without /plan, or rephrase, or use a different model.\n"));
+      process.stdout.write("\n");
+      printDivider();
+      return;
+    }
 
     // Safety valve — after 30 steps ask user if they want to continue
     if (totalSteps === 30 || (totalSteps > 30 && totalSteps % 20 === 0)) {
@@ -7911,23 +7928,33 @@ async function chat(userMessage) {
         // Fall through to "Genuinely done" below
       }
 
-      // ── BULLETPROOF: Count consecutive text-only responses ──────────────
-      // If the model produces 3+ text-only responses in a row (NO tool calls),
-      // it is stuck. Hard stop. No Jaccard, no similarity — just count.
-      // This is the LAST LINE OF DEFENSE against infinite text loops.
-      if (toolCalls.length === 0 && responseText.length > 20) {
-        if (!SESSION._consecutiveTextOnly) SESSION._consecutiveTextOnly = 0;
-        SESSION._consecutiveTextOnly++;
-        if (SESSION._consecutiveTextOnly >= 3) {
-          console.log(co(C.bRed, `\n  ⚡ Model produced ${SESSION._consecutiveTextOnly} text-only responses — stuck. Stopping.`));
-          console.log(co(C.dim, "  The model is not calling any tools. Try rephrasing or use a different model.\n"));
-          process.stdout.write("\n");
-          printDivider();
-          return;
+      // ── BULLETPROOF: Count consecutive non-productive responses ────────────
+      // Track responses that don't do REAL work (write_file, edit_file, run_bash,
+      // build_and_test, start_server). Text-only AND todo_write-only both count
+      // as non-productive. After 5 non-productive responses → hard stop.
+      {
+        const productiveTools = new Set(["write_file", "edit_file", "run_bash", "build_and_test",
+          "start_server", "test_endpoint", "setup_environment", "generate_tests",
+          "create_pdf", "create_docx", "create_excel", "create_pptx"]);
+        const hasProductiveCall = toolCalls.some(tc => {
+          const fn = tc.function || tc;
+          return productiveTools.has(fn.name);
+        });
+
+        if (!SESSION._nonProductiveCount) SESSION._nonProductiveCount = 0;
+
+        if (hasProductiveCall) {
+          SESSION._nonProductiveCount = 0; // Real work done — reset
+        } else {
+          SESSION._nonProductiveCount++;
+          if (SESSION._nonProductiveCount >= 5) {
+            console.log(co(C.bRed, `\n  ⚡ Model stuck — ${SESSION._nonProductiveCount} responses without productive action. Stopping.`));
+            console.log(co(C.dim, "  The model is not making progress. Try rephrasing or use a different model.\n"));
+            process.stdout.write("\n");
+            printDivider();
+            return;
+          }
         }
-      } else if (toolCalls.length > 0) {
-        // Reset counter when model produces tool calls
-        SESSION._consecutiveTextOnly = 0;
       }
 
       // ── Detect: model is PLANNING but not ACTING ──────────────
@@ -8080,6 +8107,14 @@ async function chat(userMessage) {
 
       const result    = await executeTool(name, args);
       let   resultStr = String(result);
+
+      // Update real work tracker for the hard wall check
+      const _realWorkTools = new Set(["write_file","edit_file","run_bash","build_and_test",
+        "start_server","test_endpoint","setup_environment","generate_tests",
+        "create_pdf","create_docx","create_excel","create_pptx"]);
+      if (_realWorkTools.has(name) && !resultStr.includes("BLOCKED") && !resultStr.includes("Permission denied")) {
+        _lastRealWorkStep = totalSteps;
+      }
 
       // Validate tool result
       if (resultStr.length < 5 && !["todo_done","todo_write","todo_list","memory_write"].includes(name)) {
