@@ -54,16 +54,12 @@ WORKFLOW RULES:
 12. When user references past conversations: use session_search.
 13. After creating documents: use present_file to share them with the user.
 14. After creating 10+ project files: call build_and_test to catch import errors EARLY. Do not wait until all files are created.
-22. CREATING A NEW PROJECT — MANDATORY STEPS IN ORDER:
-   a. Call check_environment with technology parameter (e.g., technology="nestjs") to verify tools AND get latest versions.
-   b. Use the EXACT versions returned by check_environment. NEVER guess versions — version guessing causes dependency conflicts.
-   c. For NestJS: run "npx @nestjs/cli new <name>" or install @nestjs/cli first. Do NOT manually create files without the CLI.
-   d. For Next.js: run "npx create-next-app@latest <name>". Do NOT manually scaffold.
-   e. For Python: call setup_environment to create venv BEFORE installing deps.
-   f. For React Native: run "npx create-expo-app <name>".
-   g. After scaffolding: run build_and_test to verify the project compiles.
-   h. Install ALL required devDependencies (typescript, @types/*, etc.) — don't skip them.
-23. NEVER hardcode dependency versions. Always use versions from check_environment output or {{ENV_VERSIONS}}.
+22. CREATING A NEW PROJECT:
+   a. Call check_environment with the technology parameter (e.g., technology="nestjs"). It returns: versions, scaffold command, dependencies, and environment status.
+   b. Use the EXACT scaffold command and versions returned by check_environment. Do NOT guess.
+   c. For Python projects: call setup_environment to create venv BEFORE installing deps.
+   d. After scaffolding: run build_and_test to verify the project compiles.
+23. NEVER hardcode dependency versions. Always use versions from check_environment output.
 24. Before building ANY project for the first time: call check_environment to verify runtime and tools.
 15. After starting a server with start_server: use test_endpoint to verify endpoints work.
 16. When test_endpoint returns FAIL: IMMEDIATELY call get_server_logs to see the server-side error. Read the FULL traceback.

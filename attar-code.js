@@ -5133,6 +5133,23 @@ print(json.dumps({"ok": True}))
               envReport += "\n\nIMPORTANT: Use these exact versions when creating the project. Do NOT guess.";
             }
           } catch { /* version resolution failed — offline */ }
+
+          // Append scaffold CLI command from plugin
+          try {
+            const scaffoldData = plugin.scaffold("project-name", {});
+            if (scaffoldData.postCreate && scaffoldData.postCreate.length > 0) {
+              envReport += "\n\nScaffold Command (recommended):";
+              for (const cmd of scaffoldData.postCreate) {
+                envReport += `\n  ${cmd.replace("project-name", "<name>")}`;
+              }
+            } else if (scaffoldData.files && scaffoldData.files.length > 0) {
+              envReport += `\n\nProject Files: ${scaffoldData.files.map(f => f.path || f).join(", ")}`;
+            }
+            if (scaffoldData.deps && Object.keys(scaffoldData.deps).length > 0) {
+              const depList = Object.entries(scaffoldData.deps).map(([k, v]) => `${k}@${v}`).join(" ");
+              envReport += `\n\nDependencies: ${depList}`;
+            }
+          } catch { /* scaffold data not available */ }
         }
       }
 
@@ -8898,32 +8915,35 @@ async function handleCommand(input) {
 
       await chat(`GOAL: ${rest}
 
-PLAN MODE — create a SHORT plan (max 8 steps total), then execute.
+PLAN MODE — explore, plan, get approval, then implement.
+
+STEP 1: Explore the project (read_file, project_structure, check_environment). Just do it — no todos for exploration.
+
+STEP 2: Present the plan as clear BULLETS. One bullet per logical step. Then ask "Do you approve this plan?" and STOP.
+  - If user says "yes" → create matching todos with todo_write, then implement.
+  - If user suggests changes → revise the plan, show updated bullets, ask again.
+  - If user says "no" → stop.
 
 RULES:
-1. First: explore the project (read_file, project_structure). Do NOT create todo items for exploration — just do it.
-2. Then: create 3-8 todo_write items for the IMPLEMENTATION steps only. These are HIGH-LEVEL steps, not micro-actions.
-3. STOP planning and show the plan. Wait for user to say "yes" before implementing.
-4. Do NOT create todo items for reading files, checking versions, or anything you can just DO immediately.
-5. MAXIMUM 8 todo_write items. If the task needs more, you're over-planning.
-6. For SIMPLE tasks (copy a directory, rename a file, install a package): just DO IT with run_bash. No plan needed.
-7. After showing the plan, STOP. Do not continue until user approves.
-
-EXAMPLE for "create a FastAPI project":
-  - Explore: read existing files, check_environment (do this NOW, no todos)
-  - Then create only these todos:
-    todo_write("[implement] Create requirements.txt with FastAPI deps")
-    todo_write("[implement] Create main.py with 2 endpoints")
-    todo_write("[verify] Install deps and test server")
-  That's it. 3 steps. NOT 20.`);
-      // Auto-exit plan mode when the plan chat completes
-      // This prevents plan mode from persisting into the next user message
+- One todo per LOGICAL STEP (e.g., "Create auth module" not 5 separate file todos).
+- Do NOT create todos for exploration, reading files, or checking versions.
+- Do NOT create duplicate todos — check if similar task already exists.
+- Present the plan BEFORE creating todos. Bullets first, todos after approval.
+- Use the RIGHT number of steps for the task — small task = 3 steps, large task = 12+ steps. No artificial limit.`);
+      // Auto-exit plan mode ONLY when real implementation is done
+      // Keep planMode=true after plan presentation so user can give feedback
       if (SESSION.planMode && SESSION.plan) {
-        const allDone = SESSION.todoList.every(t => t.status === "done");
-        if (allDone || SESSION.plan.status === "executing" || SESSION.plan.status === "verifying") {
+        const hasTodos = SESSION.todoList.length > 0;
+        const allDone = hasTodos && SESSION.todoList.every(t => t.status === "done");
+        const hasRealWork = SESSION._actionHistory?.some(a =>
+          ["write_file","edit_file","run_bash","build_and_test","start_server"].includes(a.tool) && a.outcome === "ok"
+        );
+        if (allDone && hasRealWork) {
           SESSION.planMode = false;
+          SESSION.plan = null;
           console.log(co(C.dim, "  📋 Plan completed — exiting plan mode\n"));
         }
+        // If no todos and no real work: keep planMode true (user may modify plan)
       }
       break;
     }
