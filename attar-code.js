@@ -1545,13 +1545,13 @@ RULES: filepath REQUIRED. Use simple format when possible.`,
   {
     type: "function", function: {
       name: "check_environment",
-      description: `Check if the development environment has the required tools and correct versions for the detected technology stack.
+      description: `Check if the development environment has required tools, correct versions, and return latest stable package versions for the technology stack.
 
-USE FOR: Before building/running a project for the first time, when build fails with "command not found" or version errors, before scaffolding a new project, when you suspect missing tools.
+USE FOR: BEFORE creating any new project (ALWAYS pass technology parameter), before first build, when "command not found" or version errors occur.
 
-Returns: A report listing runtime version, package manager, virtual environment status, missing tools with install commands, and compatibility warnings.`,
+RULES: When creating a NEW project, ALWAYS pass the technology parameter so it returns the correct latest versions. Available: python, typescript, rust, go, java, cpp, php, csharp, nestjs, nextjs, reactnative. Use the returned versions — do NOT guess.`,
       parameters: { type:"object", properties: {
-        technology: { type:"string", description:"Target technology (auto-detected if omitted): 'python', 'typescript', 'rust', 'go', 'java', 'cpp'" },
+        technology: { type:"string", description:"Target technology — REQUIRED for new projects: 'nestjs', 'nextjs', 'reactnative', 'python', 'typescript', 'rust', 'go', 'java', 'cpp', 'php', 'csharp'" },
         dirpath: { type:"string", description:"Project directory to check (default: cwd)" }
       } }
     }
@@ -4807,7 +4807,7 @@ print(json.dumps({"ok": True}))
 
       if (reports.length === 0) {
         printToolDone("No languages detected");
-        return "No known languages detected in this project. Supported: Python, TypeScript/Node.js, Rust, Go, Java, C/C++.";
+        return "No known languages detected in this project. Supported: Python, TypeScript/Node.js, Rust, Go, Java, C/C++, PHP, C#, NestJS, Next.js, React Native.\n\nTip: If you're creating a NEW project, pass the technology parameter (e.g., check_environment with technology='nestjs').";
       }
 
       // Cache in session
@@ -4823,7 +4823,28 @@ print(json.dumps({"ok": True}))
       }
 
       printToolDone(reports.map(r => `${r.displayName}: ${r.ready ? "READY" : "NOT READY"}`).join(", "));
-      return pluginRegistry.formatEnvReport(reports);
+      let envReport = pluginRegistry.formatEnvReport(reports);
+
+      // Append latest version info for the detected technology
+      const tech = args.technology || SESSION._lastDetectedTech;
+      if (tech) {
+        const plugin = pluginRegistry.pluginForTech(tech);
+        if (plugin) {
+          try {
+            const versions = await plugin.getLatestVersions();
+            if (versions && (versions.runtime || Object.keys(versions.frameworks || {}).length > 0)) {
+              envReport += "\n\nLatest Stable Versions:";
+              if (versions.runtime) envReport += `\n  Runtime: ${plugin.displayName} ${versions.runtime}`;
+              for (const [fw, ver] of Object.entries(versions.frameworks || {})) {
+                envReport += `\n  ${fw}: ${ver}`;
+              }
+              envReport += "\n\nIMPORTANT: Use these exact versions when creating the project. Do NOT guess.";
+            }
+          } catch { /* version resolution failed — offline */ }
+        }
+      }
+
+      return envReport;
     }
 
     case "setup_environment": {
@@ -7249,10 +7270,16 @@ async function chat(userMessage) {
   while (true) {
     totalSteps++;
 
-    // Safety valve — after 50 steps ask user if they want to continue
-    if (totalSteps === 50 || (totalSteps > 50 && totalSteps % 50 === 0)) {
+    // Safety valve — after 30 steps ask user if they want to continue
+    if (totalSteps === 30 || (totalSteps > 30 && totalSteps % 20 === 0)) {
       if (CONFIG.autoApprove) {
-        // Auto-continue in --auto mode (also covers -p one-shot mode)
+        // In --auto mode, hard stop at 60 steps to prevent infinite loops
+        if (totalSteps >= 60) {
+          console.log(co(C.bRed, `\n  ⚡ ${totalSteps} steps — hard stop (max reached)`));
+          process.stdout.write("\n\n");
+          printDivider();
+          return;
+        }
         console.log(co(C.dim, `\n  ⚡ ${totalSteps} steps — auto-continuing...`));
       } else {
         stopSpinner();
@@ -7580,19 +7607,55 @@ async function chat(userMessage) {
       // If there's still a pending error → loop will inject nudge next iteration
       if (lastError) continue;
 
+      // ── Detect: task completion — STOP the loop ──────────────
+      // If model says "done"/"completed"/"ready for next" without tool calls, it's finished.
+      // This MUST be checked BEFORE the planning detection to prevent false continuation.
+      const completionSignals = /\b(task completed|successfully created|project is ready|all files are ready|ready for your next|what would you like|what else|is there anything else|i'm ready for|ready for any future|what can i help|how can i help)\b/i;
+      const isCompletion = completionSignals.test(responseText) && toolCalls.length === 0;
+      if (isCompletion) {
+        // Model is done — don't nudge, don't continue
+        debugLog("Completion signal detected — stopping loop");
+        // Fall through to "Genuinely done" below
+      }
+
+      // ── Detect: cross-turn text repetition ──────────────
+      // Track last 3 text-only responses. If similar (Jaccard > 0.6), force stop.
+      if (toolCalls.length === 0 && responseText.length > 50) {
+        if (!SESSION._recentTexts) SESSION._recentTexts = [];
+        SESSION._recentTexts.push(responseText.slice(0, 300));
+        if (SESSION._recentTexts.length > 5) SESSION._recentTexts.shift();
+
+        if (SESSION._recentTexts.length >= 3) {
+          const last3 = SESSION._recentTexts.slice(-3);
+          const words0 = new Set(last3[0].toLowerCase().split(/\s+/));
+          const words1 = new Set(last3[1].toLowerCase().split(/\s+/));
+          const words2 = new Set(last3[2].toLowerCase().split(/\s+/));
+          const jaccard01 = [...words0].filter(w => words1.has(w)).length / new Set([...words0, ...words1]).size;
+          const jaccard12 = [...words1].filter(w => words2.has(w)).length / new Set([...words1, ...words2]).size;
+          if (jaccard01 > 0.6 && jaccard12 > 0.6) {
+            console.log(co(C.bYellow, "\n  ⚡ Repeated text detected — stopping loop"));
+            process.stdout.write("\n\n");
+            printDivider();
+            return;
+          }
+        }
+      }
+
       // ── Detect: model is PLANNING but not ACTING ──────────────
       // 4B models often spiral in thinking ("let me create X, then Y, then Z...")
       // consuming all output tokens without producing a tool call.
-      // If the response mentions future actions, nudge it to act.
-      const planningWords = /\b(let me|i need to|i'll|i will|now i|next i|let's|going to|should|create|write|install|implement|set up)\b/i;
-      const isStillPlanning = planningWords.test(responseText) && totalSteps < 40 && retryCount < 4;
+      // If the response mentions FUTURE actions (not past tense), nudge it to act.
+      // IMPORTANT: "created" / "completed" / "installed" are PAST tense = task done, don't nudge.
+      const planningWords = /\b(let me|i need to|i'll|i will|now i|next i|let's|going to|should|set up)\b/i;
+      const pastTenseCompletion = /\b(created|completed|installed|finished|done|ready|set up successfully|built successfully)\b/i;
+      const isStillPlanning = planningWords.test(responseText) && !pastTenseCompletion.test(responseText)
+        && !isCompletion && totalSteps < 40 && retryCount < 4;
       const hasToolHistory = SESSION.messages.some(m => m.tool_calls?.length > 0);
 
       if (isStillPlanning && hasToolHistory) {
         // Model was working on a multi-step task but stopped mid-plan
         SESSION.messages.pop(); // remove the thinking-only response
         retryCount++;
-        // Track thinking-without-acting occurrences
         if (!SESSION._thinkingWithoutActing) SESSION._thinkingWithoutActing = 0;
         SESSION._thinkingWithoutActing++;
         let thinkNudge;
