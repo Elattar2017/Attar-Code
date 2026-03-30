@@ -2362,6 +2362,14 @@ print(json.dumps({"sheet": ws.title, "headers": headers, "rows": rows[:200], "to
       const fileDir = path.resolve(path.dirname(fp));
       const installDir = path.resolve(__dirname);
 
+      // Block file creation during plan mode design phase — user must approve first
+      if (SESSION.planMode && SESSION.plan?.status !== "executing" && SESSION.plan?.status !== "verifying") {
+        const isProjectFile = !fp.includes('.attar-code') && !fp.includes('todo');
+        if (isProjectFile) {
+          return `⚠ PLAN MODE: You are still in the design phase. Do NOT create project files yet.\nFinish planning with todo_write, then STOP and wait for user approval.\nThe user will review your plan and approve before implementation starts.`;
+        }
+      }
+
       // Redirect .pdf/.docx/.xlsx/.pptx to proper document creation tools
       const docExt = path.extname(fp).toLowerCase();
       if (['.pdf', '.docx', '.xlsx', '.pptx'].includes(docExt)) {
@@ -7888,6 +7896,38 @@ async function chat(userMessage) {
             const nextPhase = phaseOrder[nextPhaseIdx];
             const nextPhaseTasks = SESSION.todoList.filter(t => t.phase === nextPhase);
             if (nextPhaseTasks.some(t => t.status !== "done")) {
+              // ── APPROVAL GATE: pause before "implement" phase ──
+              // After design is done, show the plan and ask user to approve before coding starts.
+              if (phaseName === "design" && nextPhase === "implement" && !CONFIG.autoApprove) {
+                SESSION.plan.status = "awaiting_approval";
+                savePlan(SESSION.plan);
+                console.log(co(C.bCyan, `\n  📋 Phase "design" complete — plan ready for review\n`));
+                // Show todo summary
+                const implTasks = SESSION.todoList.filter(t => t.phase === "implement");
+                const verifyTasks = SESSION.todoList.filter(t => t.phase === "verify");
+                console.log(co(C.bold, "  Implementation Plan:"));
+                for (const t of implTasks) {
+                  console.log(co(C.dim, `    ${t.status === "done" ? "✓" : "○"} ${t.text}`));
+                }
+                if (verifyTasks.length > 0) {
+                  console.log(co(C.bold, "\n  Verification Steps:"));
+                  for (const t of verifyTasks) {
+                    console.log(co(C.dim, `    ${t.status === "done" ? "✓" : "○"} ${t.text}`));
+                  }
+                }
+                console.log();
+                stopSpinner();
+                console.log(co(C.bYellow, "  ⚠ Start implementation? [Y/n/edit] "));
+                const approval = await new Promise(r => { pendingApproval = r; });
+                if (approval === false) {
+                  console.log(co(C.dim, "\n  Plan paused. Use /plan status to see tasks, /plan off to cancel.\n"));
+                  return;
+                }
+                // User approved (or typed 'y'/Enter) — continue to implement
+                console.log(co(C.bGreen, "  ✓ Approved — starting implementation\n"));
+                startSpinner("implementing");
+              }
+
               // Transition to next phase
               SESSION.plan.status = nextPhase === "verify" ? "verifying" : "executing";
               savePlan(SESSION.plan);
@@ -8479,21 +8519,28 @@ async function handleCommand(input) {
 
       await chat(`GOAL: ${rest}
 
-Create a plan with these phases. Use todo_write for EVERY step:
+You are in PLAN MODE. Create a plan with these phases using todo_write for EVERY step.
 
-1. UNDERSTAND: What do I need to read/explore first?
-   Example: todo_write("[understand] Read package.json to check dependencies")
+PHASE 1 - UNDERSTAND: Read/explore the project.
+  todo_write("[understand] Read package.json")
+  Then mark each done with todo_done as you complete them.
 
-2. DESIGN: What files/changes are needed?
-   Example: todo_write("[design] Plan the API routes structure")
+PHASE 2 - DESIGN: Plan what files and changes are needed.
+  todo_write("[design] Plan routes structure")
+  Call check_environment with the right technology parameter.
 
-3. IMPLEMENT: What are the exact implementation steps?
-   Example: todo_write("[implement] Create src/api.js with Express routes")
+PHASE 3 - IMPLEMENT: List exact implementation steps.
+  todo_write("[implement] Create src/routes.js with Express endpoints")
 
-4. VERIFY: How to test this works?
-   Example: todo_write("[verify] Run npm test to verify all tests pass")
+PHASE 4 - VERIFY: List verification steps.
+  todo_write("[verify] Run build_and_test and test all endpoints")
 
-Use the [phase] prefix in each todo_write call. Do NOT implement anything yet — just plan.`);
+CRITICAL RULES:
+- Use [phase] prefix in EVERY todo_write call
+- Complete UNDERSTAND and DESIGN phases first
+- After DESIGN phase: STOP and wait for user approval before implementing
+- Do NOT create any project files during planning — only todo_write and exploration tools
+- Do NOT skip to implementation — the user must approve the plan first`);
       break;
     }
 
