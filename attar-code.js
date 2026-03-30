@@ -7718,22 +7718,42 @@ async function chat(userMessage) {
 
       debugLog(`Sending: ${estimateTokens(sysPrompt)} sys + ${compressedMessages.length} msgs + ${selectedTools.length} tools`);
 
+      // ── Model-specific sampling profiles ──
+      // Each model family has optimal params. User overrides (e.g., /temp 0.5) take precedence.
+      const _modelProfiles = {
+        nemotron: { temperature: 1.0, top_k: 40, top_p: 0.95, repeat_penalty: 1.1, repeat_last_n: 256, presence_penalty: 0.0, frequency_penalty: 0.0, num_predict: 8192, preferredCtx: 131072 },
+        qwen:     { temperature: 0.15, top_k: 20, top_p: 0.8, repeat_penalty: 1.3, repeat_last_n: 128, presence_penalty: 1.5, frequency_penalty: 0.0, num_predict: 4096, preferredCtx: 40960 },
+        glm:      { temperature: 0.15, top_k: 20, top_p: 0.8, repeat_penalty: 1.3, repeat_last_n: 128, presence_penalty: 1.5, frequency_penalty: 0.0, num_predict: 4096, preferredCtx: 40960 },
+        deepseek: { temperature: 0.6, top_k: 40, top_p: 0.95, repeat_penalty: 1.1, repeat_last_n: 256, presence_penalty: 0.0, frequency_penalty: 0.0, num_predict: 8192, preferredCtx: 65536 },
+        _default: { temperature: 0.7, top_k: 40, top_p: 0.9, repeat_penalty: 1.2, repeat_last_n: 128, presence_penalty: 0.0, frequency_penalty: 0.0, num_predict: 4096, preferredCtx: 40960 },
+      };
+      const _mn = (CONFIG.model || "").toLowerCase();
+      const _mp = _mn.includes("nemotron") ? _modelProfiles.nemotron
+        : _mn.includes("qwen") ? _modelProfiles.qwen
+        : _mn.includes("glm") ? _modelProfiles.glm
+        : _mn.includes("deepseek") ? _modelProfiles.deepseek
+        : _modelProfiles._default;
+
+      // User-set temperature overrides profile; retry logic bumps temperature up
+      const effectiveTemp = retryCount > 2
+        ? Math.min((CONFIG._userSetTemp || _mp.temperature) + (retryCount * 0.05), _mp.temperature + 0.3)
+        : (CONFIG._userSetTemp || _mp.temperature);
+      const effectiveCtx = CONFIG.numCtx !== 40960 ? CONFIG.numCtx : _mp.preferredCtx;
+
       const reqBody = {
         model:    CONFIG.model,
         messages: [{ role:"system", content: sysPrompt }, ...compressedMessages],
         ...(selectedTools.length > 0 ? { tools: selectedTools } : {}),
         options:  {
-          temperature: retryCount > 2
-            ? Math.min(CONFIG.temperature + (retryCount * 0.05), 0.5)
-            : CONFIG.temperature,
-          num_ctx: retryCount > 3 ? CONFIG.numCtx * 2 : CONFIG.numCtx,
-          repeat_penalty: 1.3,       // penalize repeated tokens (1.0 = off, 1.3 = strong)
-          repeat_last_n: 128,        // look back 128 tokens for repetition
-          presence_penalty: 1.5,     // Qwen official: flat penalty on seen tokens
-          frequency_penalty: 0.0,    // don't stack with presence_penalty
-          top_k: 20,                 // Qwen official sampling
-          top_p: 0.8,                // Qwen official sampling
-          num_predict: 4096,         // hard cap on output tokens per response
+          temperature:       effectiveTemp,
+          num_ctx:           retryCount > 3 ? effectiveCtx * 2 : effectiveCtx,
+          repeat_penalty:    _mp.repeat_penalty,
+          repeat_last_n:     _mp.repeat_last_n,
+          presence_penalty:  _mp.presence_penalty,
+          frequency_penalty: _mp.frequency_penalty,
+          top_k:             _mp.top_k,
+          top_p:             _mp.top_p,
+          num_predict:       _mp.num_predict,
         },
         stream: true,
       };
@@ -8671,8 +8691,10 @@ async function handleCommand(input) {
     }
 
     case "/temp":
-      if (!rest || isNaN(parseFloat(rest))) { console.log(co(C.dim, "\n  Temp: ") + CONFIG.temperature + "\n"); break; }
-      CONFIG.temperature = parseFloat(rest); saveConfig();
+      if (!rest || isNaN(parseFloat(rest))) { console.log(co(C.dim, "\n  Temp: ") + (CONFIG._userSetTemp || CONFIG.temperature) + " (model default varies by family)\n"); break; }
+      CONFIG.temperature = parseFloat(rest);
+      CONFIG._userSetTemp = parseFloat(rest); // Track explicit user override
+      saveConfig();
       console.log(co(C.bGreen, "\n  ✓ ") + "Temperature: " + CONFIG.temperature + "\n"); break;
 
     case "/ctx":

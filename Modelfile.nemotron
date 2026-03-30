@@ -1,0 +1,27 @@
+FROM nemotron-cascade-2:latest
+
+# ─── Context ───
+# 131K tokens (half of max 262K — leaves VRAM for KV cache)
+PARAMETER num_ctx 131072
+
+# ─── Sampling (NVIDIA official recommendations) ───
+PARAMETER temperature 1
+PARAMETER top_p 0.95
+
+# ─── Additional tuning for CLI tool-calling use case ───
+PARAMETER top_k 40
+PARAMETER repeat_penalty 1.1
+PARAMETER repeat_last_n 256
+
+# ─── GPU offloading ───
+# Offload ALL layers to GPU. Ollama caps at actual layer count.
+# RTX 5090 24GB fits the Q4_K_M model (~14-16GB for MOE sparse layers)
+PARAMETER num_gpu 999
+
+# ─── Output limit ───
+# 8K tokens per response (double the old 4K)
+PARAMETER num_predict 8192
+
+# ─── Template ───
+# Use Ollama's built-in nemotron renderer/parser for ChatML + tool handling
+TEMPLATE {{ .Prompt }}
