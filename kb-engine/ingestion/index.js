@@ -260,45 +260,62 @@ class IngestPipeline {
       c.metadata.section = pathParts[2] || '';
     }
 
-    // 6.6 Generate section/chapter summaries ──────────────────────────────────
-    // Group by CHAPTER (first 2 path parts: "Book > Chapter"), not by exact section_path.
-    // Exact section_path is too granular (each subsection = 1-2 chunks, never reaches threshold).
+    // 6.6 Generate section AND chapter summaries ────────────────────────────────
+    // Two levels of summaries as planned:
+    //   - Section summary: group by first 3 levels (Book > Chapter > Section), threshold 3+
+    //   - Chapter summary: group by first 2 levels (Book > Chapter), threshold 5+
     const summaryChunks = [];
 
-    // Build chapter groups: "DocTitle > ChapterName" → chunks[]
+    // Helper: generate and store a summary chunk
+    const _addSummary = async (groupKey, chunks, level) => {
+      const name = groupKey.split(' > ').pop() || groupKey;
+      const combined = chunks.map(c => c.content).join('\n\n').slice(0, 8000);
+      const summary = await generateSummary(combined, name, this.ollamaUrl);
+      if (summary) {
+        summaryChunks.push({
+          content: `[${level === 'chapter' ? 'Chapter Summary' : 'Section Summary'}: ${name}]\n\n${summary}`,
+          metadata: {
+            chunk_type: 'summary',
+            summary_level: level,
+            book_id: bookId,
+            doc_title: processed.title,
+            section_path: groupKey,
+            chapter: level === 'chapter' ? name : (groupKey.split(' > ')[1] || ''),
+            section: level === 'section' ? name : '',
+            source: absPath,
+            filename: path.basename(absPath),
+            detail_chunk_count: chunks.length,
+          },
+        });
+        process.stderr.write(`  ${level} summary: ${name} (${chunks.length} chunks)\n`);
+      }
+    };
+
+    // Pass 1: Section summaries (group by first 3 path levels, threshold 3+)
+    const sectionGroups = {};
+    for (const c of enrichedChunks) {
+      const parts = (c.metadata.section_path || '').split(' > ');
+      const groupKey = parts.slice(0, 3).join(' > ') || 'default';
+      if (!sectionGroups[groupKey]) sectionGroups[groupKey] = [];
+      sectionGroups[groupKey].push(c);
+    }
+    for (const [groupKey, chunks] of Object.entries(sectionGroups)) {
+      if (chunks.length >= 3 && groupKey.split(' > ').length >= 3) {
+        await _addSummary(groupKey, chunks, 'section');
+      }
+    }
+
+    // Pass 2: Chapter summaries (group by first 2 path levels, threshold 5+)
     const chapterGroups = {};
     for (const c of enrichedChunks) {
       const parts = (c.metadata.section_path || '').split(' > ');
-      // Group key = first 2 levels (book + chapter), or first level if only 1
       const groupKey = parts.length >= 2 ? `${parts[0]} > ${parts[1]}` : parts[0] || 'default';
       if (!chapterGroups[groupKey]) chapterGroups[groupKey] = [];
       chapterGroups[groupKey].push(c);
     }
-
-    // Generate summary for each chapter group with 3+ chunks
     for (const [groupKey, chunks] of Object.entries(chapterGroups)) {
-      if (chunks.length >= 3) {
-        const chapterName = groupKey.split(' > ').pop() || groupKey;
-        // Combine chunks (limit to 8K chars for model context)
-        const combined = chunks.map(c => c.content).join('\n\n').slice(0, 8000);
-        const summary = await generateSummary(combined, chapterName, this.ollamaUrl);
-        if (summary) {
-          summaryChunks.push({
-            content: `[Summary: ${chapterName}]\n\n${summary}`,
-            metadata: {
-              chunk_type: 'summary',
-              book_id: bookId,
-              doc_title: processed.title,
-              section_path: groupKey,
-              chapter: chapterName,
-              section: '',
-              source: absPath,
-              filename: path.basename(absPath),
-              detail_chunk_count: chunks.length,
-            },
-          });
-          process.stderr.write(`  Summary: ${chapterName} (${chunks.length} chunks → 1 summary)\n`);
-        }
+      if (chunks.length >= 5) {
+        await _addSummary(groupKey, chunks, 'chapter');
       }
     }
 
