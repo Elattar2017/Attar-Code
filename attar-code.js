@@ -1528,6 +1528,15 @@ RULES: Results include relevance score (0-1) and source filename. If no results,
   },
   {
     type: "function", function: {
+      name: "kb_list_books",
+      description: "List all book/document titles in a KB collection. Use when user asks 'what books are in the KB' or 'what's in the python collection'. Returns unique document titles with filenames.",
+      parameters: { type:"object", properties: {
+        collection: { type:"string", description:"Collection name (default: python)" }
+      } }
+    }
+  },
+  {
+    type: "function", function: {
       name: "research",
       description: "Deep research on a topic. Automatically searches the web, fetches top results, and combines everything into a comprehensive answer. Use for complex questions requiring multiple sources.",
       parameters: { type:"object", properties: {
@@ -1836,6 +1845,7 @@ const TOOLS_COMPACT = [
   { type:"function", function:{ name:"web_search", description:"Search the web.", parameters:{ type:"object", properties:{ query:{type:"string",description:"Search query"}, num:{type:"number",description:"Results"} }, required:["query"] }}},
   { type:"function", function:{ name:"web_fetch", description:"Fetch and clean a URL.", parameters:{ type:"object", properties:{ url:{type:"string",description:"URL"} }, required:["url"] }}},
   { type:"function", function:{ name:"kb_search", description:"Search local knowledge base (books, docs).", parameters:{ type:"object", properties:{ query:{type:"string",description:"Query"}, num:{type:"number"} }, required:["query"] }}},
+  { type:"function", function:{ name:"kb_list_books", description:"List book/document titles in a KB collection.", parameters:{ type:"object", properties:{ collection:{type:"string",description:"Collection (default: python)"} } }}},
   { type:"function", function:{ name:"todo_write", description:"Add a task to the todo list.", parameters:{ type:"object", properties:{ text:{type:"string",description:"Task description"} }, required:["text"] }}},
   { type:"function", function:{ name:"todo_done", description:"Mark a task complete.", parameters:{ type:"object", properties:{ id:{type:"number",description:"Task ID"} }, required:["id"] }}},
   { type:"function", function:{ name:"memory_write", description:"Save persistent memory.", parameters:{ type:"object", properties:{ content:{type:"string"}, type:{type:"string"} }, required:["content"] }}},
@@ -3440,6 +3450,24 @@ print(json.dumps({"sheet": ws.title, "headers": headers, "rows": rows[:200], "to
         return `📚 Knowledge Base Contents (${docs.length} documents):\n\n${lines.join("\n")}`;
       } catch (e) {
         return `KB list error: Cannot connect to search-proxy. Start it with: node search-proxy.js`;
+      }
+    }
+
+    case "kb_list_books": {
+      const collection = args.collection || "python";
+      printToolRunning("kb_list_books", collection);
+      try {
+        const r = await fetch(`${CONFIG.proxyUrl}/kb/books?collection=${encodeURIComponent(collection)}`, { signal: AbortSignal.timeout(15000) });
+        const data = await r.json();
+        if (data.error) { printToolDone("Error"); return `Error: ${data.error}`; }
+        const books = data.books || [];
+        if (books.length === 0) { printToolDone("empty"); return `No books found in "${collection}" collection.`; }
+        const lines = books.map((b, i) => `${i+1}. "${b.title}" (${b.filename})`);
+        printToolDone(`${books.length} books`);
+        return `Books in "${collection}" collection:\n\n${lines.join("\n")}`;
+      } catch (e) {
+        printToolDone("Error");
+        return `Cannot list books: ${e.message}`;
       }
     }
 
@@ -8255,7 +8283,8 @@ async function chat(userMessage) {
       // Update real work tracker for the hard wall check
       const _realWorkTools = new Set(["write_file","edit_file","run_bash","build_and_test",
         "start_server","test_endpoint","setup_environment","generate_tests",
-        "create_pdf","create_docx","create_excel","create_pptx"]);
+        "create_pdf","create_docx","create_excel","create_pptx",
+        "kb_search","kb_add","web_search","web_fetch","read_file","grep_search"]);
       // In plan mode, planning tools also count as progress
       const _planWorkTools = new Set(["todo_write","todo_done","check_environment",
         "detect_build_system","project_structure","read_file"]);

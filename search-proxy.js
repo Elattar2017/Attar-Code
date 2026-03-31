@@ -760,6 +760,48 @@ app.get("/kb/collections", async (req, res) => {
   }
 });
 
+// ─── KB list books/documents per collection ─────────────────────────────────
+app.get("/kb/books", async (req, res) => {
+  if (!kbReady || !kbEngine) {
+    return res.status(503).json({ error: "KB engine not available" });
+  }
+  const collection = req.query.collection || "python";
+  try {
+    const client = kbEngine.store._client;
+    // Scroll through points and collect unique doc_titles
+    const titles = new Set();
+    let offset = null;
+    do {
+      const response = await client.scroll(collection, {
+        limit: 100,
+        offset,
+        with_payload: ["doc_title", "filename", "chunk_type", "book_id"],
+        with_vector: false,
+      });
+      for (const p of (response.points || [])) {
+        const title = p.payload?.doc_title;
+        if (title) titles.add(JSON.stringify({
+          title,
+          filename: p.payload?.filename || '',
+          book_id: p.payload?.book_id || '',
+        }));
+      }
+      offset = response.next_page_offset;
+    } while (offset);
+
+    const books = [...titles].map(t => JSON.parse(t));
+    // Deduplicate by title
+    const unique = [];
+    const seen = new Set();
+    for (const b of books) {
+      if (!seen.has(b.title)) { seen.add(b.title); unique.push(b); }
+    }
+    res.json({ collection, books: unique, count: unique.length });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ─── KB status ───────────────────────────────────────────────────────────────
 app.get("/kb/status", async (req, res) => {
   if (!kbReady || !kbEngine) {
