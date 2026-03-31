@@ -7380,6 +7380,7 @@ function selectToolsForContext(userMessage, messages) {
     selected.add("kb_search");
     selected.add("kb_add");
     selected.add("kb_list");
+    selected.add("kb_list_books");
   }
   // Also always include kb_search if search-proxy is running and KB has data
   // This ensures the model can find ingested books/docs even without explicit "kb" mention
@@ -7494,7 +7495,7 @@ function selectToolsForContext(userMessage, messages) {
       todo_write: 60, todo_done: 58, todo_list: 55,
       research: 50, deep_search: 48, search_all: 45,
       check_environment: 77, setup_environment: 76, generate_tests: 74,
-      kb_search: 72, kb_add: 40, kb_list: 38, github_search: 36,
+      kb_search: 72, kb_list_books: 71, kb_add: 40, kb_list: 38, github_search: 36,
       memory_write: 25, memory_read: 23,
       create_pdf: 20, create_docx: 18, create_excel: 16, create_pptx: 14, create_chart: 12,
       present_file: 10, session_search: 8, recent_sessions: 6, use_skill: 5,
