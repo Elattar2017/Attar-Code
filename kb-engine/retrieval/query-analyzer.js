@@ -139,16 +139,20 @@ const STRUCTURAL_PATTERNS = [
 
 // Scope patterns — user wants a COMPLETE section/chapter, not just top-5 results
 const SCOPE_PATTERNS = [
-  // "explain chapter 3" / "summarize chapter 5"
-  { re: /\b(?:explain|summarize|describe|cover|show|give me|tell me about)\s+(?:the\s+)?(?:whole\s+|entire\s+|full\s+)?(?:chapter|ch\.?)\s+(\d+)/i, extract: (m) => `Chapter ${m[1]}` },
-  // "explain section 3.2" / "describe 3.2.1"
-  { re: /\b(?:explain|summarize|describe|cover|show)\s+(?:section\s+)?(\d+\.\d+(?:\.\d+)?)/i, extract: (m) => m[1] },
+  // "explain chapter 3" / "summarize chapter 5" / "summary for chapter 1" / "chapter 3 summary"
+  { re: /\b(?:explain|summarize|describe|cover|show|give me|tell me about|summary\s+(?:for|of))\s+(?:the\s+)?(?:whole\s+|entire\s+|full\s+)?(?:chapter|ch\.?)\s+(\d+)/i, extract: (m) => `Chapter ${m[1]}` },
+  // "chapter 3 summary" / "chapter 5 content" / "whats in chapter 3"
+  { re: /\b(?:chapter|ch\.?)\s+(\d+)\s+(?:summary|content|details?|overview)/i, extract: (m) => `Chapter ${m[1]}` },
+  // "what's in chapter 3" / "what does chapter 5 cover"
+  { re: /\bwhat(?:'s| is| does)\s+(?:in\s+)?(?:chapter|ch\.?)\s+(\d+)/i, extract: (m) => `Chapter ${m[1]}` },
+  // "explain section 3.2" / "describe 3.2.1" / "summary for section 3.2"
+  { re: /\b(?:explain|summarize|describe|cover|show|summary\s+(?:for|of))\s+(?:section\s+)?(\d+\.\d+(?:\.\d+)?)/i, extract: (m) => m[1] },
   // "explain the closures section" / "full section on decorators"
-  { re: /\b(?:explain|summarize|full|complete|entire|whole|all of)\s+(?:the\s+)?(.{3,40}?)\s+(?:section|chapter|part)\b/i, extract: (m) => m[1].trim() },
+  { re: /\b(?:explain|summarize|full|complete|entire|whole|all of|summary\s+(?:for|of))\s+(?:the\s+)?(.{3,40}?)\s+(?:section|chapter|part)\b/i, extract: (m) => m[1].trim() },
   // "complete chapter 3" / "whole section 3.2"
   { re: /\b(?:whole|complete|entire|full)\s+(?:chapter|section|part)\s+(.{1,30})/i, extract: (m) => m[1].trim() },
   // "explain chapter 3 from Python Programming"
-  { re: /\b(?:explain|summarize|describe)\s+(?:chapter|section)\s+(\d+(?:\.\d+)?)\s+(?:from|in|of)\s+(.{3,60})/i, extract: (m) => m[1], extractBook: (m) => m[2].trim() },
+  { re: /\b(?:explain|summarize|describe|summary\s+(?:for|of))\s+(?:chapter|section)\s+(\d+(?:\.\d+)?)\s+(?:from|in|of)\s+(.{3,60})/i, extract: (m) => m[1], extractBook: (m) => m[2].trim() },
 ];
 
 // Code example patterns — user wants code snippets across all books for a topic
