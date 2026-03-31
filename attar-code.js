@@ -7794,15 +7794,7 @@ async function chat(userMessage) {
         : (CONFIG._userSetTemp || _mp.temperature);
       const effectiveCtx = CONFIG.numCtx !== 40960 ? CONFIG.numCtx : _mp.preferredCtx;
 
-      // Nemotron thinking mode control:
-      // - Plan mode: let it think (no prefix) → better reasoning for plans
-      // - Normal mode: force instruct mode (prepend <think></think>) → fast tool calling
       let ollMessages = [{ role:"system", content: sysPrompt }, ...compressedMessages];
-      const isNemotronModel = _mn.includes("nemotron");
-      if (isNemotronModel && !SESSION.planMode) {
-        // Instruct mode: add partial assistant message with empty think block
-        ollMessages.push({ role: "assistant", content: "<think>\n</think>\n" });
-      }
 
       const reqBody = {
         model:    CONFIG.model,
@@ -7848,7 +7840,7 @@ async function chat(userMessage) {
 
       let streamStartTime = Date.now();
       // Nemotron in plan mode needs more thinking time (complex reasoning)
-      const THINKING_TIMEOUT = (isNemotronModel && SESSION.planMode) ? 300000 : 120000; // 5min plan, 2min normal
+      const THINKING_TIMEOUT = (_mn.includes("nemotron") && SESSION.planMode) ? 300000 : 120000; // 5min plan, 2min normal
       let hasProducedContent = false;
 
       while (true) {
@@ -8349,17 +8341,24 @@ async function chat(userMessage) {
     SESSION.messages.push(...toolResults);
 
     // ── Dynamic skill injection from tool results ──
-    const toolResultText = toolResults.map(r => r.content || "").join(" ");
-    const newSkills = matchSkills(toolResultText);
-    for (const skill of newSkills) {
-      if (!SESSION._injectedSkills.has(skill.name)) {
-        // Inject as a system-level context for next model call
-        SESSION.messages.push({
-          role: "user",
-          content: `[SKILL ACTIVATED: ${skill.name}] The following expert knowledge has been loaded to help you:\n${skill.content.slice(0, 2000)}`
-        });
-        SESSION._injectedSkills.add(skill.name);
-        console.log(co(C.dim, `  📚 Skill activated: ${skill.name}`));
+    // NOTE: Only inject skills from ERROR tool results (build failures, crash logs)
+    // NOT from web pages, file reads, or search results — those contain random
+    // words that false-trigger skills (web page HTML has "page","dom" → frontend skill)
+    const errorResults = toolResults.filter(r =>
+      r.content && (r.content.includes("FAIL") || r.content.includes("Error") || r.content.includes("STDERR"))
+    );
+    if (errorResults.length > 0) {
+      const errorText = errorResults.map(r => r.content || "").join(" ");
+      const newSkills = matchSkills(errorText);
+      for (const skill of newSkills) {
+        if (!SESSION._injectedSkills.has(skill.name)) {
+          SESSION.messages.push({
+            role: "user",
+            content: `[SKILL ACTIVATED: ${skill.name}] The following expert knowledge has been loaded to help you:\n${skill.content.slice(0, 2000)}`
+          });
+          SESSION._injectedSkills.add(skill.name);
+          console.log(co(C.dim, `  📚 Skill activated: ${skill.name}`));
+        }
       }
     }
 
