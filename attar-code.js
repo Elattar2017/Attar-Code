@@ -7775,7 +7775,7 @@ async function chat(userMessage) {
       // ── Model-specific sampling profiles ──
       // Each model family has optimal params. User overrides (e.g., /temp 0.5) take precedence.
       const _modelProfiles = {
-        nemotron: { temperature: 1.0, top_k: 40, top_p: 0.95, repeat_penalty: 1.1, repeat_last_n: 256, presence_penalty: 0.0, frequency_penalty: 0.0, num_predict: 8192, preferredCtx: 32768 },
+        nemotron: { temperature: 1.0, top_k: 40, top_p: 0.95, repeat_penalty: 1.3, repeat_last_n: 256, presence_penalty: 0.0, frequency_penalty: 0.0, num_predict: 8192, preferredCtx: 32768 },
         qwen:     { temperature: 0.15, top_k: 20, top_p: 0.8, repeat_penalty: 1.3, repeat_last_n: 128, presence_penalty: 1.5, frequency_penalty: 0.0, num_predict: 4096, preferredCtx: 40960 },
         glm:      { temperature: 0.15, top_k: 20, top_p: 0.8, repeat_penalty: 1.3, repeat_last_n: 128, presence_penalty: 1.5, frequency_penalty: 0.0, num_predict: 4096, preferredCtx: 40960 },
         deepseek: { temperature: 0.6, top_k: 40, top_p: 0.95, repeat_penalty: 1.1, repeat_last_n: 256, presence_penalty: 0.0, frequency_penalty: 0.0, num_predict: 8192, preferredCtx: 65536 },

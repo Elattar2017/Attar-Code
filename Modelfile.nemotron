@@ -10,7 +10,7 @@ PARAMETER top_p 0.95
 
 # ─── Additional tuning for CLI tool-calling use case ───
 PARAMETER top_k 40
-PARAMETER repeat_penalty 1.1
+PARAMETER repeat_penalty 1.3
 PARAMETER repeat_last_n 256
 
 # ─── GPU offloading ───
