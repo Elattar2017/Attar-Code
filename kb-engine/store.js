@@ -119,6 +119,74 @@ class ChunkStore {
     return ids;
   }
 
+  // ─── scrollByFilter (no vector search — payload filter + pagination) ──────
+
+  /**
+   * Scroll through ALL points matching a payload filter.
+   * Used for scope queries ("explain chapter 3") where we need ALL chunks
+   * in a section, not just top-N by score.
+   *
+   * @param {string} collection
+   * @param {Array<{ key: string, match: object }>} filter  Qdrant filter conditions
+   * @param {object} [opts]
+   * @param {number} [opts.limit=200]  Max points to return
+   * @param {string} [opts.sortBy]     Payload field to sort by (e.g., "chunk_index")
+   * @returns {Promise<Array<{ id: string, content: string, metadata: object }>>}
+   */
+  async scrollByFilter(collection, filter, opts = {}) {
+    const maxPoints = opts.limit || 200;
+    const results = [];
+    let nextOffset = null;
+
+    // Build Qdrant filter
+    const qdrantFilter = {
+      must: filter.map(f => {
+        if (f.match?.text) {
+          // Substring match on text field (for section_path CONTAINS)
+          return { key: f.key, match: { text: f.match.text } };
+        }
+        if (f.match?.value) {
+          // Exact match (for chunk_type, doc_title)
+          return { key: f.key, match: { value: f.match.value } };
+        }
+        return { key: f.key, match: f.match };
+      }),
+    };
+
+    do {
+      try {
+        const batchSize = Math.min(maxPoints - results.length, 50);
+        const response = await this._client.scroll(collection, {
+          filter: qdrantFilter,
+          limit: batchSize,
+          offset: nextOffset,
+          with_payload: true,
+          with_vector: false,
+        });
+
+        for (const point of (response.points || [])) {
+          results.push({
+            id: point.id,
+            content: point.payload?.content || '',
+            metadata: point.payload || {},
+          });
+        }
+
+        nextOffset = response.next_page_offset;
+      } catch (err) {
+        // Collection might not exist or filter is invalid — stop silently
+        break;
+      }
+    } while (nextOffset && results.length < maxPoints);
+
+    // Sort by chunk_index if requested
+    if (opts.sortBy) {
+      results.sort((a, b) => (a.metadata[opts.sortBy] || 0) - (b.metadata[opts.sortBy] || 0));
+    }
+
+    return results;
+  }
+
   // ─── search (dense) ───────────────────────────────────────────────────────
 
   /**

@@ -20,7 +20,13 @@ const PAYLOAD_INDEXES = [
   { field_name: "source",    field_schema: "keyword" },
   { field_name: "chunk_type", field_schema: "keyword" },
   { field_name: "chapter",    field_schema: "keyword" },
+  { field_name: "section",    field_schema: "keyword" },
+  { field_name: "book_id",    field_schema: "keyword" },
   { field_name: "heading_level", field_schema: { type: "integer" } },
+  { field_name: "chunk_index",   field_schema: { type: "integer" } },
+  { field_name: "has_code_block", field_schema: { type: "bool" } },
+  // Full-text index on section_path for substring matching (scope queries)
+  { field_name: "section_path", field_schema: { type: "text", tokenizer: "word", min_token_len: 2, max_token_len: 30 } },
 ];
 
 // ─── CollectionManager ────────────────────────────────────────────────────────

@@ -21,7 +21,7 @@ const { detectFormat }      = require('./format-detector');
 const { routeToCollection } = require('./collection-router');
 const { Chunker }           = require('./chunker');
 const { extractMetadata }   = require('./metadata');
-const { enrichChunkFast }   = require('./enrichment');
+const { enrichChunkFast, generateSummary }   = require('./enrichment');
 const { IngestionTracker }  = require('./progress');
 const { ChunkStore }        = require('../store');
 const { extractTocFromBookmarks, extractTocFromHeadings, mergeTocSources } = require('./toc-extractor');
@@ -248,13 +248,103 @@ class IngestPipeline {
     }
     if (useDeep) process.stderr.write('\n'); // clear progress line
 
+    // 6.5 Add chunk_type: "detail" and book_id to all enriched chunks
+    const crypto = require('crypto');
+    const bookId = crypto.createHash('sha256').update(absPath).digest('hex').slice(0, 12);
+    for (const c of enrichedChunks) {
+      c.metadata.chunk_type = 'detail';
+      c.metadata.book_id = bookId;
+      // Extract chapter and section from section_path
+      const pathParts = (c.metadata.section_path || '').split(' > ');
+      c.metadata.chapter = pathParts[1] || '';
+      c.metadata.section = pathParts[2] || '';
+    }
+
+    // 6.6 Generate section/chapter summaries ──────────────────────────────────
+    // Group detail chunks by section, generate LLM summary for sections with 3+ chunks
+    const summaryChunks = [];
+    const sectionGroups = {};
+    for (const c of enrichedChunks) {
+      const section = c.metadata.section_path || '';
+      if (!sectionGroups[section]) sectionGroups[section] = [];
+      sectionGroups[section].push(c);
+    }
+
+    for (const [sectionPath, chunks] of Object.entries(sectionGroups)) {
+      if (chunks.length >= 3) {
+        const combined = chunks.map(c => c.content).join('\n\n');
+        const sectionName = sectionPath.split(' > ').pop() || sectionPath;
+        const summary = await generateSummary(combined, sectionName, this.ollamaUrl);
+        if (summary) {
+          summaryChunks.push({
+            content: `[Summary] ${sectionName}\n\n${summary}`,
+            metadata: {
+              chunk_type: 'summary',
+              book_id: bookId,
+              doc_title: processed.title,
+              section_path: sectionPath,
+              chapter: chunks[0].metadata.chapter,
+              section: chunks[0].metadata.section,
+              source: absPath,
+              filename: path.basename(absPath),
+              detail_chunk_count: chunks.length,
+            },
+          });
+          process.stderr.write(`  Summary: ${sectionName} (${chunks.length} chunks → 1 summary)\n`);
+        }
+      }
+    }
+
+    // Chapter-level summaries (group by chapter, generate if 5+ detail chunks)
+    const chapterGroups = {};
+    for (const c of enrichedChunks) {
+      const ch = c.metadata.chapter || '';
+      if (ch) {
+        if (!chapterGroups[ch]) chapterGroups[ch] = [];
+        chapterGroups[ch].push(c);
+      }
+    }
+
+    for (const [chapterName, chunks] of Object.entries(chapterGroups)) {
+      if (chunks.length >= 5) {
+        // Use first 6000 chars to stay within model context
+        const combined = chunks.map(c => c.content).join('\n\n').slice(0, 6000);
+        const summary = await generateSummary(combined, chapterName, this.ollamaUrl);
+        if (summary) {
+          summaryChunks.push({
+            content: `[Chapter Summary] ${chapterName}\n\n${summary}`,
+            metadata: {
+              chunk_type: 'summary',
+              book_id: bookId,
+              doc_title: processed.title,
+              section_path: `${processed.title} > ${chapterName}`,
+              chapter: chapterName,
+              section: '',
+              source: absPath,
+              filename: path.basename(absPath),
+              detail_chunk_count: chunks.length,
+            },
+          });
+          process.stderr.write(`  Chapter summary: ${chapterName} (${chunks.length} chunks)\n`);
+        }
+      }
+    }
+
     // 7. Store ─────────────────────────────────────────────────────────────────
     const ids = await this.store.addChunks(collection, enrichedChunks);
 
     // 7.5 Store structural chunks (if any)
     let structuralIds = [];
     if (structuralChunks.length > 0) {
+      // Add book_id to structural chunks too
+      for (const sc of structuralChunks) { sc.metadata.book_id = bookId; }
       structuralIds = await this.store.addChunks(collection, structuralChunks);
+    }
+
+    // 7.6 Store summary chunks (if any)
+    let summaryIds = [];
+    if (summaryChunks.length > 0) {
+      summaryIds = await this.store.addChunks(collection, summaryChunks);
     }
 
     this.tracker.updateProgress(docId, ids.length);
@@ -264,6 +354,7 @@ class IngestPipeline {
       collection,
       chunks_stored: ids.length,
       structural_chunks: structuralIds.length,
+      summary_chunks: summaryIds.length,
       format:        detected.format,
       title:         processed.title,
     };

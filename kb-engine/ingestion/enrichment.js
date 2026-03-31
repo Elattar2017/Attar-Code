@@ -78,4 +78,41 @@ function enrichChunkFast(chunk, docTitle, sectionPath) {
   return prefix ? `[${prefix}]\n\n${chunk}` : chunk;
 }
 
-module.exports = { enrichChunk, enrichChunkFast };
+/**
+ * Generate a 100-200 word summary of a section's content.
+ * Used during ingestion to create summary chunks alongside detail chunks.
+ *
+ * @param {string} combinedText   - All detail chunks concatenated for this section.
+ * @param {string} sectionName    - Section name (e.g., "3.2 Closures").
+ * @param {string} [ollamaUrl]    - Ollama API URL.
+ * @returns {Promise<string|null>} - Summary text, or null on failure.
+ */
+async function generateSummary(combinedText, sectionName, ollamaUrl) {
+  const url = ollamaUrl || config.OLLAMA_URL || 'http://localhost:11434';
+  // Truncate to ~8K chars to avoid overwhelming the model
+  const inputText = combinedText.slice(0, 8000);
+
+  const prompt = `Summarize the following section "${sectionName}" in 100-200 words. Focus on key concepts, main points, code patterns used, and what the reader will learn. Be concise and factual.\n\n---\n\n${inputText}`;
+
+  try {
+    const res = await fetch(`${url}/api/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: config.ENRICHMENT_MODEL || 'glm-4.7-flash:latest',
+        prompt,
+        stream: false,
+        options: { temperature: 0.2, num_predict: 300 },
+      }),
+      signal: AbortSignal.timeout(30000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const summary = (data.response || '').trim();
+    return summary.length > 30 ? summary : null;
+  } catch {
+    return null;
+  }
+}
+
+module.exports = { enrichChunk, enrichChunkFast, generateSummary };

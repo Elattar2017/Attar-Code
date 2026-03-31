@@ -137,6 +137,28 @@ const STRUCTURAL_PATTERNS = [
   /\boutline\b/i,
 ];
 
+// Scope patterns — user wants a COMPLETE section/chapter, not just top-5 results
+const SCOPE_PATTERNS = [
+  // "explain chapter 3" / "summarize chapter 5"
+  { re: /\b(?:explain|summarize|describe|cover|show|give me|tell me about)\s+(?:the\s+)?(?:whole\s+|entire\s+|full\s+)?(?:chapter|ch\.?)\s+(\d+)/i, extract: (m) => `Chapter ${m[1]}` },
+  // "explain section 3.2" / "describe 3.2.1"
+  { re: /\b(?:explain|summarize|describe|cover|show)\s+(?:section\s+)?(\d+\.\d+(?:\.\d+)?)/i, extract: (m) => m[1] },
+  // "explain the closures section" / "full section on decorators"
+  { re: /\b(?:explain|summarize|full|complete|entire|whole|all of)\s+(?:the\s+)?(.{3,40}?)\s+(?:section|chapter|part)\b/i, extract: (m) => m[1].trim() },
+  // "complete chapter 3" / "whole section 3.2"
+  { re: /\b(?:whole|complete|entire|full)\s+(?:chapter|section|part)\s+(.{1,30})/i, extract: (m) => m[1].trim() },
+  // "explain chapter 3 from Python Programming"
+  { re: /\b(?:explain|summarize|describe)\s+(?:chapter|section)\s+(\d+(?:\.\d+)?)\s+(?:from|in|of)\s+(.{3,60})/i, extract: (m) => m[1], extractBook: (m) => m[2].trim() },
+];
+
+// Code example patterns — user wants code snippets across all books for a topic
+const CODE_EXAMPLE_PATTERNS = [
+  /\b(?:show|give|list|find)\s+(?:me\s+)?(?:all\s+)?code\s+(?:examples?|samples?|snippets?)/i,
+  /\bcode\s+(?:examples?|samples?)\s+(?:for|about|related|on)\b/i,
+  /\ball\s+(?:examples?|code)\s+(?:about|for|related|on)\b/i,
+  /\b(?:examples?|snippets?)\s+(?:of|for|about)\s+.+\s+(?:from\s+all|across|in\s+every)\b/i,
+];
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -195,15 +217,36 @@ function analyzeQuery(query, context = {}) {
 
   // Determine query type (checked in order of specificity)
   let type = 'general';
+  let scopeId = null;
+  let scopeBook = null;
 
-  if (ERROR_PATTERNS.some((p) => p.test(query))) {
-    type = 'error';
-  } else if (STRUCTURAL_PATTERNS.some((p) => p.test(query))) {
-    type = 'structural';
-  } else if (CONCEPTUAL_PATTERNS.some((p) => p.test(query))) {
-    type = 'conceptual';
-  } else if (API_PATTERNS.some((p) => p.test(query))) {
-    type = 'api';
+  // Check scope patterns FIRST (most specific — user wants complete section)
+  for (const sp of SCOPE_PATTERNS) {
+    const m = query.match(sp.re);
+    if (m) {
+      type = 'scope';
+      scopeId = sp.extract(m);
+      if (sp.extractBook) scopeBook = sp.extractBook(m);
+      break;
+    }
+  }
+
+  // Check code example patterns
+  if (type === 'general' && CODE_EXAMPLE_PATTERNS.some((p) => p.test(query))) {
+    type = 'code_examples';
+  }
+
+  // Standard type detection (only if not already classified)
+  if (type === 'general') {
+    if (ERROR_PATTERNS.some((p) => p.test(query))) {
+      type = 'error';
+    } else if (STRUCTURAL_PATTERNS.some((p) => p.test(query))) {
+      type = 'structural';
+    } else if (CONCEPTUAL_PATTERNS.some((p) => p.test(query))) {
+      type = 'conceptual';
+    } else if (API_PATTERNS.some((p) => p.test(query))) {
+      type = 'api';
+    }
   }
 
   // Single unified vector — always use 'dense'
@@ -221,8 +264,8 @@ function analyzeQuery(query, context = {}) {
     return { type, preferVector, collections, tech };
   }
 
-  if (type === 'structural') {
-    // Structural queries need to search all content collections
+  if (type === 'scope' || type === 'code_examples' || type === 'structural') {
+    // Scope, code_examples, and structural queries search all content collections
     // because we don't know which collection the document was ingested into
     const allContent = ['python', 'nodejs', 'go', 'rust', 'java', 'csharp',
       'php', 'ruby', 'swift', 'css_html', 'devops', 'databases', 'general', 'personal'];
@@ -251,7 +294,7 @@ function analyzeQuery(query, context = {}) {
     }
   }
 
-  return { type, preferVector, collections, tech };
+  return { type, preferVector, collections, tech, scopeId, scopeBook };
 }
 
 // ---------------------------------------------------------------------------
