@@ -481,15 +481,24 @@ app.post("/kb/ingest", async (req, res) => {
   if (!filepath) return res.status(400).json({ error: "filepath required" });
   if (!fs.existsSync(filepath)) return res.status(404).json({ error: `Not found: ${filepath}` });
 
+  // Keep-alive for long deep enrichment operations
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Transfer-Encoding', 'chunked');
+  const keepAlive = setInterval(() => {
+    try { res.write(' '); } catch (_) { clearInterval(keepAlive); }
+  }, 30000);
+
   try {
     const options = {};
     if (collection) options.collection = collection;
     if (language)   options.language = language;
     if (deep)       options.deep = true;
     const result = await kbEngine.ingestion.ingestFile(filepath, options);
-    res.json({ ...result, engine: "qdrant", deep: !!deep });
+    clearInterval(keepAlive);
+    res.end(JSON.stringify({ ...result, engine: "qdrant", deep: !!deep }));
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    clearInterval(keepAlive);
+    res.end(JSON.stringify({ error: e.message }));
   }
 });
 
@@ -503,6 +512,14 @@ app.post("/kb/ingest-dir", async (req, res) => {
   if (!dirpath) return res.status(400).json({ error: "dirpath required" });
   if (!fs.existsSync(dirpath)) return res.status(404).json({ error: `Not found: ${dirpath}` });
 
+  // Keep-alive: send periodic newlines to prevent TCP connection reset
+  // during long deep enrichment operations (can take 5-30 minutes)
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Transfer-Encoding', 'chunked');
+  const keepAlive = setInterval(() => {
+    try { res.write(' '); } catch (_) { clearInterval(keepAlive); }
+  }, 30000); // Every 30 seconds
+
   try {
     const options = {};
     if (collection) options.collection = collection;
@@ -511,9 +528,11 @@ app.post("/kb/ingest-dir", async (req, res) => {
     const results = await kbEngine.ingestion.ingestDirectory(dirpath, options);
     const indexed = results.filter(r => !r.error).length;
     const failed  = results.filter(r => r.error).length;
-    res.json({ indexed, failed, engine: "qdrant", details: results });
+    clearInterval(keepAlive);
+    res.end(JSON.stringify({ indexed, failed, engine: "qdrant", details: results }));
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    clearInterval(keepAlive);
+    res.end(JSON.stringify({ error: e.message }));
   }
 });
 

@@ -5485,12 +5485,15 @@ async function proxyPost(endpoint, body, timeoutMs = 60000) {
     // 0 = no timeout (for long-running ingest operations)
     if (timeoutMs > 0) opts.signal = AbortSignal.timeout(timeoutMs);
     const res = await fetch(`${CONFIG.proxyUrl}${endpoint}`, opts);
-    return await res.json();
+    // Handle chunked response (keep-alive spaces from long operations)
+    const text = (await res.text()).trim();
+    try { return JSON.parse(text); }
+    catch { return { error: `Invalid response from ${endpoint}: ${text.slice(0, 200)}` }; }
   } catch (e) {
     if (e.name === 'TimeoutError') {
       return { error: `Request to ${endpoint} timed out after ${Math.round(timeoutMs/1000)}s.` };
     }
-    return { error: `Cannot connect to search-proxy at ${CONFIG.proxyUrl}. Start it with: node search-proxy.js` };
+    return { error: `Cannot connect to search-proxy at ${CONFIG.proxyUrl}. Start it with: node search-proxy.js\n(Detail: ${e.message})` };
   }
 }
 
