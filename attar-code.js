@@ -7887,10 +7887,14 @@ async function chat(userMessage) {
             }
             if (msg.content) {
               hasProducedContent = true;
-              // thinking display disabled — no cleanup needed
+              // Strip thinking tags from Nemotron output (they leak as visible text)
+              let displayContent = msg.content;
+              displayContent = displayContent.replace(/<\/?think>/g, '').replace(/^\s*\n/, '');
+              if (!displayContent.trim()) continue; // Skip empty after stripping
+
               if (!started) { stopSpinner(); printAiStart(); started = true; }
-              renderStreamToken(msg.content);
-              responseText += msg.content;
+              renderStreamToken(displayContent);
+              responseText += displayContent;
 
               // Repetition detection — abort if model is looping
               if (responseText.length > 100) {
@@ -8514,7 +8518,12 @@ function printBanner() {
 
 function printStatusBar() {
   const model    = co(C.bGreen, " ✦ ", CONFIG.model, " ");
-  const temp     = co(C.dim, "  🌡 ", String(CONFIG.temperature));
+  // Show effective temperature (model profile default if user hasn't overridden)
+  const _mn = (CONFIG.model || "").toLowerCase();
+  const _effectiveTemp = CONFIG._userSetTemp || (
+    _mn.includes("nemotron") ? 1.0 : _mn.includes("deepseek") ? 0.6 : CONFIG.temperature
+  );
+  const temp     = co(C.dim, "  🌡 ", String(_effectiveTemp));
   const ctx      = co(C.dim, "  📐 ", String(CONFIG.numCtx));
   const cwd      = co(C.dim, "  📂 ", SESSION.cwd.replace(os.homedir(),"~").slice(0,40));
   const msgs     = co(C.dim, "  💬 ", String(SESSION.messages.length));
