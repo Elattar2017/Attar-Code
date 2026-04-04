@@ -22,9 +22,15 @@ module.exports = {
   // Ollama Embedding Models
   OLLAMA_URL: "http://127.0.0.1:11434",
 
-  // Unified embedding model (Qwen3-Embedding-4B — 2560-dim, 32K context)
-  EMBED_MODEL: "dengcao/Qwen3-Embedding-4B:Q4_K_M",
-  EMBED_DIM: 2560,
+  // LLM model for enrichment + summary generation (must be a working chat model)
+  ENRICHMENT_MODEL: process.env.ENRICHMENT_MODEL || "glm-4.7-flash:latest",
+
+  // Unified embedding model (Qwen3-Embedding-0.6B — 1024-dim, 32K context)
+  // MTEB retrieval: 80.83 (vs 85.05 for 4B — reranker compensates the gap)
+  // Partial GPU offload: num_gpu=10 uses ~3.4GB VRAM, leaves room for any chat model
+  EMBED_MODEL: process.env.EMBED_MODEL || "qwen3-embedding:0.6b",
+  EMBED_DIM: 1024,
+  EMBED_GPU_LAYERS: parseInt(process.env.EMBED_GPU_LAYERS, 10) || 0, // 0=full CPU (default: leaves all VRAM for chat + reranker)
 
   // Asymmetric instruction prefixes (Qwen3-Embedding requires these for queries, NOT for documents)
   EMBED_QUERY_PREFIX: "Instruct: Given a search query, retrieve relevant documentation passages that answer the query\nQuery: ",
@@ -44,6 +50,9 @@ module.exports = {
     "csharp", "php", "ruby", "swift", "css_html", "devops",
     "databases", "general", "personal",
   ],
+
+  // Reranker model (HuggingFace model ID for the Python sidecar)
+  RERANKER_MODEL: process.env.RERANKER_MODEL || "Qwen/Qwen3-Reranker-0.6B",
 
   // Search
   DEFAULT_SEARCH_LIMIT: 20,

@@ -6,7 +6,7 @@ const { spawn } = require("child_process");
 const path = require("path");
 
 const SERVER_SCRIPT = path.join(__dirname, "reranker-server.py");
-const DEFAULT_PORT = 6334;
+const DEFAULT_PORT = 6335;  // 6334 is Qdrant's REST API port
 const STARTUP_TIMEOUT_MS = 30000;
 const HEALTH_TIMEOUT_MS = 2000;
 

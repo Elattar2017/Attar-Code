@@ -65,7 +65,14 @@ class KBEngine {
     await this.qdrantManager.start();
     await this.collectionMgr.ensureAllCollections();
     // Start reranker sidecar if retrieval pipeline available
-    if (this.retrieval) try { await this.retrieval.start(); } catch (_) {}
+    if (this.retrieval) {
+      try {
+        const ok = await this.retrieval.start();
+        console.log(`  Reranker: ${ok ? 'started' : 'failed to start'} (port ${this.retrieval.reranker?._port || '?'})`);
+      } catch (e) {
+        console.log(`  Reranker: not available — ${e.message}`);
+      }
+    }
     const models = await this.embedder.getAvailableModels();
 
     return {

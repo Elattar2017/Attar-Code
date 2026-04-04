@@ -1,10 +1,11 @@
-// kb-engine/embedder.js — UnifiedEmbedder: Qwen3-Embedding-4B (2560-dim, asymmetric prefixes)
+// kb-engine/embedder.js — UnifiedEmbedder: Qwen3-Embedding-0.6B (1024-dim, partial GPU offload)
 "use strict";
 
 const {
   OLLAMA_URL,
   EMBED_MODEL,
   EMBED_DIM,
+  EMBED_GPU_LAYERS,
   EMBED_QUERY_PREFIX,
   EMBED_ERROR_PREFIX,
   EMBED_CODE_PREFIX,
@@ -140,7 +141,7 @@ class UnifiedEmbedder {
     try {
       const result = await postJSON(
         `${OLLAMA_URL}/api/embed`,
-        { model: EMBED_MODEL, input: "ping" },
+        { model: EMBED_MODEL, input: "ping", keep_alive: "5m", options: { num_gpu: EMBED_GPU_LAYERS } },
         10000 // shorter timeout for probing
       );
       this._modelAvailable = Array.isArray(result.embeddings) && result.embeddings.length > 0;
@@ -157,7 +158,14 @@ class UnifiedEmbedder {
    * @returns {Promise<number[][]>} Array of embedding vectors
    */
   async _callEmbed(input) {
-    const body = { model: EMBED_MODEL, input };
+    // Partial GPU offload: EMBED_GPU_LAYERS controls how many layers stay on GPU.
+    // Default 10 layers → ~3.4GB VRAM, leaves room for any chat model (even 19GB GLM).
+    const body = {
+      model: EMBED_MODEL,
+      input,
+      keep_alive: "5m",
+      options: { num_gpu: EMBED_GPU_LAYERS },
+    };
     const result = await postJSON(`${OLLAMA_URL}/api/embed`, body, 60000);
 
     if (!result.embeddings || !Array.isArray(result.embeddings)) {
@@ -238,7 +246,6 @@ class UnifiedEmbedder {
       return vecs.map((v) => resizeVector(v, EMBED_DIM));
     } catch (err) {
       console.error(`[UnifiedEmbedder] embedBatch failed, falling back to sequential: ${err.message}`);
-      // Fallback: embed one-by-one
       const results = [];
       for (const text of texts) {
         try {

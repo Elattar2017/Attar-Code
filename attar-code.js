@@ -12,6 +12,67 @@ const os       = require("os");
 const crypto   = require("crypto");
 const { execSync, spawn } = require("child_process");
 
+// ── Markdown terminal renderer (Claude Code-style output) ──
+// Claude Code uses: bold+italic+underline for H1, bold for H2+, blue for inline code,
+// dim borders on tables, no section prefix, reflowed text.
+let markedRender;
+try {
+  const { marked } = require('marked');
+  const TerminalRenderer = require('marked-terminal');
+  const T = TerminalRenderer.default || TerminalRenderer;
+  const _w = Math.min(process.stdout.columns || 100, 100) - 6;
+  const renderer = new T({
+    // Headings: H1 = bold+italic+underline, H2+ = bold (matches Claude Code)
+    firstHeading: (text) => '\x1b[1m\x1b[3m\x1b[4m' + text + '\x1b[0m',
+    heading: (text) => '\x1b[1m' + text + '\x1b[0m',
+    // Inline code: blue (Claude Code's "permission" color)
+    codespan: (text) => '\x1b[34m' + text + '\x1b[0m',
+    // Text formatting
+    strong: (text) => '\x1b[1m' + text + '\x1b[0m',
+    em: (text) => '\x1b[3m' + text + '\x1b[0m',
+    // Blockquote: dim + italic
+    blockquote: (text) => '\x1b[2m\x1b[3m' + text + '\x1b[0m',
+    // Links: blue underline
+    href: (href) => '\x1b[34m\x1b[4m' + href + '\x1b[0m',
+    // Layout
+    showSectionPrefix: false,
+    reflowText: true,
+    width: _w,
+    tab: 2,
+    emoji: false,
+    unescape: true,
+    // Tables: Unicode box drawing, dim borders, bold headers
+    tableOptions: {
+      chars: {
+        top: '─', 'top-mid': '┬', 'top-left': '┌', 'top-right': '┐',
+        bottom: '─', 'bottom-mid': '┴', 'bottom-left': '└', 'bottom-right': '┘',
+        left: '│', 'left-mid': '├', mid: '─', 'mid-mid': '┼',
+        right: '│', 'right-mid': '┤', middle: '│',
+      },
+      style: { head: ['bold'], border: ['dim'] },
+    },
+  }, {
+    // Syntax highlighting theme for code blocks (cli-highlight)
+    theme: {
+      keyword: '\x1b[34m',     // blue
+      string: '\x1b[32m',      // green
+      number: '\x1b[33m',      // yellow
+      comment: '\x1b[2m\x1b[90m', // dim gray
+      function: '\x1b[36m',    // cyan
+      built_in: '\x1b[36m',    // cyan
+      literal: '\x1b[34m',     // blue
+      type: '\x1b[36m\x1b[3m', // cyan italic
+      attr: '\x1b[33m',        // yellow
+    },
+  });
+  marked.setOptions({ renderer });
+  markedRender = (text) => marked.parse(text);
+} catch (_) {}
+
+// ── Syntax highlighting for code blocks (fallback if marked-terminal unavailable) ──
+let cliHighlight;
+try { cliHighlight = require('cli-highlight'); } catch (_) {}
+
 // ── Smart-fix dependency tree (optional) ──
 let smartFix;
 try { smartFix = require("./smart-fix"); } catch (e) { smartFix = null; }
@@ -93,7 +154,7 @@ function isIgnoredPath(filePath) {
 // safe: never ask | low: auto in balanced+ | medium: auto in autonomous | high: always ask | blocked: never
 const RISK_LEVELS = {
   read_file: "safe", grep_search: "safe", find_files: "safe", get_project_structure: "safe",
-  detect_build_system: "safe", check_environment: "safe", kb_search: "safe", kb_list: "safe",
+  detect_build_system: "safe", check_environment: "safe", kb_search: "safe", kb_read_section: "safe", kb_list: "safe", search_tools: "safe",
   search_docs: "safe", web_search: "safe", session_search: "safe", recent_sessions: "safe",
   todo_write: "safe", todo_done: "safe", todo_list: "safe", memory_read: "safe", use_skill: "safe",
   get_server_logs: "safe", present_file: "safe",
@@ -1490,30 +1551,47 @@ RULES: Response includes cleaned text AND code examples in markdown blocks. Use 
     }
   },
 
-  // ── Knowledge Base ──────────────────────────────────────────────────────────
+  // ── Knowledge Base (3 focused tools — LLM picks the right one) ──────────────
   {
     type: "function", function: {
       name: "kb_search",
-      description: `Search your LOCAL knowledge base using semantic (meaning-based) search. The KB contains documents YOU have indexed — PDFs, books, notes, code files added with kb_add.
+      description: `Search the knowledge base for information about a topic.
+Returns the most relevant passages across all indexed documents.
 
-USE FOR: when user asks about "my documents", "my notes", "my books", "that PDF I added", or references a specific document they've previously added.
+USE FOR: concept questions, topic search, finding specific information.
+DO NOT USE FOR: reading complete chapters (use kb_read_section), listing documents (use kb_list).
 
-DO NOT USE FOR: searching the web for general info (use web_search), searching project source code (use grep_search), reading a file by path (use read_file).
-
-RULES: Results include relevance score (0-1) and source filename. If no results, suggest adding documents with kb_add. Check kb_list first to see what's available.`,
+For questions needing data from MULTIPLE sources (counting, comparing, listing):
+→ Call kb_list FIRST to see what exists
+→ Then search each source separately
+→ Then combine results in your answer`,
       parameters: { type:"object", properties: {
-        query: { type:"string", description:"What to search for in the knowledge base" },
-        language: { type:"string", description:"Filter by programming language (optional)" },
-        doc_type: { type:"string", description:"Filter: api, tutorial, reference, fix, or all (optional)" },
-        collection: { type:"string", description:"Search specific collection (optional, auto-detected)" },
+        query: { type:"string", description:"Search query" },
         num:   { type:"number", description:"Max results (default 5)" }
       }, required:["query"] }
     }
   },
   {
     type: "function", function: {
+      name: "kb_read_section",
+      description: `Read a complete chapter, section, or part from an indexed document in order.
+Returns ALL content from that section, not just top matches.
+Handles disambiguation automatically — if multiple documents have the same section, returns the best match.
+
+USE FOR: "explain chapter 3", "show the section on closures", "summarize part 2",
+"what's in the introduction", "read section 3.1.2", "the full decorators chapter".
+DO NOT USE FOR: searching for a concept across documents (use kb_search).
+Call this DIRECTLY — no need to call kb_list first.`,
+      parameters: { type:"object", properties: {
+        query:  { type:"string", description:"Chapter/section name or description" },
+        source: { type:"string", description:"Document title (optional, for disambiguation)" }
+      }, required:["query"] }
+    }
+  },
+  {
+    type: "function", function: {
       name: "kb_add",
-      description: "Add a file to the local knowledge base for semantic search with kb_search. Supports: PDF, TXT, MD, source code (.py, .js, .ts, .java, .go). The file is chunked, embedded, and stored.",
+      description: "Add a file to the knowledge base. Supports: PDF, TXT, MD, HTML, source code. The file is chunked, embedded, and stored.",
       parameters: { type:"object", properties: {
         filepath: { type:"string", description:"Absolute path to file to add" }
       }, required:["filepath"] }
@@ -1522,19 +1600,31 @@ RULES: Results include relevance score (0-1) and source filename. If no results,
   {
     type: "function", function: {
       name: "kb_list",
-      description: "List all documents indexed in the local knowledge base. Shows filenames, types, source paths, and total chunk count. Use to check what's in the KB before searching.",
-      parameters: { type:"object", properties: {} }
-    }
-  },
-  {
-    type: "function", function: {
-      name: "kb_list_books",
-      description: "List all book/document titles in a KB collection. Use when user asks 'what books are in the KB' or 'what's in the python collection'. Returns unique document titles with filenames.",
+      description: `List all documents and their structure in the knowledge base.
+Shows what content is available.
+
+USE FOR: discovering what's in the KB, seeing available documents before searching.
+ALWAYS call this FIRST when you need to know what data sources exist before searching them.`,
       parameters: { type:"object", properties: {
-        collection: { type:"string", description:"Collection name (default: python)" }
+        collection: { type:"string", description:"Collection name (optional, default: all)" }
       } }
     }
   },
+  // ── Tool Discovery (deferred tools — like Claude Code's ToolSearch) ─────────
+  {
+    type: "function", function: {
+      name: "search_tools",
+      description: `Discover additional tools not shown by default.
+Some specialized tools (PDF creation, charts, sessions, GitHub, environment setup) are deferred to keep the tool list focused. Call this to find them.
+
+USE FOR: when you need a capability not covered by the visible tools.
+Example: "I need to create a PDF" → search_tools("pdf") → discovers create_pdf tool.`,
+      parameters: { type:"object", properties: {
+        query: { type:"string", description:"What capability you need (e.g., 'pdf', 'chart', 'github', 'session', 'environment')" }
+      }, required:["query"] }
+    }
+  },
+  // ── Research & Web ────────────────────────────────────────────────────────
   {
     type: "function", function: {
       name: "research",
@@ -1844,8 +1934,9 @@ const TOOLS_COMPACT = [
   { type:"function", function:{ name:"generate_tests", description:"Generate test file from source analysis (AST skeleton + LLM).", parameters:{ type:"object", properties:{ filepath:{type:"string",description:"Source file"}, dirpath:{type:"string"} }, required:["filepath"] }}},
   { type:"function", function:{ name:"web_search", description:"Search the web.", parameters:{ type:"object", properties:{ query:{type:"string",description:"Search query"}, num:{type:"number",description:"Results"} }, required:["query"] }}},
   { type:"function", function:{ name:"web_fetch", description:"Fetch and clean a URL.", parameters:{ type:"object", properties:{ url:{type:"string",description:"URL"} }, required:["url"] }}},
-  { type:"function", function:{ name:"kb_search", description:"Search local knowledge base (books, docs).", parameters:{ type:"object", properties:{ query:{type:"string",description:"Query"}, num:{type:"number"} }, required:["query"] }}},
-  { type:"function", function:{ name:"kb_list_books", description:"List book/document titles in a KB collection.", parameters:{ type:"object", properties:{ collection:{type:"string",description:"Collection (default: python)"} } }}},
+  { type:"function", function:{ name:"kb_search", description:"Search KB for a topic. For multi-source queries: call kb_list FIRST, then search each source separately. NOT FOR: complete chapters (use kb_read_section).", parameters:{ type:"object", properties:{ query:{type:"string",description:"Query"}, num:{type:"number"} }, required:["query"] }}},
+  { type:"function", function:{ name:"kb_read_section", description:"Read complete chapter/section from KB. Handles disambiguation automatically. Call DIRECTLY. USE FOR: 'chapter 3', 'section on closures'. NOT FOR: topic search (use kb_search).", parameters:{ type:"object", properties:{ query:{type:"string",description:"Chapter/section"}, source:{type:"string",description:"Document title"} }, required:["query"] }}},
+  { type:"function", function:{ name:"kb_list", description:"List all documents in KB. ALWAYS call this FIRST when you need to know what data sources exist.", parameters:{ type:"object", properties:{ collection:{type:"string"} } }}},
   { type:"function", function:{ name:"todo_write", description:"Add a task to the todo list.", parameters:{ type:"object", properties:{ text:{type:"string",description:"Task description"} }, required:["text"] }}},
   { type:"function", function:{ name:"todo_done", description:"Mark a task complete.", parameters:{ type:"object", properties:{ id:{type:"number",description:"Task ID"} }, required:["id"] }}},
   { type:"function", function:{ name:"memory_write", description:"Save persistent memory.", parameters:{ type:"object", properties:{ content:{type:"string"}, type:{type:"string"} }, required:["content"] }}},
@@ -3377,8 +3468,46 @@ print(json.dumps({"sheet": ws.title, "headers": headers, "rows": rows[:200], "to
     case "kb_search": {
       printToolRunning("kb_search", args.query);
 
-      // Always execute the search — never block it
-      const body = { query: args.query, num: args.num || 5 };
+      // ── Scope-aware query routing ──────────────────────────────────
+      // Use the USER's original message for scope detection (not the model's rewritten query).
+      // The model often rewrites "explain chapter 3" → "Python chapter 3 tutorial intro"
+      // which loses the scope-triggering phrasing.
+      const userOriginal = SESSION._currentUserMessage || '';
+      const scopeCheck = /\b(?:chapter|section|part|appendix)\s*\d/i.test(userOriginal) ||
+                         /\b(?:explain|summarize|describe|show|give me|tell me about|walk me through)\s+(?:the\s+)?(?:whole\s+|entire\s+|full\s+)?(?:chapter|section|part|appendix)/i.test(userOriginal) ||
+                         /\b\d+\.\d+(?:\.\d+)?\s+\w/i.test(userOriginal);  // dotted section number: "3.1.2 About..."
+
+      // If user's message looks like a scope query, use it as the search query
+      // instead of the model's rewritten version
+      let searchQuery = args.query;
+      if (scopeCheck && userOriginal.length > 5) {
+        searchQuery = userOriginal;
+      }
+
+      // ── Generic disambiguation: structural ref + multiple data sources → ASK ──
+      // Only for structural queries (chapter/section/part). Topic queries search across all.
+      if (scopeCheck && !SESSION._kbDisambiguated) {
+        try {
+          const srcRes = await fetch(`${CONFIG.proxyUrl}/kb/sources`, { signal: AbortSignal.timeout(10000) });
+          const srcData = await srcRes.json();
+          if (srcData.sources?.length > 1) {
+            SESSION._kbDisambiguated = true;
+            const srcList = srcData.sources.map((s, i) =>
+              `${i + 1}. "${s.doc_title}" (${s.collections.join(', ')}, ${s.chunk_count} chunks)`
+            ).join('\n');
+            printToolDone(`${srcData.sources.length} data sources — disambiguation needed`);
+            return `⚠ MULTIPLE DATA SOURCES IN KB:\n${srcList}\n\n` +
+              `ASK the user which data source they want this chapter/section from.\n` +
+              `After they answer, call kb_search again with their chosen source context.`;
+          }
+        } catch (_) {}
+      }
+
+      // Reset disambiguation flag after each search
+      if (SESSION._kbDisambiguated) SESSION._kbDisambiguated = false;
+
+      // ── Execute the search ────────────────────────────────────────
+      const body = { query: searchQuery, num: args.num || 5 };
       if (args.language) body.language = args.language;
       if (args.doc_type) body.doc_type = args.doc_type;
       if (args.collection) body.collection = args.collection;
@@ -3389,8 +3518,16 @@ print(json.dumps({"sheet": ws.title, "headers": headers, "rows": rows[:200], "to
       const resultCount = res.count || res.results?.length || 0;
       const topHash = (res.results?.[0]?.text || res.formatted || '').slice(0, 50);
       let repetitionWarning = '';
+
+      // Per-turn search count — warn after 3+ to stop searching and use results
+      SESSION._kbSearchCount = (SESSION._kbSearchCount || 0) + 1;
+      if (SESSION._kbSearchCount >= 3) {
+        repetitionWarning = '\n\n⚠ You have made ' + SESSION._kbSearchCount + ' KB searches this turn. ' +
+          'STOP SEARCHING. Use the results you already have to answer the user directly with TEXT. ' +
+          'Do NOT search again — synthesize what you found into a response.';
+      }
+
       if (workingMemory) {
-        // Check for repetition AFTER getting results (so we still return data)
         const warning = workingMemory.getSearchRepetitionWarning(args.query, topHash);
         if (warning) {
           repetitionWarning = '\n\n⚠ You have searched similar queries multiple times with the same results. USE the results above to proceed. Try a DIFFERENT search approach or move on to the next step.';
@@ -3400,7 +3537,11 @@ print(json.dumps({"sheet": ws.title, "headers": headers, "rows": rows[:200], "to
       }
 
       if (res.formatted) {
-        printToolDone(`Found ${resultCount} results from knowledge base`);
+        const label = res.type === 'scope'
+          ? `Scope: ${res.scopeId || 'section'} — ${res.count || resultCount} chunks` +
+            (res.totalInScope > (res.count || resultCount) ? ` (${res.totalInScope} total)` : '')
+          : `Found ${resultCount} results from knowledge base`;
+        printToolDone(label);
         return res.formatted + repetitionWarning;
       }
       if (!res.results?.length) return "No results in knowledge base. Add files with /kb add <file> or kb_add tool.";
@@ -3409,6 +3550,68 @@ print(json.dumps({"sheet": ws.title, "headers": headers, "rows": rows[:200], "to
       ).join("\n\n---\n\n");
       printToolDone(`Found ${res.results.length} chunks from knowledge base`);
       return lines + repetitionWarning;
+    }
+
+    case "kb_read_section": {
+      printToolRunning("kb_read_section", args.query);
+      const body = { query: args.query };
+      if (args.source) body.source = args.source;
+      const res = await proxyPost("/kb/read-section", body, 30000); // 30s timeout for scope
+      if (res.error) return `KB read-section error: ${res.error}\nMake sure search-proxy is running.`;
+
+      if (res.note) {
+        // Fallback to regular search results
+        printToolDone(res.note);
+        if (!res.results?.length) return res.note;
+        const lines = res.results.map((r, i) =>
+          `[${i+1}] Score: ${r.score} | Source: ${r.filename || r.source || "?"}\n${r.text || ""}`
+        ).join("\n\n---\n\n");
+        return res.note + "\n\n" + lines;
+      }
+
+      const count = res.count || res.results?.length || 0;
+      const label = `Scope: ${res.scopeId || 'section'} — ${count} chunks` +
+        (res.totalInScope > count ? ` (${res.totalInScope} total)` : '');
+      printToolDone(label);
+      return res.formatted || res.results?.map(r => r.text).join('\n\n---\n\n') || 'No content found.';
+    }
+
+    case "search_tools": {
+      printToolRunning("search_tools", args.query);
+      // Deferred tools catalog — tools not sent by default to keep the list focused
+      const DEFERRED_TOOLS = {
+        create_pdf:    { name: "create_pdf",    desc: "Create PDF documents from markdown content" },
+        create_docx:   { name: "create_docx",   desc: "Create Word documents" },
+        create_excel:  { name: "create_excel",  desc: "Create Excel spreadsheets" },
+        create_pptx:   { name: "create_pptx",   desc: "Create PowerPoint presentations" },
+        create_chart:  { name: "create_chart",  desc: "Create charts and graphs (PNG)" },
+        present_file:  { name: "present_file",  desc: "Share a file with the user (copies to outputs)" },
+        github_search: { name: "github_search", desc: "Search GitHub repositories and code" },
+        session_search:{ name: "session_search",desc: "Search past conversation sessions" },
+        recent_sessions:{name: "recent_sessions",desc: "List recent conversation sessions" },
+        use_skill:     { name: "use_skill",     desc: "Load an expert skill (backend, frontend, testing, security, debugging)" },
+        memory_write:  { name: "memory_write",  desc: "Save persistent memory across sessions" },
+        memory_read:   { name: "memory_read",   desc: "Read saved persistent memory" },
+        search_docs:   { name: "search_docs",   desc: "Search official documentation for technologies" },
+        generate_tests:{ name: "generate_tests",desc: "Generate test files from source code analysis" },
+        setup_environment:{name:"setup_environment",desc:"Set up development environment (venv, deps)" },
+        check_environment:{name:"check_environment",desc:"Check tool versions and get scaffold commands" },
+      };
+      const q = (args.query || "").toLowerCase();
+      const matches = Object.values(DEFERRED_TOOLS).filter(t =>
+        t.name.includes(q) || t.desc.toLowerCase().includes(q)
+      );
+      if (matches.length > 0) {
+        // Add matched tools to the current session so model can call them
+        if (!SESSION._deferredToolsUnlocked) SESSION._deferredToolsUnlocked = new Set();
+        for (const m of matches) SESSION._deferredToolsUnlocked.add(m.name);
+        printToolDone(`${matches.length} tools found`);
+        return `Found ${matches.length} tools matching "${args.query}":\n\n` +
+          matches.map(t => `• ${t.name} — ${t.desc}`).join('\n') +
+          '\n\nThese tools are now available. Call them directly.';
+      }
+      printToolDone("no matches");
+      return `No tools match "${args.query}". Available categories: pdf, chart, document, github, session, memory, environment, test, skill, docs`;
     }
 
     case "kb_add": {
@@ -3420,54 +3623,77 @@ print(json.dumps({"sheet": ws.title, "headers": headers, "rows": rows[:200], "to
     }
 
     case "kb_list": {
-      printToolRunning("kb_list", "listing...");
-      // Try new Qdrant-based endpoint first
+      const targetCollection = args.collection || null;
+      printToolRunning("kb_list", targetCollection || "all");
       try {
-        const r = await fetch(`${CONFIG.proxyUrl}/kb/collections`, { signal: AbortSignal.timeout(5000) });
-        const cols = await r.json();
+        // Get collections
+        const colRes = await fetch(`${CONFIG.proxyUrl}/kb/collections`, { signal: AbortSignal.timeout(5000) });
+        const cols = await colRes.json();
         const items = Array.isArray(cols) ? cols : cols.collections || [];
-        if (items.length > 0) {
-          const nonEmpty = items.filter(c => (c.points_count || 0) > 0);
-          const totalChunks = items.reduce((s, c) => s + (c.points_count || 0), 0);
-          const lines = items.map(c => {
-            const count = c.points_count || 0;
-            return `  ${c.name}: ${count > 0 ? count + " chunks" : "empty"}`;
-          });
-          printToolDone(`${items.length} collections, ${totalChunks} total chunks`);
-          return `📚 Knowledge Base (${items.length} collections, ${totalChunks} chunks):\n\n${lines.join("\n")}\n\nCollections with content: ${nonEmpty.map(c => c.name + " (" + c.points_count + ")").join(", ") || "none"}`;
+        const nonEmpty = items.filter(c => (c.points_count || 0) > 0);
+        const totalChunks = items.reduce((s, c) => s + (c.points_count || 0), 0);
+
+        // Get document titles for non-empty collections (or specific collection)
+        const collectionsToScan = targetCollection
+          ? nonEmpty.filter(c => c.name === targetCollection)
+          : nonEmpty;
+
+        let output = `📚 Knowledge Base (${totalChunks} chunks across ${nonEmpty.length} active collections):\n\n`;
+
+        for (const col of collectionsToScan) {
+          output += `## ${col.name} (${col.points_count} chunks)\n`;
+          try {
+            const bookRes = await fetch(`${CONFIG.proxyUrl}/kb/books?collection=${encodeURIComponent(col.name)}`, { signal: AbortSignal.timeout(10000) });
+            const bookData = await bookRes.json();
+            if (bookData.books?.length > 0) {
+              for (const b of bookData.books) {
+                output += `  - "${b.title}" (${b.filename})\n`;
+              }
+            } else {
+              output += `  (no document titles found)\n`;
+            }
+          } catch (_) {
+            output += `  (could not fetch document list)\n`;
+          }
+          output += '\n';
         }
-      } catch (_) {}
-      // Fallback to legacy
-      try {
-        const r = await fetch(`${CONFIG.proxyUrl}/kb/list`);
-        const data = await r.json();
-        const docs = data.docs || [];
-        if (!docs.length) return "Knowledge base is empty. Add files with: kb_add or /kb add <filepath>";
-        const lines = docs.map((d, i) =>
-          `${i+1}. ${d.filename || d.doc_id} [${d.type || "?"}] — source: ${d.source || "?"}`
-        );
-        printToolDone(`${docs.length} documents`);
-        return `📚 Knowledge Base Contents (${docs.length} documents):\n\n${lines.join("\n")}`;
+
+        // Show empty collections briefly
+        const empty = items.filter(c => (c.points_count || 0) === 0);
+        if (empty.length > 0 && !targetCollection) {
+          output += `Empty collections: ${empty.map(c => c.name).join(', ')}\n`;
+        }
+
+        printToolDone(`${nonEmpty.length} active collections, ${totalChunks} chunks`);
+        return output;
       } catch (e) {
-        return `KB list error: Cannot connect to search-proxy. Start it with: node search-proxy.js`;
+        return `KB list error: ${e.message}. Make sure search-proxy is running.`;
       }
     }
 
     case "kb_list_books": {
       const collection = args.collection || "python";
       printToolRunning("kb_list_books", collection);
-      try {
-        const r = await fetch(`${CONFIG.proxyUrl}/kb/books?collection=${encodeURIComponent(collection)}`, { signal: AbortSignal.timeout(15000) });
-        const data = await r.json();
-        if (data.error) { printToolDone("Error"); return `Error: ${data.error}`; }
-        const books = data.books || [];
-        if (books.length === 0) { printToolDone("empty"); return `No books found in "${collection}" collection.`; }
-        const lines = books.map((b, i) => `${i+1}. "${b.title}" (${b.filename})`);
-        printToolDone(`${books.length} books`);
-        return `Books in "${collection}" collection:\n\n${lines.join("\n")}`;
-      } catch (e) {
-        printToolDone("Error");
-        return `Cannot list books: ${e.message}`;
+      // Retry if KB engine is still initializing (proxy just started)
+      for (let _attempt = 0; _attempt < 3; _attempt++) {
+        try {
+          const r = await fetch(`${CONFIG.proxyUrl}/kb/books?collection=${encodeURIComponent(collection)}`, { signal: AbortSignal.timeout(15000) });
+          const data = await r.json();
+          if (data.error && data.error.includes("not available") && _attempt < 2) {
+            await new Promise(ok => setTimeout(ok, 3000)); // wait 3s for KB init
+            continue;
+          }
+          if (data.error) { printToolDone("Error"); return `Error: ${data.error}`; }
+          const books = data.books || [];
+          if (books.length === 0) { printToolDone("empty"); return `No books found in "${collection}" collection.`; }
+          const lines = books.map((b, i) => `${i+1}. "${b.title}" (${b.filename})`);
+          printToolDone(`${books.length} books`);
+          return `Books in "${collection}" collection:\n\n${lines.join("\n")}`;
+        } catch (e) {
+          if (_attempt < 2) { await new Promise(ok => setTimeout(ok, 3000)); continue; }
+          printToolDone("Error");
+          return `Cannot list books: ${e.message}`;
+        }
       }
     }
 
@@ -7276,7 +7502,10 @@ function getGitContext(dir) {
   } catch (_) { return null; }
 }
 
+// Memoized per-session (like Claude Code's memoized context functions)
+const _projectContextCache = {};
 function buildProjectContext(dir) {
+  if (_projectContextCache[dir]) return _projectContextCache[dir];
   const project = detectProject(dir);
   const git = getGitContext(dir);
   if (!project && !git) return "";
@@ -7308,6 +7537,7 @@ function buildProjectContext(dir) {
     if (dirs.length > 0) ctx += `Dirs: ${dirs.slice(0, 8).join(", ")}\n`;
   } catch (err) { debugLog(err.message); }
 
+  _projectContextCache[dir] = ctx;
   return ctx;
 }
 
@@ -7350,7 +7580,7 @@ function suggestRelevantFiles(userMessage, dir) {
 // ══════════════════════════════════════════════════════════════════
 function selectToolsForContext(userMessage, messages) {
   const msg = (userMessage || "").toLowerCase();
-  const alwaysInclude = new Set(["run_bash", "read_file", "write_file", "edit_file", "grep_search", "find_files", "get_project_structure"]);
+  const alwaysInclude = new Set(["run_bash", "read_file", "write_file", "edit_file", "grep_search", "find_files", "get_project_structure", "search_tools"]);
   const selected = new Set(alwaysInclude);
 
   // Planning tools — only when complex tasks or explicitly requested
@@ -7375,17 +7605,17 @@ function selectToolsForContext(userMessage, messages) {
     selected.add("github_search");
   }
 
-  // KB tools — always include kb_search when KB has content, or user mentions it
-  if (/\b(knowledge|kb|my docs|my notes|my books|local docs|book|chapter|summarize.*book)\b/i.test(msg)) {
+  // KB tools — include all 3 when KB-related keywords detected
+  if (/\b(knowledge|kb|my docs|my notes|my books|local docs|book|chapter|section|summarize.*book|explain.*chapter)\b/i.test(msg)) {
     selected.add("kb_search");
+    selected.add("kb_read_section");
     selected.add("kb_add");
     selected.add("kb_list");
-    selected.add("kb_list_books");
   }
-  // Also always include kb_search if search-proxy is running and KB has data
-  // This ensures the model can find ingested books/docs even without explicit "kb" mention
+  // Also always include kb_search + kb_read_section if search-proxy is running
   if (CONFIG.proxyUrl) {
     selected.add("kb_search");
+    selected.add("kb_read_section");
   }
 
   // Document creation tools
@@ -7442,6 +7672,11 @@ function selectToolsForContext(userMessage, messages) {
     selected.add("recent_sessions");
   }
 
+  // Include deferred tools that were unlocked via search_tools
+  if (SESSION._deferredToolsUnlocked) {
+    for (const t of SESSION._deferredToolsUnlocked) selected.add(t);
+  }
+
   // Include tools used recently (keep them available for multi-step flows)
   for (const m of messages.slice(-6)) {
     if (m.tool_calls) {
@@ -7495,7 +7730,7 @@ function selectToolsForContext(userMessage, messages) {
       todo_write: 60, todo_done: 58, todo_list: 55,
       research: 50, deep_search: 48, search_all: 45,
       check_environment: 77, setup_environment: 76, generate_tests: 74,
-      kb_search: 72, kb_list_books: 71, kb_add: 40, kb_list: 38, github_search: 36,
+      kb_search: 72, kb_read_section: 71, search_tools: 69, kb_add: 40, kb_list: 38, github_search: 36,
       memory_write: 25, memory_read: 23,
       create_pdf: 20, create_docx: 18, create_excel: 16, create_pptx: 14, create_chart: 12,
       present_file: 10, session_search: 8, recent_sessions: 6, use_skill: 5,
@@ -7552,7 +7787,44 @@ async function chat(userMessage) {
       }
     }
 
+  // ═══ STATIC PROMPT PREFIX (stable across turns — cacheable by Ollama KV cache) ═══
+  // Everything from CONFIG.systemPrompt through model-specific rules is STATIC.
+  // Dynamic sections (git status, memory, skills, output style) are appended AFTER.
+  // Keeping the static prefix stable improves Ollama's KV cache hit rate.
   let sysPrompt = CONFIG.systemPrompt;
+  const _modelLower = (CONFIG.model || "").toLowerCase();
+
+  // ── Gemma 4-specific prompt rules ──
+  if (_modelLower.includes("gemma")) {
+    sysPrompt = `RULES:
+1. Always respond in English.
+2. Format responses as proper Markdown with newlines between elements.
+3. Code blocks: each statement on its OWN LINE. Never merge statements on one line.
+4. Pick the RIGHT tool: kb_search for topics, kb_read_section for chapters/sections, kb_list to discover what exists.
+5. After getting tool results, evaluate: do I have enough? If yes → answer. If no → search more.
+6. Before any KB search, think: "What do I need first?" If the question involves multiple items, search for each separately.
+
+` + sysPrompt;
+  }
+
+  // ── GLM-specific prompt rules (primacy bias: must be FIRST) ──
+  // GLM-4.7 has strong primacy bias — rules at the top get highest compliance.
+  // Also prevents language-switching (Chinese) and query rewriting.
+  if (_modelLower.includes("glm")) {
+    sysPrompt = `STRICT RULES (MUST follow):
+1. Always respond in English. All tool arguments MUST be in English.
+2. When calling tools, use the user's EXACT wording. Do NOT translate or rephrase.
+3. Pick the RIGHT tool: kb_search for topics, kb_read_section for chapters/sections, kb_list to discover what exists.
+4. After getting results, evaluate: do I have enough to answer FULLY? If yes → answer. If no → search more.
+5. Format as proper Markdown: each code statement on its OWN LINE, headings with blank lines.
+6. For multi-part questions: think what you need → get each piece separately → combine. Never answer from one search.
+
+` + sysPrompt;
+  }
+
+  // ═══ DYNAMIC PROMPT SUFFIX (changes per turn — NOT cacheable) ═══
+  // Everything below here is session-specific: effort level, output style,
+  // architecture discovery, memory, skills, project context, etc.
 
   // Adjust system prompt based on reasoning effort
   if (CONFIG._effort !== undefined) {
@@ -7561,6 +7833,11 @@ async function chat(userMessage) {
     } else if (CONFIG._effort >= 0.9) {
       sysPrompt += "\n\nEFFORT: HIGH — Be thorough. Think step by step. Plan before executing. Verify your work. Use todo_write for complex tasks. Explain your reasoning.";
     }
+  }
+
+  // Inject output style (like Claude Code's outputStyles system)
+  if (CONFIG._outputStylePrompt) {
+    sysPrompt += `\n\n# Output Style: ${(CONFIG._outputStyle || 'custom').toUpperCase()}\n${CONFIG._outputStylePrompt}`;
   }
 
   // ── Universal architecture discovery ──
@@ -7670,6 +7947,8 @@ async function chat(userMessage) {
     }
 
   SESSION.messages.push({ role:"user", content: userMessage });
+  SESSION._currentUserMessage = userMessage;  // preserve for kb_search scope detection
+  SESSION._kbSearchCount = 0;                 // reset per-turn search counter
   startSpinner("thinking");
 
   // ── State ─────────────────────────────────────────────────────────
@@ -7809,14 +8088,21 @@ async function chat(userMessage) {
       const _modelProfiles = {
         nemotron: { temperature: 1.0, top_k: 40, top_p: 0.95, repeat_penalty: 1.3, repeat_last_n: 256, presence_penalty: 0.0, frequency_penalty: 0.0, num_predict: 8192, preferredCtx: 32768 },
         qwen:     { temperature: 0.15, top_k: 20, top_p: 0.8, repeat_penalty: 1.3, repeat_last_n: 128, presence_penalty: 1.5, frequency_penalty: 0.0, num_predict: 4096, preferredCtx: 40960 },
-        glm:      { temperature: 0.15, top_k: 20, top_p: 0.8, repeat_penalty: 1.3, repeat_last_n: 128, presence_penalty: 1.5, frequency_penalty: 0.0, num_predict: 4096, preferredCtx: 40960 },
+        // GLM-4.7: official Z.AI recommends temp 0.6-1.0, top_p 0.95, low repeat_penalty.
+        // Previous values (0.15 temp, 1.5 presence) were Qwen-style and degraded tool calling.
+        glm:      { temperature: 0.7, top_k: 40, top_p: 0.95, repeat_penalty: 1.05, repeat_last_n: 128, presence_penalty: 0.0, frequency_penalty: 0.0, num_predict: 8192, preferredCtx: 65536 },
         deepseek: { temperature: 0.6, top_k: 40, top_p: 0.95, repeat_penalty: 1.1, repeat_last_n: 256, presence_penalty: 0.0, frequency_penalty: 0.0, num_predict: 8192, preferredCtx: 65536 },
+        // Gemma 4: Google recommends temp 1.0, top_k 64, top_p 0.95, repeat_penalty 1.0.
+        // Lowered temp to 0.7 for reliable tool calling. Keep repeat_penalty at 1.0 (Google says don't increase).
+        // 26b = MoE (3.8B active/25.2B total, 256K ctx). e4b = dense (4.5B effective, 128K ctx).
+        gemma:    { temperature: 0.7, top_k: 64, top_p: 0.95, repeat_penalty: 1.0, repeat_last_n: 128, presence_penalty: 0.0, frequency_penalty: 0.0, num_predict: 8192, preferredCtx: 65536 },
         _default: { temperature: 0.7, top_k: 40, top_p: 0.9, repeat_penalty: 1.2, repeat_last_n: 128, presence_penalty: 0.0, frequency_penalty: 0.0, num_predict: 4096, preferredCtx: 40960 },
       };
       const _mn = (CONFIG.model || "").toLowerCase();
       const _mp = _mn.includes("nemotron") ? _modelProfiles.nemotron
         : _mn.includes("qwen") ? _modelProfiles.qwen
         : _mn.includes("glm") ? _modelProfiles.glm
+        : _mn.includes("gemma") ? _modelProfiles.gemma
         : _mn.includes("deepseek") ? _modelProfiles.deepseek
         : _modelProfiles._default;
 
@@ -7913,12 +8199,24 @@ async function chat(userMessage) {
               hasProducedContent = true;
               // Strip thinking tags from Nemotron output (they leak as visible text)
               let displayContent = msg.content;
-              displayContent = displayContent.replace(/<\/?think>/g, '').replace(/^\s*\n/, '');
+              // Strip thinking tags: Nemotron (<think>), Gemma 4 (<|channel>thought<channel|>)
+              displayContent = displayContent
+                .replace(/<\/?think>/g, '')
+                .replace(/<\|channel>thought[\s\S]*?<channel\|>/g, '')
+                .replace(/^\s*\n/, '');
               if (!displayContent.trim()) continue; // Skip empty after stripping
 
-              if (!started) { stopSpinner(); printAiStart(); started = true; }
-              renderStreamToken(displayContent);
               responseText += displayContent;
+
+              if (markedRender) {
+                // Post-render mode: show progress spinner, render formatted after completion
+                if (!started) { stopSpinner(); started = true; }
+                process.stdout.write(`\r  ${co(C.cyan, SPINNER[chunkCount % SPINNER.length])} ${co(C.dim, 'receiving... ' + responseText.length + ' chars')}`);
+              } else {
+                // Fallback: stream render (basic formatting)
+                if (!started) { stopSpinner(); printAiStart(); started = true; }
+                renderStreamToken(displayContent);
+              }
 
               // Repetition detection — abort if model is looping
               if (responseText.length > 100) {
@@ -7944,12 +8242,8 @@ async function chat(userMessage) {
                   }
                 }
               }
-              // Abort if response is too long without tool calls
-              if (responseText.length > 2000 && toolCalls.length === 0) {
-                console.log(co(C.bYellow, "\n\n  ⚡ Response too long — cutting off"));
-                try { reader.cancel(); } catch (err) { debugLog(err.message); }
-                break;
-              }
+              // No hard length cutoff — repetition detection (above) handles loops.
+              // Let the model produce as much useful content as it needs.
             }
           } catch (parseErr) {
             debugLog("parse error:", parseErr.message, "raw:", rawLine.slice(0, 200));
@@ -7958,13 +8252,61 @@ async function chat(userMessage) {
       }
 
       debugLog("stream done. chunks=" + chunkCount, "response=" + responseText.length + "chars", "toolCalls=" + toolCalls.length);
-      // Flush any remaining buffered content (model may not end with newline)
-      if (renderState.lineBuffer) {
-        // thinking display disabled — no cleanup needed
-        if (!started) { stopSpinner(); printAiStart(); started = true; }
-        process.stdout.write(renderState.lineBuffer + C.reset);
-        responseText += renderState.lineBuffer;
-        renderState.lineBuffer = "";
+
+      // ── Post-stream rendering ──────────────────────────────────────
+      if (markedRender && responseText.trim() && toolCalls.length === 0) {
+        // Clear the progress line
+        process.stdout.write("\r\x1b[K");
+        // Display header
+        const displayName = SESSION.name ? `Attar-Brain (${SESSION.name})` : "Attar-Brain";
+        console.log();
+        console.log(co(C.bCyan, "  ✦ ") + co(C.bold, C.bCyan, displayName));
+        // Pre-process: inject newlines so marked can parse elements.
+        // Step 1: Isolate code fences
+        const _knownLangs = 'python|javascript|typescript|bash|sh|json|html|css|java|go|rust|cpp|c|sql|yaml|xml|ruby|php|csharp|text|jsx|tsx|diff|dockerfile|makefile';
+        let mdText = responseText
+          .replace(/([^\n])(```)/g, '$1\n\n$2')                                              // newline before any ```
+          .replace(new RegExp('(```(?:' + _knownLangs + '))([^\\n`])', 'g'), '$1\n$2')       // newline after ```lang (opening: known langs only)
+          .replace(/(```)(\n?)([A-Z*|_#\-\s])/g, '$1\n\n$3');                                // newline after ``` (closing: followed by uppercase/special)
+
+        // Step 2: Split at code fences, only pre-process NON-CODE parts
+        const codeFenceRe = /(```[\w]*\n[\s\S]*?```)/g;
+        const parts = mdText.split(codeFenceRe);
+        for (let i = 0; i < parts.length; i++) {
+          if (!parts[i].startsWith('```')) {
+            // Non-code: inject newlines before headings, bullets, numbered lists
+            parts[i] = parts[i]
+              .replace(/([^\n])(#{1,3} )/g, '$1\n\n$2')
+              .replace(/([^\n])([-*] )/g, '$1\n$2')
+              .replace(/([^\n])(\d+\. )/g, '$1\n$2')
+              .replace(/([^\n])(\|[-|])/g, '$1\n$2');
+          }
+        }
+        mdText = parts.join('');
+
+        // Render with marked-terminal
+        try {
+          const formatted = markedRender(mdText);
+          const lines = formatted.split('\n');
+          // Remove trailing empty lines
+          while (lines.length > 0 && lines[lines.length - 1].trim() === '') lines.pop();
+          for (const line of lines) {
+            process.stdout.write(co(C.dim, "  │ ") + line + "\n");
+          }
+          // Footer
+          console.log("\n" + co(C.dim, "  └" + "─".repeat(Math.min(50, W() - 6))));
+        } catch (_) {
+          // Fallback to raw
+          process.stdout.write(co(C.cyan, "  ╰─ ") + responseText + "\n");
+        }
+      } else {
+        // Fallback: flush buffered streaming content
+        if (renderState.lineBuffer) {
+          if (!started) { stopSpinner(); printAiStart(); started = true; }
+          process.stdout.write(renderState.lineBuffer + C.reset);
+          responseText += renderState.lineBuffer;
+          renderState.lineBuffer = "";
+        }
       }
 
       if (!started) stopSpinner();
@@ -8116,8 +8458,12 @@ async function chat(userMessage) {
 
         if (!SESSION._nonProductiveCount) SESSION._nonProductiveCount = 0;
 
-        if (hasProductiveCall) {
-          SESSION._nonProductiveCount = 0; // Real work done — reset
+        // Exempt: if last tool was a search tool, text narration between searches is OK
+        const lastToolWasSearch = SESSION._lastToolName &&
+          ['kb_search', 'web_search', 'search_all', 'research', 'search_docs'].includes(SESSION._lastToolName);
+
+        if (hasProductiveCall || lastToolWasSearch) {
+          SESSION._nonProductiveCount = 0; // Real work or search narration — reset
         } else {
           SESSION._nonProductiveCount++;
           if (SESSION._nonProductiveCount >= 5) {
@@ -8285,7 +8631,7 @@ async function chat(userMessage) {
       const _realWorkTools = new Set(["write_file","edit_file","run_bash","build_and_test",
         "start_server","test_endpoint","setup_environment","generate_tests",
         "create_pdf","create_docx","create_excel","create_pptx",
-        "kb_search","kb_add","web_search","web_fetch","read_file","grep_search"]);
+        "kb_search","kb_read_section","kb_add","web_search","web_fetch","read_file","grep_search"]);
       // In plan mode, planning tools also count as progress
       const _planWorkTools = new Set(["todo_write","todo_done","check_environment",
         "detect_build_system","project_structure","read_file"]);
@@ -8295,6 +8641,9 @@ async function chat(userMessage) {
         _lastRealWorkStep = totalSteps;
       }
 
+      // Track last tool for stuck detection (search narration exemption)
+      SESSION._lastToolName = name;
+
       // Validate tool result
       if (resultStr.length < 5 && !["todo_done","todo_write","todo_list","memory_write"].includes(name)) {
         resultStr += "\n⚠ Warning: Result is very short — verify the operation succeeded.";
@@ -8302,6 +8651,22 @@ async function chat(userMessage) {
       // Filter binary content
       if (/[\x00-\x08\x0e-\x1f]/.test(resultStr.slice(0, 500))) {
         resultStr = `[Binary content detected — ${resultStr.length} bytes. Use a different approach to handle this file.]`;
+      }
+
+      // ── Tool result persistence: save large results to disk ──────────
+      // Like Claude Code: >50K chars → save to file, send path+preview to model
+      const MAX_TOOL_RESULT_CHARS = 50000;
+      if (resultStr.length > MAX_TOOL_RESULT_CHARS && !["read_file"].includes(name)) {
+        try {
+          const toolResultDir = path.join(HOME_DIR, "tool-results");
+          fs.mkdirSync(toolResultDir, { recursive: true });
+          const resultFile = path.join(toolResultDir, `${name}-${Date.now()}.txt`);
+          fs.writeFileSync(resultFile, resultStr, "utf8");
+          const preview = resultStr.slice(0, 2000);
+          const originalLen = resultStr.length;
+          resultStr = `<persisted-output>\nOutput too large (${Math.round(originalLen / 1024)}KB). Full output saved to: ${resultFile}\n\nPreview (first 2KB):\n${preview}\n...\n</persisted-output>`;
+          debugLog(`Tool result persisted: ${name} → ${resultFile} (${originalLen} chars)`);
+        } catch (_) {}
       }
 
       toolResults.push({ role:"tool", content: formatToolResult(name, resultStr) });
@@ -8480,28 +8845,77 @@ let renderState = { inCode: false, lang: "", lineBuffer: "" };
 function printAiStart() {
   renderState = { inCode: false, lang: "", lineBuffer: "", firstLine: true };
   console.log();
-  const name = SESSION.name ? `${CONFIG.model} (${SESSION.name})` : CONFIG.model;
-  console.log(co(C.bCyan, "  ✦ ") + co(C.bold, C.bCyan, name));
+  const displayName = SESSION.name ? `Attar-Brain (${SESSION.name})` : "Attar-Brain";
+  console.log(co(C.bCyan, "  ✦ ") + co(C.bold, C.bCyan, displayName));
   process.stdout.write(co(C.cyan, "  ╰─ "));
 }
 
 function renderStreamToken(token) {
   // Buffer by line for code block detection
   renderState.lineBuffer += token;
+
+  // Code fence: ALWAYS inject newlines around ```
+  // Before fence: content\n```
+  renderState.lineBuffer = renderState.lineBuffer.replace(/([^\n])(```)/g, '$1\n$2');
+  // After CLOSING fence: ```\ntext (only when NOT followed by lowercase = language name)
+  // Opening fences (```python...) are handled by renderLine's knownLangs split
+  renderState.lineBuffer = renderState.lineBuffer.replace(/(```)([^\n`a-z])/g, '$1\n$2');
+
+  // Heading: only outside code blocks (# inside code is a comment, not a heading)
+  if (!renderState.inCode) {
+    renderState.lineBuffer = renderState.lineBuffer.replace(/([^\n])(#{1,3} )/g, '$1\n$2');
+  }
+
   const lines = renderState.lineBuffer.split("\n");
   renderState.lineBuffer = lines.pop() || "";
 
   for (const line of lines) renderLine(line);
 }
 
+// Syntax highlight a code line (degrades to green if cli-highlight unavailable)
+function _highlightCode(line, lang) {
+  if (cliHighlight && lang && lang !== 'code') {
+    try { return cliHighlight.highlight(line, { language: lang }); }
+    catch (_) { /* unsupported language — fallback */ }
+  }
+  return co(C.bGreen, line);
+}
+
 function renderLine(line) {
   const prefix = co(C.gray, "  │  ");
+
+  // Skip empty heading markers (model outputs "# \n" as section breaks)
+  if (/^#{1,3}\s*$/.test(line)) return;
+
+  // Add blank line before headings for visual separation
+  if (/^#{1,3} /.test(line) && !renderState._lastLineWasBlank) {
+    process.stdout.write(prefix + "\n");
+  }
+  renderState._lastLineWasBlank = (line.trim() === '');
 
   if (line.startsWith("```")) {
     renderState.inCode = !renderState.inCode;
     if (renderState.inCode) {
-      renderState.lang = line.slice(3).trim() || "code";
+      let langLine = line.slice(3).trim();
+      let codeLine = '';
+
+      // Split language from content if merged: "pythonfrom bs4" → lang="python", code="from bs4"
+      const knownLangs = ['python','javascript','typescript','bash','sh','json','html','css',
+        'java','go','rust','cpp','c','sql','yaml','toml','xml','ruby','php','csharp','text',
+        'jsx','tsx','scss','markdown','md','diff','dockerfile','makefile','nginx','graphql'];
+      for (const lang of knownLangs) {
+        if (langLine.toLowerCase().startsWith(lang) && langLine.length > lang.length) {
+          codeLine = langLine.slice(lang.length).trimStart();
+          langLine = lang;
+          break;
+        }
+      }
+
+      renderState.lang = langLine || "code";
       process.stdout.write("\n" + co(C.gray, "  │  ┌─ ") + co(C.yellow, renderState.lang) + "\n");
+      if (codeLine) {
+        process.stdout.write(co(C.gray, "  │  │ ") + _highlightCode(codeLine, renderState.lang) + C.reset + "\n");
+      }
     } else {
       process.stdout.write(co(C.gray, "  │  └" + "─".repeat(Math.min(38,W()-10))) + "\n");
     }
@@ -8509,7 +8923,7 @@ function renderLine(line) {
   }
 
   if (renderState.inCode) {
-    process.stdout.write(co(C.gray, "  │  │ ") + co(C.bGreen, line) + "\n");
+    process.stdout.write(co(C.gray, "  │  │ ") + _highlightCode(line, renderState.lang) + C.reset + "\n");
     return;
   }
 
@@ -8549,11 +8963,11 @@ function printBanner() {
 }
 
 function printStatusBar() {
-  const model    = co(C.bGreen, " ✦ ", CONFIG.model, " ");
+  const model    = co(C.bGreen, " ✦ Attar-Brain ");
   // Show effective temperature (model profile default if user hasn't overridden)
   const _mn = (CONFIG.model || "").toLowerCase();
   const _effectiveTemp = CONFIG._userSetTemp || (
-    _mn.includes("nemotron") ? 1.0 : _mn.includes("deepseek") ? 0.6 : CONFIG.temperature
+    _mn.includes("nemotron") ? 1.0 : _mn.includes("gemma") ? 0.7 : _mn.includes("glm") ? 0.7 : _mn.includes("deepseek") ? 0.6 : CONFIG.temperature
   );
   const temp     = co(C.dim, "  🌡 ", String(_effectiveTemp));
   const ctx      = co(C.dim, "  📐 ", String(CONFIG.numCtx));
@@ -8596,6 +9010,7 @@ function printHelp() {
       ["/ctx <n>",             "Set context window size in tokens"],
       ["",                     "  e.g.  /ctx 65536   /ctx 16384"],
       ["/effort low|med|hi",   "Set reasoning effort level"],
+      ["/style <name>",         "Set output style (concise, explanatory, learning, code, default)"],
       ["/system <text>",       "Override system prompt for this session"],
       ["/auto on|off",         "Toggle auto-approve for all tool calls"],
     ]],
@@ -9082,6 +9497,31 @@ RULES:
       else if (level === "high") { CONFIG._effort = 1.0; console.log(co(C.bCyan, "\n  Effort: HIGH — thorough, step-by-step\n")); }
       else if (level === "medium") { CONFIG._effort = 0.6; console.log(co(C.dim, "\n  Effort: MEDIUM — balanced\n")); }
       else { console.log(co(C.dim, `\n  Current effort: ${CONFIG._effort <= 0.3 ? "LOW" : CONFIG._effort >= 0.9 ? "HIGH" : "MEDIUM"}\n  Usage: /effort low|medium|high\n`)); }
+      break;
+    }
+
+    case "/style": {
+      const style = rest?.toLowerCase();
+      const OUTPUT_STYLES = {
+        concise: 'Respond in the most concise way possible. Bullet points over paragraphs. No explanations unless asked. Code without commentary.',
+        explanatory: 'Provide detailed explanations with your responses. Explain WHY, not just WHAT. Include context, trade-offs, and alternatives. Use examples to illustrate concepts.',
+        learning: 'Act as a teacher. Break down concepts step by step. Ask the user questions to check understanding. Provide exercises and challenges. Point out common mistakes.',
+        code: 'Focus on code. Minimize prose. Show complete working examples. Include comments in code. Prefer showing over telling.',
+      };
+      if (OUTPUT_STYLES[style]) {
+        CONFIG._outputStyle = style;
+        CONFIG._outputStylePrompt = OUTPUT_STYLES[style];
+        console.log(co(C.bCyan, `\n  ✓ Output style: ${style.toUpperCase()}\n`));
+        console.log(co(C.dim, `  ${OUTPUT_STYLES[style]}\n`));
+      } else if (style === "default" || style === "none" || style === "reset") {
+        CONFIG._outputStyle = null;
+        CONFIG._outputStylePrompt = null;
+        console.log(co(C.dim, "\n  ✓ Output style: DEFAULT (reset)\n"));
+      } else {
+        console.log(co(C.dim, `\n  Current style: ${CONFIG._outputStyle || 'default'}`));
+        console.log(co(C.dim, "  Available: concise, explanatory, learning, code, default\n"));
+        console.log(co(C.dim, "  Usage: /style explanatory\n"));
+      }
       break;
     }
 
@@ -10043,7 +10483,7 @@ async function main() {
         "/help", "/model", "/models", "/cd", "/clear", "/save", "/load",
         "/cp", "/rewind", "/checkpoints", "/todo", "/memory", "/plan",
         "/auto", "/tools", "/hooks", "/skills", "/outputs", "/errors",
-        "/search", "/kb", "/exit", "/quit", "/diff", "/effort",
+        "/search", "/kb", "/exit", "/quit", "/diff", "/effort", "/style",
       ];
 
       if (!line.startsWith("/")) return [[], line];
@@ -10062,6 +10502,7 @@ async function main() {
         "/errors": ["list", "reload", "test"],
         "/kb": ["add", "add-dir", "search", "list", "collections", "remove", "stats", "status", "reindex"],
         "/effort": ["low", "medium", "high"],
+        "/style": ["concise", "explanatory", "learning", "code", "default"],
         "/auto": ["on", "off"],
       };
 

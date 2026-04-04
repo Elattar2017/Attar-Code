@@ -166,8 +166,14 @@ function assembleContext(chunks, options = {}) {
   // Step 2 — deduplicate
   filtered = deduplicateChunks(filtered);
 
-  // Step 3 — sort descending by score and take top N
-  filtered.sort((a, b) => (b.score || 0) - (a.score || 0));
+  // Step 3 — sort descending: prefer rerankScore (cross-encoder) when present,
+  // fall back to score (RRF + term-boost). This preserves the reranker's ordering
+  // instead of discarding it via the term-boost re-sort.
+  filtered.sort((a, b) => {
+    const aScore = a.rerankScore !== undefined ? a.rerankScore : (a.score || 0);
+    const bScore = b.rerankScore !== undefined ? b.rerankScore : (b.score || 0);
+    return bScore - aScore;
+  });
   const topChunks = filtered.slice(0, maxChunks);
 
   if (topChunks.length === 0) {
@@ -178,23 +184,45 @@ function assembleContext(chunks, options = {}) {
     };
   }
 
-  // Step 4 — format each chunk
-  const parts = topChunks.map((chunk) => {
-    const meta = chunk.metadata || {};
-    // Preserve backward compat: try both title and doc_title (existing tests use title)
-    const title = meta.title || meta.doc_title || 'Unknown';
-    const section = meta.section || meta.section_path || meta.chapter || '';
-    const source = section ? `${title} > ${section}` : title;
-    const scoreStr = (chunk.score || 0).toFixed(2);
-    const content = (chunk.content || '').trim();
+  // Step 4 — format: group by data source if results span multiple sources
+  const bySource = {};
+  for (const chunk of topChunks) {
+    const src = chunk.metadata?.doc_title || chunk.metadata?.title || 'Unknown';
+    if (!bySource[src]) bySource[src] = [];
+    bySource[src].push(chunk);
+  }
 
-    // For structural chunks, add a label
-    const typeLabel = meta.chunk_type === 'structural' ? ' [Structure]' : '';
-    return `[Source: ${source}]${typeLabel} [Score: ${scoreStr}]\n\n${content}`;
-  });
-
-  // Step 5 — join
-  const formatted = parts.join('\n\n---\n\n');
+  let formatted;
+  if (Object.keys(bySource).length > 1) {
+    // Multiple sources — group with source headers
+    const parts = [];
+    for (const [source, chunks] of Object.entries(bySource)) {
+      parts.push(`\n── From "${source}" ──`);
+      for (const chunk of chunks) {
+        const meta = chunk.metadata || {};
+        const section = meta.section || meta.section_path || meta.chapter || '';
+        const scoreStr = (chunk.score || 0).toFixed(2);
+        const content = (chunk.content || '').trim();
+        const typeLabel = meta.chunk_type === 'structural' ? ' [Structure]' : '';
+        const sectionLabel = section ? ` > ${section}` : '';
+        parts.push(`[${source}${sectionLabel}]${typeLabel} [Score: ${scoreStr}]\n\n${content}`);
+      }
+    }
+    formatted = parts.join('\n\n---\n\n');
+  } else {
+    // Single source — original flat format
+    const parts = topChunks.map((chunk) => {
+      const meta = chunk.metadata || {};
+      const title = meta.title || meta.doc_title || 'Unknown';
+      const section = meta.section || meta.section_path || meta.chapter || '';
+      const source = section ? `${title} > ${section}` : title;
+      const scoreStr = (chunk.score || 0).toFixed(2);
+      const content = (chunk.content || '').trim();
+      const typeLabel = meta.chunk_type === 'structural' ? ' [Structure]' : '';
+      return `[Source: ${source}]${typeLabel} [Score: ${scoreStr}]\n\n${content}`;
+    });
+    formatted = parts.join('\n\n---\n\n');
+  }
 
   return {
     chunks: topChunks,

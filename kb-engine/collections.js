@@ -1,6 +1,6 @@
 // kb-engine/collections.js — Collection Manager for the Attar-Code KB engine
 // Manages Qdrant collections: create, check, list, info, delete, stats.
-// Each collection has a single dense vector (Qwen3-Embedding-4B, 2560-dim),
+// Each collection has a single dense vector (Qwen3-Embedding-0.6B, 1024-dim),
 // sparse BM25 vectors, scalar quantization, and payload indexes.
 "use strict";
 
@@ -26,7 +26,9 @@ const PAYLOAD_INDEXES = [
   { field_name: "chunk_index",   field_schema: { type: "integer" } },
   { field_name: "has_code_block", field_schema: { type: "bool" } },
   // Full-text index on section_path for substring matching (scope queries)
-  { field_name: "section_path", field_schema: { type: "text", tokenizer: "word", min_token_len: 2, max_token_len: 30 } },
+  // min_token_len:1 required to index single-digit numbers ("3"), single letters ("A"),
+  // and roman numerals ("I","V","X") used in chapter/section headings.
+  { field_name: "section_path", field_schema: { type: "text", tokenizer: "word", min_token_len: 1, max_token_len: 80 } },
 ];
 
 // ─── CollectionManager ────────────────────────────────────────────────────────

@@ -137,22 +137,47 @@ const STRUCTURAL_PATTERNS = [
   /\boutline\b/i,
 ];
 
-// Scope patterns — user wants a COMPLETE section/chapter, not just top-5 results
+// Scope patterns — user wants a COMPLETE section/chapter, not just top-5 results.
+// These detect scope INTENT only — the actual heading is discovered via vector search
+// in the two-phase retrieval pipeline (retrieval/index.js).
+// Patterns are checked top-to-bottom; first match wins.
 const SCOPE_PATTERNS = [
-  // "explain chapter 3" / "summarize chapter 5" / "summary for chapter 1" / "chapter 3 summary"
-  { re: /\b(?:explain|summarize|describe|cover|show|give me|tell me about|summary\s+(?:for|of))\s+(?:the\s+)?(?:whole\s+|entire\s+|full\s+)?(?:chapter|ch\.?)\s+(\d+)/i, extract: (m) => `Chapter ${m[1]}` },
-  // "chapter 3 summary" / "chapter 5 content" / "whats in chapter 3"
-  { re: /\b(?:chapter|ch\.?)\s+(\d+)\s+(?:summary|content|details?|overview)/i, extract: (m) => `Chapter ${m[1]}` },
-  // "what's in chapter 3" / "what does chapter 5 cover"
-  { re: /\bwhat(?:'s| is| does)\s+(?:in\s+)?(?:chapter|ch\.?)\s+(\d+)/i, extract: (m) => `Chapter ${m[1]}` },
-  // "explain section 3.2" / "describe 3.2.1" / "summary for section 3.2"
-  { re: /\b(?:explain|summarize|describe|cover|show|summary\s+(?:for|of))\s+(?:section\s+)?(\d+\.\d+(?:\.\d+)?)/i, extract: (m) => m[1] },
-  // "explain the closures section" / "full section on decorators"
-  { re: /\b(?:explain|summarize|full|complete|entire|whole|all of|summary\s+(?:for|of))\s+(?:the\s+)?(.{3,40}?)\s+(?:section|chapter|part)\b/i, extract: (m) => m[1].trim() },
-  // "complete chapter 3" / "whole section 3.2"
-  { re: /\b(?:whole|complete|entire|full)\s+(?:chapter|section|part)\s+(.{1,30})/i, extract: (m) => m[1].trim() },
-  // "explain chapter 3 from Python Programming"
-  { re: /\b(?:explain|summarize|describe|summary\s+(?:for|of))\s+(?:chapter|section)\s+(\d+(?:\.\d+)?)\s+(?:from|in|of)\s+(.{3,60})/i, extract: (m) => m[1], extractBook: (m) => m[2].trim() },
+  // Intent verb + structural noun + identifier
+  // "explain chapter 3", "summarize Part II", "describe appendix A", "tell me about the introduction section"
+  /\b(?:explain|summarize|summarise|describe|cover|show|give me|tell me about|read|walk me through|go through|show me|summary\s+(?:for|of))\s+(?:the\s+)?(?:whole\s+|entire\s+|full\s+)?(?:chapter|ch\.?|section|sec\.?|part|appendix|unit|module|lesson|topic)\s+.{1,60}/i,
+
+  // Structural noun + identifier + content word
+  // "chapter 3 summary", "section 3.1 overview", "appendix A content"
+  /\b(?:chapter|ch\.?|section|sec\.?|part|appendix|unit|module|lesson|topic)\s+[\w.]+\s+(?:summary|content|details?|overview|explanation|notes?)/i,
+
+  // Interrogative + structural noun
+  // "what's in chapter 3", "what does section 3.2 cover"
+  /\bwhat(?:'s| is| does)?\s+(?:in\s+)?(?:the\s+)?(?:chapter|section|part|appendix|unit|module|lesson)\s+.{1,40}/i,
+
+  // Complete/whole/full + structural noun
+  // "complete chapter 3", "the whole introduction section", "entire part 2"
+  /\b(?:whole|complete|entire|full|all\s+of)\s+(?:the\s+)?(?:chapter|section|part|appendix|unit|module|lesson|topic)\s*.{0,40}/i,
+
+  // Intent verb + "the X section/chapter"
+  // "explain the closures section", "summarize the introduction chapter"
+  /\b(?:explain|summarize|summarise|describe|show|tell me about|walk me through)\s+(?:the\s+).{3,40}?\s+(?:chapter|section|part|appendix|unit|module|lesson)\b/i,
+
+  // Structural reference from a specific book
+  // "explain chapter 3 from Python Programming", "summarize section 2 in CLRS"
+  /\b(?:explain|summarize|describe|show|give me|tell me about)\s+(?:chapter|section|part)\s+[\w.]+\s+(?:from|in|of)\s+.{3,60}/i,
+
+  // Bare structural noun + NUMBER (broadest — lowest priority)
+  // "chapter 3", "chapter3", "section 3.2", "Part 2"
+  // Requires a digit after the noun — prevents false positives like "section in threading"
+  /\b(?:chapter|section|part|appendix)\s*(\d[\d.]*)/i,
+
+  // Bare Part/Appendix + roman numeral or single letter
+  // "Part II", "Part IV", "appendix A", "Appendix B"
+  /\b(?:part|appendix)\s+([IVXLCDM]+|[A-Za-z])\b/i,
+
+  // Bare dotted section number at START of query: "3.1.2 About the source data"
+  // N.N or N.N.N format is unambiguous — only used for document sections
+  /^\s*(\d+\.\d+(?:\.\d+)?)\s+/,
 ];
 
 // Code example patterns — user wants code snippets across all books for a topic
@@ -221,16 +246,18 @@ function analyzeQuery(query, context = {}) {
 
   // Determine query type (checked in order of specificity)
   let type = 'general';
-  let scopeId = null;
+  let scopeHint = null;  // full query passed to two-phase discovery
   let scopeBook = null;
 
   // Check scope patterns FIRST (most specific — user wants complete section)
-  for (const sp of SCOPE_PATTERNS) {
-    const m = query.match(sp.re);
-    if (m) {
+  // Patterns detect intent only; the actual heading is discovered via vector search.
+  for (const pattern of SCOPE_PATTERNS) {
+    if (pattern.test(query)) {
       type = 'scope';
-      scopeId = sp.extract(m);
-      if (sp.extractBook) scopeBook = sp.extractBook(m);
+      scopeHint = query;  // pass full query to phase 1 discovery
+      // Extract book hint if query ends with "from/in/of <title>"
+      const bookMatch = query.match(/\b(?:from|in|of)\s+["']?(.{3,60})["']?\s*$/i);
+      if (bookMatch) scopeBook = bookMatch[1].trim();
       break;
     }
   }
@@ -298,7 +325,7 @@ function analyzeQuery(query, context = {}) {
     }
   }
 
-  return { type, preferVector, collections, tech, scopeId, scopeBook };
+  return { type, preferVector, collections, tech, scopeHint, scopeBook };
 }
 
 // ---------------------------------------------------------------------------

@@ -14,8 +14,9 @@
  *   8. Store          (ChunkStore → Qdrant)
  */
 
-const fs   = require('fs');
-const path = require('path');
+const fs     = require('fs');
+const path   = require('path');
+const config = require('../config');
 
 const { detectFormat }      = require('./format-detector');
 const { routeToCollection } = require('./collection-router');
@@ -26,6 +27,7 @@ const { IngestionTracker }  = require('./progress');
 const { ChunkStore }        = require('../store');
 const { extractTocFromBookmarks, extractTocFromHeadings, mergeTocSources } = require('./toc-extractor');
 const { buildStructuralChunks } = require('./structural-indexer');
+const { sanitizeHeading, sanitizeAllHeadings } = require('./heading-sanitizer');
 
 // Supported file extensions for directory ingestion
 const SUPPORTED_EXTS = new Set([
@@ -66,7 +68,10 @@ class IngestPipeline {
    */
   constructor(opts = {}) {
     this.store   = opts.store || new ChunkStore(opts);
-    this.chunker = new Chunker({ maxTokens: opts.maxTokens, overlapTokens: opts.overlapTokens });
+    this.chunker = new Chunker({
+      maxTokens: opts.maxTokens || config.MAX_CHUNK_TOKENS,
+      overlapTokens: opts.overlapTokens || config.CHUNK_OVERLAP_TOKENS,
+    });
     this.tracker = new IngestionTracker(opts.stateFile);
     this.deep    = opts.deep || false;
     this.ollamaUrl = opts.ollamaUrl;
@@ -169,6 +174,10 @@ class IngestPipeline {
     //     (especially important for PDFs where headings are bold text or numbered)
     processed.content = normalizeHeadings(processed.content);
 
+    // 2.55 Sanitize headings — clean OCR artifacts, strip markdown, classify, demote non-headings
+    //      (Unstructured.io-style: classify first, clean second)
+    processed.content = sanitizeAllHeadings(processed.content);
+
     // 2.6 Extract TOC and build structural chunks
     let structuralChunks = [];
     if (detected.format === 'pdf') {
@@ -217,20 +226,26 @@ class IngestPipeline {
       const c = rawChunks[i];
       let enrichedContent;
 
+      // Neighbor context for Anthropic-style contextual enrichment
+      const prevContent = i > 0 ? rawChunks[i - 1].content : '';
+      const nextContent = i < rawChunks.length - 1 ? rawChunks[i + 1].content : '';
+
       if (useDeep) {
         const { enrichChunk } = require('./enrichment');
         enrichedContent = await enrichChunk(
           c.content,
           processed.title,
           c.section_path,
-          this.ollamaUrl
+          this.ollamaUrl,
+          prevContent,
+          nextContent
         );
         // Progress logging for deep enrichment
         if (i % 50 === 0 || i === rawChunks.length - 1) {
           process.stderr.write(`  Deep enrichment: ${i + 1}/${rawChunks.length} chunks\r`);
         }
       } else {
-        enrichedContent = enrichChunkFast(c.content, processed.title, c.section_path);
+        enrichedContent = enrichChunkFast(c.content, processed.title, c.section_path, prevContent);
       }
 
       enrichedChunks.push({
@@ -256,21 +271,31 @@ class IngestPipeline {
       c.metadata.book_id = bookId;
       // Extract chapter and section from section_path
       const pathParts = (c.metadata.section_path || '').split(' > ');
-      c.metadata.chapter = pathParts[1] || '';
-      c.metadata.section = pathParts[2] || '';
+      c.metadata.chapter = sanitizeHeading(pathParts[1] || '');
+      c.metadata.section = sanitizeHeading(pathParts[2] || '');
     }
 
     // 6.6 Generate section AND chapter summaries ────────────────────────────────
     // Two levels of summaries as planned:
     //   - Section summary: group by first 3 levels (Book > Chapter > Section), threshold 3+
     //   - Chapter summary: group by first 2 levels (Book > Chapter), threshold 5+
+    //
+    // No VRAM management needed — embedding model (0.6B, ~2GB) fits alongside
+    // chat/summary model (gemma4:e4b, ~12GB) in 24GB VRAM simultaneously.
+    const _ollamaUrl = this.ollamaUrl || config.OLLAMA_URL;
     const summaryChunks = [];
 
     // Helper: generate and store a summary chunk
     const _addSummary = async (groupKey, chunks, level) => {
       const name = groupKey.split(' > ').pop() || groupKey;
       const combined = chunks.map(c => c.content).join('\n\n').slice(0, 8000);
-      const summary = await generateSummary(combined, name, this.ollamaUrl);
+      let summary = await generateSummary(combined, name, this.ollamaUrl);
+      // Fallback: if LLM summary fails, create an extractive summary (first 200 words)
+      if (!summary && combined.length > 50) {
+        const words = combined.split(/\s+/).slice(0, 200);
+        summary = words.join(' ') + (words.length >= 200 ? '...' : '');
+        process.stderr.write(`  [summary fallback] extractive summary for "${name}" (LLM unavailable)\n`);
+      }
       if (summary) {
         summaryChunks.push({
           content: `[${level === 'chapter' ? 'Chapter Summary' : 'Section Summary'}: ${name}]\n\n${summary}`,
@@ -300,7 +325,8 @@ class IngestPipeline {
       sectionGroups[groupKey].push(c);
     }
     for (const [groupKey, chunks] of Object.entries(sectionGroups)) {
-      if (chunks.length >= 3 && groupKey.split(' > ').length >= 3) {
+      // Relaxed: depth >= 2 (was >= 3) so chapters with only H1-level headings get summaries
+      if (chunks.length >= 3 && groupKey.split(' > ').length >= 2) {
         await _addSummary(groupKey, chunks, 'section');
       }
     }
@@ -417,7 +443,8 @@ function normalizeHeadings(content) {
   });
 
   // Pattern: "**N.N Title**" or "**N.N.N Title**" → ## or ###
-  result = result.replace(/^\*\*(\d+\.\d+(?:\.\d+)?)\s+(.+?)\*\*$/gm, (m, num, title) => {
+  // \s* at start handles leading whitespace from pymupdf4llm output
+  result = result.replace(/^\s*\*\*(\d+\.\d+(?:\.\d+)?)\s+(.+?)\*\*\s*$/gm, (m, num, title) => {
     const depth = num.split('.').length;
     const prefix = depth <= 2 ? '##' : '###';
     return `${prefix} ${num} ${title.trim()}`;
@@ -437,26 +464,61 @@ function normalizeHeadings(content) {
   result = result.replace(/^([A-Z][A-Z\s]{5,78})$/gm, (m, text) => {
     const trimmed = text.trim();
     const wordCount = trimmed.split(/\s+/).length;
-    if (wordCount >= 2 && wordCount <= 8 && !/[{}()\[\]=<>;]/.test(trimmed)) {
+    if (wordCount >= 2 && wordCount <= 8
+      && !/[{}()\[\]=<>;_`]/.test(trimmed)
+      && !/\?$/.test(trimmed)
+      && !/\.\s*$/.test(trimmed)             // not a sentence ending with period
+    ) {
       return `## ${trimmed}`;
     }
     return m;
   });
 
   // Pattern: "N. Title" standalone (short line, starts with capital)
+  // Guards: no code syntax, no questions, no sentences, max 10 words
   result = result.replace(/^(\d{1,2})\.\s+([A-Z][^\n]{5,75})$/gm, (m, num, title) => {
-    return `## ${num}. ${title.trim()}`;
+    const t = title.trim();
+    if (!/[{}()\[\]=;`]/.test(t)        // no code syntax
+      && !/\?$/.test(t)                  // not a question
+      && !/\.\s*$/.test(t)              // not a sentence
+      && !/\b\w+_\w+\b/.test(t)         // no snake_case
+      && t.split(/\s+/).length <= 10     // max 10 words
+    ) {
+      return `## ${num}. ${t}`;
+    }
+    return m;
   });
 
   // Pattern: "N.N Title" without bold
+  // Same guards as N. Title
   result = result.replace(/^(\d{1,2}\.\d{1,2})\s+([A-Z][^\n]{5,75})$/gm, (m, num, title) => {
-    return `## ${num} ${title.trim()}`;
+    const t = title.trim();
+    if (!/[{}()\[\]=;`]/.test(t)
+      && !/\?$/.test(t)
+      && !/\.\s*$/.test(t)
+      && !/\b\w+_\w+\b/.test(t)
+      && t.split(/\s+/).length <= 10
+    ) {
+      return `## ${num} ${t}`;
+    }
+    return m;
   });
 
   // Pattern: "**Bold Heading Text**" on its own line (likely a heading if short)
-  result = result.replace(/^\*\*([^*\n]{5,80})\*\*$/gm, (m, text) => {
+  // Positive indicators: short, capitalized, no code syntax
+  // Negative indicators: code punctuation, questions, sentences, snake_case, keywords
+  // \s* handles leading whitespace from pymupdf4llm
+  result = result.replace(/^\s*\*\*([^*\n]{5,80})\*\*\s*$/gm, (m, text) => {
     const trimmed = text.trim();
-    if (/^[A-Z]/.test(trimmed) && !/[{}()\[\]=;]/.test(trimmed)) {
+    if (/^[A-Z]/.test(trimmed)                          // starts with capital
+      && !/[{}()\[\]=;`]/.test(trimmed)                  // no code syntax (colons OK for headings)
+      && !/\?$/.test(trimmed)                            // not a question
+      && !/\.\s*$/.test(trimmed)                         // not a sentence (ends with period)
+      && !/\b\w+_\w+\b/.test(trimmed)                    // no snake_case identifiers (v_start, my_func)
+      && !/\b(if|for|while|def|class|return|import|from|print|True|False|None)\b/.test(trimmed)
+      && !/\b(var|let|const|function|async|await|new|this)\b/.test(trimmed)
+      && trimmed.split(/\s+/).length <= 10               // max 10 words
+    ) {
       return `## ${trimmed}`;
     }
     return m;

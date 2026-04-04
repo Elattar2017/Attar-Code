@@ -187,6 +187,64 @@ class ChunkStore {
     return results;
   }
 
+  // ─── scrollByKeyword ─────────────────────────────────────────────────────
+
+  /**
+   * Scroll all chunks matching exact KEYWORD values.
+   * Uses match.value (KEYWORD exact match) — immune to text-index tokenization.
+   * Used for scope phase 2 retrieval.
+   *
+   * @param {string} collection
+   * @param {Array<{ key: string, value: string }>} conditions  Exact-match conditions
+   * @param {object} [opts]
+   * @param {number} [opts.limit=200]  Max points to return
+   * @param {string} [opts.sortBy]     Payload field to sort by (e.g., "chunk_index")
+   * @returns {Promise<Array<{ id: string, content: string, metadata: object }>>}
+   */
+  async scrollByKeyword(collection, conditions, opts = {}) {
+    const maxPoints = opts.limit || 200;
+    const results = [];
+    let nextOffset = null;
+
+    const qdrantFilter = {
+      must: conditions.map(({ key, value }) => ({
+        key,
+        match: { value },  // KEYWORD exact match — no tokenization
+      })),
+    };
+
+    do {
+      try {
+        const batchSize = Math.min(maxPoints - results.length, 50);
+        const response = await this._client.scroll(collection, {
+          filter: qdrantFilter,
+          limit: batchSize,
+          offset: nextOffset,
+          with_payload: true,
+          with_vector: false,
+        });
+
+        for (const point of (response.points || [])) {
+          results.push({
+            id: point.id,
+            content: point.payload?.content || '',
+            metadata: point.payload || {},
+          });
+        }
+
+        nextOffset = response.next_page_offset;
+      } catch (_) {
+        break; // Collection missing or filter invalid
+      }
+    } while (nextOffset && results.length < maxPoints);
+
+    if (opts.sortBy) {
+      results.sort((a, b) => (a.metadata[opts.sortBy] || 0) - (b.metadata[opts.sortBy] || 0));
+    }
+
+    return results;
+  }
+
   // ─── search (dense) ───────────────────────────────────────────────────────
 
   /**
@@ -349,10 +407,55 @@ class ChunkStore {
    * @param {string} query
    * @returns {{ indices: number[], values: number[] }}
    */
-  _getSparseQueryVec(collection, query) {
+  async _getSparseQueryVec(collection, query) {
+    // Cold-start fix: if no vectorizer in memory, rebuild from Qdrant
+    if (!this._vectorizers.has(collection)) {
+      await this._rebuildVocabulary(collection);
+    }
     const vectorizer = this._vectorizers.get(collection);
-    if (!vectorizer) return Promise.resolve({ indices: [], values: [] });
-    return Promise.resolve(vectorizer.computeSparseVector(query));
+    if (!vectorizer) return { indices: [], values: [] };
+    return vectorizer.computeSparseVector(query);
+  }
+
+  /**
+   * Rebuild BM25 vocabulary from Qdrant collection content.
+   * Called on cold start when the in-memory vectorizer is empty.
+   * Scrolls through stored chunks and feeds their content to the vectorizer.
+   */
+  async _rebuildVocabulary(collection) {
+    try {
+      const info = await this._collections.getCollectionInfo(collection);
+      if (!info || (info.points_count || 0) === 0) return;
+
+      const vectorizer = new SparseVectorizer();
+      let offset = null;
+      let docCount = 0;
+
+      do {
+        const response = await this._client.scroll(collection, {
+          limit: 100,
+          offset,
+          with_payload: ['content'],
+          with_vector: false,
+        });
+
+        for (const point of (response.points || [])) {
+          const content = point.payload?.content || '';
+          if (content.length > 10) {
+            vectorizer.addDocument(String(docCount++), content);
+          }
+        }
+        offset = response.next_page_offset;
+      } while (offset);
+
+      if (docCount > 0) {
+        vectorizer.build();
+        this._vectorizers.set(collection, vectorizer);
+        process.stderr.write(`  [BM25] Rebuilt vocabulary for "${collection}": ${vectorizer.getVocabularySize()} terms from ${docCount} docs\n`);
+      }
+    } catch (err) {
+      process.stderr.write(`  [BM25] Failed to rebuild vocabulary for "${collection}": ${err.message}\n`);
+    }
   }
 
   /**

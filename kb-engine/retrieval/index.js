@@ -47,83 +47,18 @@ class RetrievalPipeline {
     const collections =
       context.forceCollections || analysis.collections;
 
-    // ── SCOPE query: scroll by section_path filter, return ALL chunks in order ──
-    if (analysis.type === 'scope' && analysis.scopeId) {
-      let allScopeResults = [];
-      const filter = [{ key: 'section_path', match: { text: analysis.scopeId } }];
-      // If user specified a book: add doc_title filter
-      if (analysis.scopeBook) {
-        filter.push({ key: 'doc_title', match: { text: analysis.scopeBook } });
-      }
-
-      for (const collection of collections) {
-        try {
-          const results = await this.store.scrollByFilter(collection, filter, {
-            limit: 200, sortBy: 'chunk_index',
-          });
-          allScopeResults.push(...results.map(r => ({ ...r, collection })));
-        } catch (_) {}
-      }
-
-      if (allScopeResults.length > 0) {
-        // Group by doc_title for multi-book disambiguation
-        const byBook = {};
-        for (const r of allScopeResults) {
-          const book = r.metadata?.doc_title || 'Unknown';
-          if (!byBook[book]) byBook[book] = [];
-          byBook[book].push(r);
+    // ── SCOPE query: two-phase vector-discovery + keyword-filter retrieval ──
+    if (analysis.type === 'scope' && analysis.scopeHint) {
+      const discovered = await this._discoverScopeMetadata(
+        query, analysis.scopeBook, collections
+      );
+      if (discovered) {
+        const allScopeResults = await this._retrieveFullScope(discovered, collections);
+        if (allScopeResults.length > 0) {
+          return this._formatScopeResult(allScopeResults, discovered);
         }
-
-        const bookNames = Object.keys(byBook);
-        let chosen;
-        if (bookNames.length === 1) {
-          // Single book — return all its chunks
-          chosen = byBook[bookNames[0]];
-        } else {
-          // Multiple books — pick the one with most chunks (most detailed)
-          const sorted = bookNames.sort((a, b) => byBook[b].length - byBook[a].length);
-          chosen = byBook[sorted[0]];
-          // Note other books
-          const others = sorted.slice(1).map(b => `${b} (${byBook[b].length} chunks)`);
-          if (chosen.length > 0) {
-            chosen[chosen.length - 1]._otherBooks = others;
-          }
-        }
-
-        // Sort by chunk_index within chosen book
-        chosen.sort((a, b) => (a.metadata?.chunk_index || 0) - (b.metadata?.chunk_index || 0));
-
-        // Detail + Summary hybrid: if >25 detail chunks, use summaries for the rest
-        const details = chosen.filter(r => r.metadata?.chunk_type !== 'summary');
-        const summaries = chosen.filter(r => r.metadata?.chunk_type === 'summary');
-
-        let finalResults;
-        if (details.length <= 25) {
-          finalResults = details; // All detail chunks fit
-        } else {
-          // First 25 detail + summaries for remaining sections
-          const first25 = details.slice(0, 25);
-          const coveredSections = new Set(first25.map(r => r.metadata?.section_path));
-          const remainingSummaries = summaries.filter(r =>
-            !coveredSections.has(r.metadata?.section_path)
-          );
-          finalResults = [...first25, ...remainingSummaries];
-        }
-
-        return {
-          chunks: finalResults.map((r, i) => ({
-            id: r.id, content: r.content, metadata: r.metadata,
-            score: 1.0 - (i * 0.001), // Preserve order as score
-            collection: r.collection,
-          })),
-          formatted: finalResults.map(r => r.content).join('\n\n---\n\n'),
-          count: finalResults.length,
-          type: 'scope',
-          scopeId: analysis.scopeId,
-          totalInScope: allScopeResults.length,
-        };
       }
-      // Scope query but no results → fall through to regular search
+      // Discovery or retrieval found nothing → fall through to regular search
     }
 
     // ── CODE_EXAMPLES query: vector search + filter has_code_block=true ──
@@ -256,6 +191,187 @@ class RetrievalPipeline {
     });
   }
 
+  // ─── Scope: Phase 1 — Discovery ───────────────────────────────────────────
+
+  /**
+   * Use vector search to discover the actual stored chapter/section metadata.
+   * Returns the best-matching chapter heading and book_id, or null.
+   *
+   * @param {string} query       The user's query (used for vector search)
+   * @param {string|null} scopeBook  Book hint from query ("from Python Programming")
+   * @param {string[]} collections   Collections to search
+   * @returns {Promise<{ chapter: string, book_id: string, doc_title: string, scopeLevel: string } | null>}
+   */
+  async _discoverScopeMetadata(query, scopeBook, collections) {
+    const allDiscovery = [];
+
+    for (const collection of collections) {
+      try {
+        const results = await this.store.hybridSearch(collection, query, {
+          limit: 5,
+          queryType: 'structural',
+        });
+        allDiscovery.push(...results.map(r => ({ ...r, collection })));
+      } catch (_) {}
+    }
+
+    if (allDiscovery.length === 0) return null;
+
+    // Score chapter values: sum scores for each (chapter, book_id) pair
+    const chapterScores = {};  // key: "chapter|||book_id" → { chapter, book_id, doc_title, totalScore }
+    for (const r of allDiscovery) {
+      const chapter = r.metadata?.chapter || '';
+      const bookId = r.metadata?.book_id || '';
+      const docTitle = r.metadata?.doc_title || '';
+      if (!chapter) continue;  // skip chunks with empty chapter
+
+      const key = `${chapter}|||${bookId}`;
+      if (!chapterScores[key]) {
+        chapterScores[key] = { chapter, book_id: bookId, doc_title: docTitle, totalScore: 0 };
+      }
+      // If scopeBook hint: boost matching books
+      const bookBoost = scopeBook && docTitle.toLowerCase().includes(scopeBook.toLowerCase()) ? 2.0 : 1.0;
+      chapterScores[key].totalScore += (r.score || 0) * bookBoost;
+    }
+
+    // Pick the best chapter
+    const candidates = Object.values(chapterScores);
+    if (candidates.length === 0) {
+      // No chapter found — try section level
+      const sectionScores = {};
+      for (const r of allDiscovery) {
+        const section = r.metadata?.section || '';
+        const bookId = r.metadata?.book_id || '';
+        const docTitle = r.metadata?.doc_title || '';
+        if (!section) continue;
+
+        const key = `${section}|||${bookId}`;
+        if (!sectionScores[key]) {
+          sectionScores[key] = { section, book_id: bookId, doc_title: docTitle, totalScore: 0 };
+        }
+        const bookBoost = scopeBook && docTitle.toLowerCase().includes(scopeBook.toLowerCase()) ? 2.0 : 1.0;
+        sectionScores[key].totalScore += (r.score || 0) * bookBoost;
+      }
+
+      const secCandidates = Object.values(sectionScores);
+      if (secCandidates.length === 0) return null;
+
+      secCandidates.sort((a, b) => b.totalScore - a.totalScore);
+      const best = secCandidates[0];
+      return { section: best.section, book_id: best.book_id, doc_title: best.doc_title, scopeLevel: 'section' };
+    }
+
+    candidates.sort((a, b) => b.totalScore - a.totalScore);
+    const best = candidates[0];
+    return { chapter: best.chapter, book_id: best.book_id, doc_title: best.doc_title, scopeLevel: 'chapter' };
+  }
+
+  // ─── Scope: Phase 2 — Complete Retrieval ─────────────────────────────────
+
+  /**
+   * Use KEYWORD exact match to retrieve ALL chunks from a discovered chapter/section.
+   *
+   * @param {{ chapter?: string, section?: string, book_id: string, scopeLevel: string }} discovered
+   * @param {string[]} collections
+   * @returns {Promise<Array<{ id, content, metadata, collection }>>}
+   */
+  async _retrieveFullScope(discovered, collections) {
+    const conditions = [];
+
+    if (discovered.scopeLevel === 'chapter' && discovered.chapter) {
+      conditions.push({ key: 'chapter', value: discovered.chapter });
+    } else if (discovered.scopeLevel === 'section' && discovered.section) {
+      conditions.push({ key: 'section', value: discovered.section });
+    } else {
+      return [];
+    }
+
+    // Narrow to specific book if known
+    if (discovered.book_id) {
+      conditions.push({ key: 'book_id', value: discovered.book_id });
+    }
+
+    const allResults = [];
+    for (const collection of collections) {
+      try {
+        const results = await this.store.scrollByKeyword(collection, conditions, {
+          limit: 200,
+          sortBy: 'chunk_index',
+        });
+        allResults.push(...results.map(r => ({ ...r, collection })));
+      } catch (_) {}
+    }
+
+    return allResults;
+  }
+
+  // ─── Scope: Format Result ────────────────────────────────────────────────
+
+  /**
+   * Format scope results with multi-book disambiguation and detail+summary hybrid.
+   */
+  _formatScopeResult(allResults, discovered) {
+    // Group by doc_title for multi-book disambiguation
+    const byBook = {};
+    for (const r of allResults) {
+      const book = r.metadata?.doc_title || 'Unknown';
+      if (!byBook[book]) byBook[book] = [];
+      byBook[book].push(r);
+    }
+
+    const bookNames = Object.keys(byBook);
+    let chosen;
+    let otherBooks = [];
+
+    if (bookNames.length === 1) {
+      chosen = byBook[bookNames[0]];
+    } else {
+      // Multiple books — pick the one with most chunks
+      const sorted = bookNames.sort((a, b) => byBook[b].length - byBook[a].length);
+      chosen = byBook[sorted[0]];
+      otherBooks = sorted.slice(1).map(b => `${b} (${byBook[b].length} chunks)`);
+    }
+
+    // Sort by chunk_index
+    chosen.sort((a, b) => (a.metadata?.chunk_index || 0) - (b.metadata?.chunk_index || 0));
+
+    // Detail + Summary hybrid: if >25 detail chunks, use summaries for the rest
+    const details = chosen.filter(r => r.metadata?.chunk_type !== 'summary');
+    const summaries = chosen.filter(r => r.metadata?.chunk_type === 'summary');
+
+    let finalResults;
+    if (details.length <= 25) {
+      finalResults = details;
+    } else {
+      const first25 = details.slice(0, 25);
+      const coveredSections = new Set(first25.map(r => r.metadata?.section_path));
+      const remainingSummaries = summaries.filter(r =>
+        !coveredSections.has(r.metadata?.section_path)
+      );
+      finalResults = [...first25, ...remainingSummaries];
+    }
+
+    const scopeHeading = discovered.chapter || discovered.section || 'Unknown';
+    const formattedParts = finalResults.map(r => r.content);
+    if (otherBooks.length > 0) {
+      formattedParts.push(`\n[Also found in: ${otherBooks.join(', ')}]`);
+    }
+
+    return {
+      chunks: finalResults.map((r, i) => ({
+        id: r.id, content: r.content, metadata: r.metadata,
+        score: 1.0 - (i * 0.001),  // Preserve reading order as score
+        collection: r.collection,
+      })),
+      formatted: formattedParts.join('\n\n---\n\n'),
+      count: finalResults.length,
+      type: 'scope',
+      scopeId: scopeHeading,
+      doc_title: discovered.doc_title,
+      totalInScope: allResults.length,
+    };
+  }
+
   // ─── searchFixRecipes ─────────────────────────────────────────────────────
 
   /**
@@ -277,7 +393,7 @@ class RetrievalPipeline {
 
   /** Start the reranker sidecar. */
   async start() {
-    return this.reranker.start();
+    return this.reranker.start(this.config.RERANKER_MODEL);
   }
 
   /** Stop the reranker sidecar. */

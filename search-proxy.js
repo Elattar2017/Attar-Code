@@ -252,7 +252,18 @@ async function kbSearch(query, num = 5) {
         score:    c.score != null ? Math.round(c.score * 1000) / 1000 : 0,
         collection: c.collection || "",
       }));
-      return { results, engine: "qdrant" };
+      const response = { results, engine: "qdrant" };
+
+      // Preserve scope/code_examples metadata for the CLI
+      if (result.type === 'scope' || result.type === 'code_examples') {
+        response.formatted    = result.formatted;
+        response.type         = result.type;
+        response.scopeId      = result.scopeId;
+        response.totalInScope = result.totalInScope;
+        response.count        = result.count || results.length;
+      }
+
+      return response;
     } catch (e) {
       return { results: [], engine: "qdrant-error", error: e.message };
     }
@@ -314,7 +325,70 @@ app.post("/kb/search", async (req, res) => {
   if (result.error && result.results.length === 0) {
     return res.status(500).json({ error: result.error });
   }
-  res.json({ results: result.results, engine: result.engine });
+  // Pass through scope/code_examples metadata if present
+  const payload = { results: result.results, engine: result.engine };
+  if (result.type)         payload.type = result.type;
+  if (result.formatted)    payload.formatted = result.formatted;
+  if (result.scopeId)      payload.scopeId = result.scopeId;
+  if (result.totalInScope) payload.totalInScope = result.totalInScope;
+  if (result.count)        payload.count = result.count;
+  res.json(payload);
+});
+
+// ─── KB read section (two-phase: discover + retrieve complete section) ────────
+app.post("/kb/read-section", async (req, res) => {
+  const { query, source } = req.body;
+  if (!query) return res.status(400).json({ error: "query required" });
+  if (!kbReady || !kbEngine || !kbEngine.retrieval) {
+    return res.status(503).json({ error: "KB engine not available" });
+  }
+
+  try {
+    // Call the two-phase pipeline directly with scope hint
+    const pipeline = kbEngine.retrieval;
+    const { analyzeQuery } = require('./kb-engine/retrieval/query-analyzer');
+    const analysis = analyzeQuery(query, {});
+    const collections = analysis.collections;
+
+    // Phase 1: Discovery — find the actual chapter/section via vector search
+    const discovered = await pipeline._discoverScopeMetadata(query, source || null, collections);
+    if (!discovered) {
+      // Fallback: do a regular search if no section found
+      const fallback = await kbSearch(query, 10);
+      return res.json({ ...fallback, type: 'search', note: 'No matching section found — showing search results instead.' });
+    }
+
+    // Phase 2: Complete retrieval via keyword filter
+    const allResults = await pipeline._retrieveFullScope(discovered, collections);
+    if (allResults.length === 0) {
+      const fallback = await kbSearch(query, 10);
+      return res.json({ ...fallback, type: 'search', note: 'Section found but no chunks — showing search results instead.' });
+    }
+
+    // Format
+    const formatted = pipeline._formatScopeResult(allResults, discovered);
+    const results = (formatted.chunks || []).map((c, i) => ({
+      rank: i + 1,
+      text: c.content || "",
+      source: c.metadata?.source || "?",
+      filename: c.metadata?.filename || "",
+      score: c.score || 0,
+      collection: c.collection || "",
+    }));
+
+    res.json({
+      results,
+      formatted: formatted.formatted,
+      type: 'scope',
+      scopeId: formatted.scopeId,
+      doc_title: formatted.doc_title,
+      count: formatted.count,
+      totalInScope: formatted.totalInScope,
+      engine: "qdrant",
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ─── KB add file (backward compatible) ───────────────────────────────────────
@@ -760,6 +834,61 @@ app.get("/kb/collections", async (req, res) => {
   }
 });
 
+// ─── KB list ALL data sources across ALL collections ────────────────────────
+app.get("/kb/sources", async (req, res) => {
+  if (!kbReady || !kbEngine) return res.json({ sources: [], total_sources: 0, total_chunks: 0 });
+
+  try {
+    const sourceMap = {};
+    const allCols = await kbEngine.collectionMgr.listCollections();
+
+    for (const col of allCols) {
+      try {
+        const info = await kbEngine.collectionMgr.getCollectionInfo(col);
+        if ((info.points_count || 0) === 0) continue;
+
+        let offset = null;
+        do {
+          const r = await kbEngine.store._client.scroll(col, {
+            limit: 100, offset,
+            with_payload: ['doc_title', 'filename', 'book_id', 'chunk_type'],
+            with_vector: false,
+          });
+          for (const p of r.points) {
+            const title = p.payload?.doc_title;
+            if (!title) continue;
+            if (!sourceMap[title]) {
+              sourceMap[title] = {
+                doc_title: title,
+                filename: p.payload?.filename || '',
+                book_id: p.payload?.book_id || '',
+                collections: new Set(),
+                chunk_count: 0,
+              };
+            }
+            sourceMap[title].collections.add(col);
+            sourceMap[title].chunk_count++;
+          }
+          offset = r.next_page_offset;
+        } while (offset);
+      } catch (_) {}
+    }
+
+    const sources = Object.values(sourceMap).map(s => ({
+      ...s,
+      collections: [...s.collections],
+    }));
+
+    res.json({
+      sources,
+      total_sources: sources.length,
+      total_chunks: sources.reduce((sum, s) => sum + s.chunk_count, 0),
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message, sources: [], total_sources: 0 });
+  }
+});
+
 // ─── KB list books/documents per collection ─────────────────────────────────
 app.get("/kb/books", async (req, res) => {
   if (!kbReady || !kbEngine) {
@@ -997,6 +1126,29 @@ Set SEARX_URL env var to use your own SearXNG instance.
     kbReady = false;
     console.log(`  KB engine failed to start: ${e.message}`);
     console.log("  KB features will be unavailable. Ensure Qdrant is running.");
+  }
+
+  // ─── Migrate section_path text index (min_token_len: 2 → 1) ─────────────
+  if (kbReady && kbEngine) {
+    try {
+      const client = kbEngine.store?._client;
+      if (client) {
+        const cols = await kbEngine.collectionMgr.listCollections();
+        for (const col of cols) {
+          try {
+            await client.deletePayloadIndex(col, { field_name: 'section_path', wait: true });
+            await client.createPayloadIndex(col, {
+              field_name: 'section_path',
+              field_schema: { type: 'text', tokenizer: 'word', min_token_len: 1, max_token_len: 80 },
+              wait: true,
+            });
+          } catch (_) {} // Ignore if collection empty or index already correct
+        }
+        console.log("  section_path index migrated (min_token_len: 1)");
+      }
+    } catch (e) {
+      console.log(`  section_path index migration skipped: ${e.message}`);
+    }
   }
 
   // ─── Index existing KB files ─────────────────────────────────────────────
