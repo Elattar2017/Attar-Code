@@ -23,32 +23,97 @@ const DECOMPOSE_PATTERNS = [
   /\bboth\b.+\band\b/i,
 ];
 
-// Patterns that suggest the query is already clean (no rewriting needed)
-const CLEAN_QUERY_PATTERNS = [
-  /^[A-Z][a-z]+Error/,        // TypeError, SyntaxError
-  /^[A-Z]{2,}/,               // ENOENT, ECONNREFUSED
-  /\bfunction\b.*\(/,         // function signatures
-  /\bclass\b\s+\w+/,          // class names
-  /\bimport\b/,               // import statements
-  /^\d+\.\d+/,                // version numbers (3.1.2)
-];
+// ── Grammar-word ratio approach (zero domain keywords) ───────────────────────
+//
+// Instead of hardcoded regex patterns that break on "class in python" vs
+// "class MyComponent", we detect WHETHER a query is natural language using
+// universal grammar/function words. These are purely structural English words
+// that appear in questions/requests but never in code identifiers.
+
+const GRAMMAR_WORDS = new Set([
+  // Pronouns / determiners
+  'i','my','me','we','our','you','your','it','its','this','that',
+  'these','those','they','their','them',
+  // Question words
+  'what','how','why','when','where','who','which',
+  // Articles / prepositions
+  'a','an','the','in','for','of','to','at','on','by','with','about','between',
+  // Conjunctions / logical
+  'and','or','but','not','no','if',
+  // Auxiliary verbs
+  'is','are','was','were','be','been','have','has','do','does','did',
+  'will','would','could','should','can','may','might',
+  // High-signal intent words (appear in queries, never in code identifiers)
+  'need','want','help','get','fix','make','please','explain',
+  'understand','tell','show','give','find',
+]);
+
+const GRAMMAR_RATIO_THRESHOLD = 0.40;
+
+// Regex to detect code/technical syntax characters in a token
+const SPECIFICITY_RE = /[.()[\]{}<>=;:/\\$@#_]/;
 
 /**
- * Detect if a query is vague/messy and would benefit from rewriting.
+ * Classify whether a query is natural language (needs rewriting) or
+ * technical/code (skip rewriting). Uses structural signal analysis —
+ * zero domain-specific keyword lists.
+ *
+ * grammarRatio:    fraction of tokens that are universal grammar words
+ * specificityNorm: normalized score for tokens that look like code identifiers
+ * vaguenessScore:  grammarRatio - specificityNorm * 0.5 (higher = more NL)
+ *
+ * @param {string} query
+ * @returns {{ isNaturalLanguage: boolean, grammarRatio: number, specificityNorm: number, vaguenessScore: number }}
+ */
+function classifyQueryNature(query) {
+  const tokens = query.trim().split(/\s+/).filter(t => t.length > 0);
+  const n = tokens.length;
+  if (n === 0) return { isNaturalLanguage: false, grammarRatio: 0, specificityNorm: 0, vaguenessScore: 0 };
+
+  // Grammar ratio: count pure grammar/function-word tokens
+  let grammarCount = 0;
+  for (const tok of tokens) {
+    const lower = tok.replace(/[^a-z]/gi, '').toLowerCase();
+    if (GRAMMAR_WORDS.has(lower)) grammarCount++;
+  }
+  const grammarRatio = grammarCount / n;
+
+  // Specificity bonus: tokens that look like code identifiers
+  let specificityBonus = 0;
+  for (const tok of tokens) {
+    const core = tok.replace(/^[^a-zA-Z0-9$_@#]+|[^a-zA-Z0-9$_@#]+$/g, '');
+    if (core.length === 0) continue;
+
+    if (SPECIFICITY_RE.test(tok))            specificityBonus += 0.30; // syntax char (., :, (), etc.)
+    if (/^[A-Z]{3,}$/.test(core))            specificityBonus += 0.35; // ALL_CAPS acronym (ENOENT, HTTP)
+    if (/^[A-Z][a-z]+[A-Z]/.test(core) ||
+        /^[a-z]+[A-Z]/.test(core))           specificityBonus += 0.30; // CamelCase / camelCase
+    if (/^\d+\.\d+/.test(core))              specificityBonus += 0.30; // version number (3.10)
+    if (/:$/.test(tok) && core.length > 5)   specificityBonus += 0.35; // ErrorName: prefix
+  }
+
+  const specificityNorm = Math.min(specificityBonus / n, 1.0);
+  const vaguenessScore  = Math.max(0, grammarRatio - specificityNorm * 0.5);
+
+  return {
+    isNaturalLanguage: vaguenessScore >= GRAMMAR_RATIO_THRESHOLD,
+    grammarRatio,
+    specificityNorm,
+    vaguenessScore,
+  };
+}
+
+/**
+ * Detect if a query is vague/natural-language and would benefit from rewriting.
+ * Uses structural signal analysis — no domain keyword lists.
+ *
  * @param {string} query
  * @returns {boolean}
  */
 function needsRewriting(query) {
   if (!query || query.length < 5) return false;
-  // Already clean/specific — don't rewrite
-  if (CLEAN_QUERY_PATTERNS.some(p => p.test(query))) return false;
-  // Very short queries are likely vague
-  if (query.split(/\s+/).length <= 3) return true;
-  // Queries with pronouns/vague references
-  if (/\b(this|that|it|these|those|my|the)\b/i.test(query) && query.length < 80) return true;
-  // Queries that are just pasted error output (long, mixed case)
-  if (query.length > 150) return true;
-  return false;
+  if (query.length > 150) return true;  // pasted error dump
+  return classifyQueryNature(query).isNaturalLanguage;
 }
 
 /**
@@ -166,5 +231,6 @@ module.exports = {
   decomposeQuery,
   needsRewriting,
   needsDecomposition,
+  classifyQueryNature,
   REWRITE_TYPES,
 };

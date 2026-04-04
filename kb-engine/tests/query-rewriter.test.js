@@ -5,6 +5,7 @@ const {
   decomposeQuery,
   needsRewriting,
   needsDecomposition,
+  classifyQueryNature,
   REWRITE_TYPES,
 } = require("../retrieval/query-rewriter");
 
@@ -57,6 +58,73 @@ describe("needsRewriting", () => {
   test("empty/null → false", () => {
     expect(needsRewriting("")).toBe(false);
     expect(needsRewriting(null)).toBe(false);
+  });
+
+  // Regression: "class" keyword in natural language must trigger rewriting
+  test("class keyword in natural language sentence → true (regression)", () => {
+    expect(needsRewriting("i need explain for class in python with examples")).toBe(true);
+    expect(needsRewriting("explain class in python")).toBe(true);
+    expect(needsRewriting("how does a function work in javascript")).toBe(true);
+  });
+
+  test("technical compound noun phrase → false", () => {
+    expect(needsRewriting("asyncio.gather timeout configuration")).toBe(false);
+    expect(needsRewriting("python decorators with arguments")).toBe(false);
+  });
+
+  test("conceptual questions → true", () => {
+    expect(needsRewriting("what is the difference between let and const")).toBe(true);
+    expect(needsRewriting("it doesn't work help me")).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 1b. classifyQueryNature — structural signal analysis
+// ---------------------------------------------------------------------------
+describe("classifyQueryNature", () => {
+  test("natural language query has high grammar ratio", () => {
+    const r = classifyQueryNature("i need explain for class in python with examples");
+    expect(r.isNaturalLanguage).toBe(true);
+    expect(r.grammarRatio).toBeGreaterThan(0.5);
+    expect(r.vaguenessScore).toBeGreaterThanOrEqual(0.40);
+  });
+
+  test("code identifier query has low grammar ratio + high specificity", () => {
+    const r = classifyQueryNature("class MyComponent extends React.Component");
+    expect(r.isNaturalLanguage).toBe(false);
+    expect(r.grammarRatio).toBe(0); // no grammar words
+    expect(r.specificityNorm).toBeGreaterThan(0); // dot in React.Component
+  });
+
+  test("ALL_CAPS error code gets specificity bonus", () => {
+    const r = classifyQueryNature("ENOENT no such file");
+    expect(r.isNaturalLanguage).toBe(false);
+    expect(r.specificityNorm).toBeGreaterThan(0); // ENOENT is ALL_CAPS 3+
+  });
+
+  test("dotted module path gets specificity bonus", () => {
+    const r = classifyQueryNature("asyncio.gather timeout configuration");
+    expect(r.isNaturalLanguage).toBe(false);
+    expect(r.specificityNorm).toBeGreaterThan(0); // dot in asyncio.gather
+  });
+
+  test("question with many grammar words gets high score", () => {
+    const r = classifyQueryNature("what is the difference between let and const");
+    expect(r.isNaturalLanguage).toBe(true);
+    expect(r.grammarRatio).toBeGreaterThan(0.45);
+  });
+
+  test("CamelCase tokens get specificity bonus", () => {
+    const r = classifyQueryNature("TypeError cannot read property");
+    expect(r.specificityNorm).toBeGreaterThan(0); // TypeError is CamelCase
+  });
+
+  test("empty query returns all zeros", () => {
+    const r = classifyQueryNature("");
+    expect(r.isNaturalLanguage).toBe(false);
+    expect(r.grammarRatio).toBe(0);
+    expect(r.specificityNorm).toBe(0);
+    expect(r.vaguenessScore).toBe(0);
   });
 });
 
