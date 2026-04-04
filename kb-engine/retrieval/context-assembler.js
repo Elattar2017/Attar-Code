@@ -4,7 +4,11 @@
  * kb-engine/retrieval/context-assembler.js
  *
  * Processes raw search result chunks into LLM-ready context strings.
+ * Supports both Jaccard deduplication and MMR (Maximal Marginal Relevance)
+ * for diversity-aware selection.
  */
+
+const config = require('../config');
 
 // ---------------------------------------------------------------------------
 // computeOverlap(a, b) → 0-1  (Jaccard word similarity)
@@ -105,6 +109,95 @@ function deduplicateChunks(chunks) {
 }
 
 // ---------------------------------------------------------------------------
+// cosineSim(a, b) → number in [-1, 1]
+// ---------------------------------------------------------------------------
+
+/**
+ * Cosine similarity between two vectors.
+ * @param {number[]|null} a
+ * @param {number[]|null} b
+ * @returns {number}
+ */
+function cosineSim(a, b) {
+  if (!a || !b || a.length === 0 || b.length === 0) return 0;
+  const len = Math.min(a.length, b.length);
+  let dot = 0, normA = 0, normB = 0;
+  for (let i = 0; i < len; i++) {
+    dot   += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+  const denom = Math.sqrt(normA) * Math.sqrt(normB);
+  return denom > 0 ? dot / denom : 0;
+}
+
+// ---------------------------------------------------------------------------
+// mmrSelect(chunks, maxChunks, lambda) → selected chunks
+// ---------------------------------------------------------------------------
+
+/**
+ * Maximal Marginal Relevance selection.
+ * Balances relevance (rerankScore or score) against diversity (cosine dissimilarity
+ * in embedding space, with Jaccard fallback when vectors are unavailable).
+ *
+ * MMR(c) = λ × relevance(c) - (1-λ) × max(similarity(c, s) for s in selected)
+ *
+ * @param {Array<object>} chunks   Candidate chunks (must have score/rerankScore, optionally _vector)
+ * @param {number} maxChunks       How many to select
+ * @param {number} [lambda=0.7]    Relevance vs diversity tradeoff (1.0 = pure relevance, 0.0 = pure diversity)
+ * @returns {Array<object>}
+ */
+function mmrSelect(chunks, maxChunks, lambda = 0.7) {
+  if (!chunks || chunks.length === 0) return [];
+  if (chunks.length <= maxChunks) return [...chunks];
+
+  // Sort by relevance first to pick the best initial chunk
+  const sorted = [...chunks].sort((a, b) => {
+    const aR = a.rerankScore !== undefined ? a.rerankScore : (a.score || 0);
+    const bR = b.rerankScore !== undefined ? b.rerankScore : (b.score || 0);
+    return bR - aR;
+  });
+
+  const selected = [sorted[0]];
+  const candidates = sorted.slice(1);
+
+  while (selected.length < maxChunks && candidates.length > 0) {
+    let bestIdx = -1;
+    let bestMMR = -Infinity;
+
+    for (let i = 0; i < candidates.length; i++) {
+      const c = candidates[i];
+      const relevance = c.rerankScore !== undefined ? c.rerankScore : (c.score || 0);
+
+      // Max similarity to any already-selected chunk
+      let maxSim = 0;
+      for (const s of selected) {
+        if (c._vector && s._vector) {
+          maxSim = Math.max(maxSim, cosineSim(c._vector, s._vector));
+        } else {
+          // Jaccard fallback when vectors unavailable
+          maxSim = Math.max(maxSim, computeOverlap(c.content || '', s.content || ''));
+        }
+      }
+
+      const mmr = lambda * relevance - (1 - lambda) * maxSim;
+      if (mmr > bestMMR) {
+        bestMMR = mmr;
+        bestIdx = i;
+      }
+    }
+
+    if (bestIdx >= 0) {
+      selected.push(candidates.splice(bestIdx, 1)[0]);
+    } else {
+      break;
+    }
+  }
+
+  return selected;
+}
+
+// ---------------------------------------------------------------------------
 // assembleContext(chunks, options) → { chunks, formatted, count }
 // ---------------------------------------------------------------------------
 
@@ -163,18 +256,21 @@ function assembleContext(chunks, options = {}) {
   // Step 1 — filter by score (lower threshold for hybrid search which has normalized RRF scores)
   let filtered = chunks.filter((c) => (c.score || 0) >= minScore);
 
-  // Step 2 — deduplicate
-  filtered = deduplicateChunks(filtered);
-
-  // Step 3 — sort descending: prefer rerankScore (cross-encoder) when present,
-  // fall back to score (RRF + term-boost). This preserves the reranker's ordering
-  // instead of discarding it via the term-boost re-sort.
-  filtered.sort((a, b) => {
-    const aScore = a.rerankScore !== undefined ? a.rerankScore : (a.score || 0);
-    const bScore = b.rerankScore !== undefined ? b.rerankScore : (b.score || 0);
-    return bScore - aScore;
-  });
-  const topChunks = filtered.slice(0, maxChunks);
+  // Step 2+3 — select top chunks: MMR (diversity-aware) or Jaccard dedup (legacy)
+  let topChunks;
+  if (config.MMR_ENABLED) {
+    // MMR uses rerankScore for relevance + cosine similarity for diversity
+    topChunks = mmrSelect(filtered, maxChunks, config.MMR_LAMBDA || 0.7);
+  } else {
+    // Legacy path: Jaccard dedup + relevance sort
+    filtered = deduplicateChunks(filtered);
+    filtered.sort((a, b) => {
+      const aScore = a.rerankScore !== undefined ? a.rerankScore : (a.score || 0);
+      const bScore = b.rerankScore !== undefined ? b.rerankScore : (b.score || 0);
+      return bScore - aScore;
+    });
+    topChunks = filtered.slice(0, maxChunks);
+  }
 
   if (topChunks.length === 0) {
     return {
@@ -184,6 +280,48 @@ function assembleContext(chunks, options = {}) {
     };
   }
 
+  // Step 3.5 — DNA multiplicative score boosts (authority, freshness, trust)
+  // Applied after selection so DNA doesn't affect which chunks enter the pool,
+  // only their final ranking for display order.
+  for (const c of topChunks) {
+    const meta = c.metadata || {};
+    let multiplier = 1.0;
+
+    // Authority boost
+    if (meta.dna_authority && config.DNA_AUTHORITY_MULT) {
+      multiplier *= (config.DNA_AUTHORITY_MULT[meta.dna_authority] ?? 1.0);
+    }
+
+    // Freshness boost
+    if (meta.dna_freshness && config.DNA_FRESHNESS_MULT) {
+      multiplier *= (config.DNA_FRESHNESS_MULT[meta.dna_freshness] ?? 1.0);
+    }
+
+    // Trust boost (per-point deviation from trust=3 baseline)
+    if (meta.dna_trust !== undefined && config.DNA_TRUST_WEIGHT) {
+      multiplier *= (1.0 + (meta.dna_trust - 3) * config.DNA_TRUST_WEIGHT);
+    }
+
+    // Quality feedback boost (chunks with usage history get boosted/penalized)
+    // quality_score: 0-1 (cited/retrieved ratio). Neutral = 0.5.
+    if (meta.quality_score !== undefined) {
+      multiplier *= (0.7 + 0.3 * (meta.quality_score ?? 0.5));
+    }
+
+    // Apply multiplicative boost to the display score
+    if (multiplier !== 1.0) {
+      c.score = (c.score || 0) * multiplier;
+      if (c.rerankScore !== undefined) c.rerankScore *= multiplier;
+    }
+  }
+
+  // Re-sort after DNA boosts
+  topChunks.sort((a, b) => {
+    const aScore = a.rerankScore !== undefined ? a.rerankScore : (a.score || 0);
+    const bScore = b.rerankScore !== undefined ? b.rerankScore : (b.score || 0);
+    return bScore - aScore;
+  });
+
   // Step 4 — format: group by data source if results span multiple sources
   const bySource = {};
   for (const chunk of topChunks) {
@@ -192,12 +330,22 @@ function assembleContext(chunks, options = {}) {
     bySource[src].push(chunk);
   }
 
+  // Helper: build DNA authority label like "(★★★★ known-author, current)"
+  function dnaLabel(meta) {
+    if (!meta.dna_authority) return '';
+    const stars = { canonical: '★★★★★', 'industry-standard': '★★★★', 'known-author': '★★★', community: '★★', personal: '★' };
+    const s = stars[meta.dna_authority] || '';
+    const f = meta.dna_freshness ? `, ${meta.dna_freshness}` : '';
+    return ` (${s} ${meta.dna_authority}${f})`;
+  }
+
   let formatted;
   if (Object.keys(bySource).length > 1) {
     // Multiple sources — group with source headers
     const parts = [];
     for (const [source, chunks] of Object.entries(bySource)) {
-      parts.push(`\n── From "${source}" ──`);
+      const firstMeta = chunks[0]?.metadata || {};
+      parts.push(`\n── From "${source}"${dnaLabel(firstMeta)} ──`);
       for (const chunk of chunks) {
         const meta = chunk.metadata || {};
         const section = meta.section || meta.section_path || meta.chapter || '';
@@ -219,7 +367,8 @@ function assembleContext(chunks, options = {}) {
       const scoreStr = (chunk.score || 0).toFixed(2);
       const content = (chunk.content || '').trim();
       const typeLabel = meta.chunk_type === 'structural' ? ' [Structure]' : '';
-      return `[Source: ${source}]${typeLabel} [Score: ${scoreStr}]\n\n${content}`;
+      const dna = dnaLabel(meta);
+      return `[Source: ${source}${dna}]${typeLabel} [Score: ${scoreStr}]\n\n${content}`;
     });
     formatted = parts.join('\n\n---\n\n');
   }
@@ -234,4 +383,4 @@ function assembleContext(chunks, options = {}) {
 // ---------------------------------------------------------------------------
 // Exports
 // ---------------------------------------------------------------------------
-module.exports = { assembleContext, deduplicateChunks, computeOverlap };
+module.exports = { assembleContext, deduplicateChunks, computeOverlap, mmrSelect, cosineSim };

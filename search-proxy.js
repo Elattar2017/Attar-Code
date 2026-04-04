@@ -42,6 +42,16 @@ let kbEngine = null;       // KBEngine instance (if available)
 let kbReady  = false;      // true once engine.start() succeeds
 let kbError  = null;       // initialization error message (if any)
 
+// Feedback tracker (quality scoring loop)
+let feedbackTracker = null;
+try {
+  const { FeedbackTracker } = require("./kb-engine/feedback");
+  const kbConfig = require("./kb-engine/config");
+  if (kbConfig.FEEDBACK_ENABLED) {
+    feedbackTracker = new FeedbackTracker(kbConfig.FEEDBACK_FILE);
+  }
+} catch (_) {}
+
 // ─── PDF extractor ────────────────────────────────────────────────────────────
 async function extractPdf(filepath) {
   try {
@@ -254,8 +264,8 @@ async function kbSearch(query, num = 5) {
       }));
       const response = { results, engine: "qdrant" };
 
-      // Preserve scope/code_examples metadata for the CLI
-      if (result.type === 'scope' || result.type === 'code_examples') {
+      // Preserve specialized result metadata for the CLI
+      if (result.type === 'scope' || result.type === 'code_examples' || result.type === 'cross_structural') {
         response.formatted    = result.formatted;
         response.type         = result.type;
         response.scopeId      = result.scopeId;
@@ -332,7 +342,43 @@ app.post("/kb/search", async (req, res) => {
   if (result.scopeId)      payload.scopeId = result.scopeId;
   if (result.totalInScope) payload.totalInScope = result.totalInScope;
   if (result.count)        payload.count = result.count;
+
+  // Feedback: log which chunk IDs were retrieved
+  if (feedbackTracker && result.results?.length > 0) {
+    const chunkIds = result.results.map(r => r.id).filter(Boolean);
+    if (chunkIds.length > 0) feedbackTracker.logSearch(chunkIds, query);
+
+    // Deferred aggregation every 100 searches
+    if (feedbackTracker.searchCount > 0 && feedbackTracker.searchCount % 100 === 0) {
+      setImmediate(async () => {
+        try {
+          const scores = feedbackTracker.aggregate();
+          if (scores.size > 0 && kbEngine?.store?._client) {
+            const collections = await kbEngine.collectionMgr.listCollections();
+            for (const col of collections) {
+              await feedbackTracker.applyScores(col, scores, kbEngine.store._client);
+            }
+          }
+        } catch (_) {}
+      });
+    }
+  }
+
   res.json(payload);
+});
+
+// ─── KB cite (feedback: which chunks the LLM actually used) ─────────────────
+app.post("/kb/cite", (req, res) => {
+  const { chunk_ids } = req.body;
+  if (!Array.isArray(chunk_ids) || chunk_ids.length === 0) {
+    return res.status(400).json({ error: "chunk_ids array required" });
+  }
+  if (feedbackTracker) {
+    feedbackTracker.logCitation(chunk_ids);
+    res.json({ ok: true, cited: chunk_ids.length });
+  } else {
+    res.json({ ok: false, reason: "feedback disabled" });
+  }
 });
 
 // ─── KB read section (two-phase: discover + retrieve complete section) ────────

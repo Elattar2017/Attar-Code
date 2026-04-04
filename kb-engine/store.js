@@ -1,8 +1,10 @@
 // kb-engine/store.js — ChunkStore: add, search, hybrid search via Qdrant
-// Unified dense embedding (Qwen3-Embedding-4B, 2560-dim) + BM25 sparse vectors.
+// Unified dense embedding (Qwen3-Embedding-0.6B, 1024-dim) + BM25 sparse vectors.
 // Hybrid search uses Reciprocal Rank Fusion (RRF) to merge dense + sparse results.
 "use strict";
 
+const fs = require("fs");
+const path = require("path");
 const { randomUUID } = require("crypto");
 const { QdrantClient } = require("@qdrant/js-client-rest");
 const { UnifiedEmbedder } = require("./embedder");
@@ -14,6 +16,7 @@ const {
   DEFAULT_SEARCH_LIMIT,
   BATCH_SIZE,
   RRF_K,
+  BM25_VOCAB_DIR,
 } = require("./config");
 
 // ─── ChunkStore ───────────────────────────────────────────────────────────────
@@ -35,6 +38,13 @@ class ChunkStore {
      * @type {Map<string, SparseVectorizer>}
      */
     this._vectorizers = new Map();
+
+    /**
+     * Optional callback invoked after chunks are added to a collection.
+     * Used by RetrievalPipeline to invalidate the query cache.
+     * @type {((collection: string) => void)|null}
+     */
+    this.onChunksAdded = null;
   }
 
   // ─── Collection lifecycle ─────────────────────────────────────────────────
@@ -55,6 +65,11 @@ class ChunkStore {
    */
   async deleteCollection(name) {
     this._vectorizers.delete(name);
+    // Remove persisted BM25 vocabulary file
+    try {
+      const vocabFile = this._vocabPath(name);
+      if (fs.existsSync(vocabFile)) fs.unlinkSync(vocabFile);
+    } catch (_) {}
     return this._collections.deleteCollection(name);
   }
 
@@ -76,17 +91,17 @@ class ChunkStore {
     if (!Array.isArray(chunks) || chunks.length === 0) return [];
 
     // ── 1. Build / update BM25 vectorizer for this collection ────────────────
+    // Priority: in-memory → disk → fresh. Incremental build preserves term IDs.
     if (!this._vectorizers.has(collection)) {
-      this._vectorizers.set(collection, new SparseVectorizer());
+      const loaded = this._loadVocabulary(collection);
+      this._vectorizers.set(collection, loaded || new SparseVectorizer());
     }
     const vectorizer = this._vectorizers.get(collection);
 
-    // Add every chunk as a document (IDs are positional strings — only used
-    // by the vectorizer internally for its own accounting).
     for (let i = 0; i < chunks.length; i++) {
-      vectorizer.addDocument(String(i), chunks[i].content);
+      vectorizer.addDocument(String(vectorizer._N + i), chunks[i].content);
     }
-    vectorizer.build();
+    vectorizer.build(); // incremental: preserves existing term→ID mappings
 
     // ── 2. Generate dense embeddings (batched, no prefix — storage mode) ─────
     const texts = chunks.map((c) => c.content);
@@ -115,6 +130,12 @@ class ChunkStore {
       const batch = points.slice(offset, offset + BATCH_SIZE);
       await this._client.upsert(collection, { points: batch, wait: true });
     }
+
+    // ── 6. Persist BM25 vocabulary to disk (stable term IDs across restarts) ─
+    this._persistVocabulary(collection);
+
+    // ── 7. Notify listeners (e.g. cache invalidation) ─────────────────────────
+    if (this.onChunksAdded) this.onChunksAdded(collection);
 
     return ids;
   }
@@ -290,6 +311,7 @@ class ChunkStore {
    * @param {number}  [opts.limit]      Final result count after merging (default: DEFAULT_SEARCH_LIMIT)
    * @param {string}  [opts.queryType]  'general' | 'error' | 'code' | 'structural' (default: 'general')
    * @param {Array<{ key: string, value: string }>} [opts.filter]
+   * @param {boolean} [opts.denseOnly]  Skip BM25 sparse search (used for HyDE verbose text)
    * @returns {Promise<Array<{ id: string, score: number, content: string, metadata: object }>>}
    */
   async hybridSearch(collection, query, opts = {}) {
@@ -302,7 +324,7 @@ class ChunkStore {
     // ── Parallel: embed for dense search + compute sparse vector ─────────────
     const [denseVec, sparseVec] = await Promise.all([
       this._embedder.embedForQuery(query, queryType),
-      this._getSparseQueryVec(collection, query),
+      opts.denseOnly ? Promise.resolve({ indices: [], values: [] }) : this._getSparseQueryVec(collection, query),
     ]);
 
     const filter = this._buildFilter(opts.filter);
@@ -312,14 +334,15 @@ class ChunkStore {
       vector:       { name: "dense", vector: denseVec },
       limit:        candidateLimit,
       with_payload: true,
+      with_vector:  ['dense'], // return vectors for MMR diversity calculation
     };
     if (filter) {
       denseParams.filter = filter;
     }
 
-    // Build sparse search params — only run if the vectorizer has vocabulary
+    // Build sparse search params — skip if denseOnly or vocabulary empty
     const sparsePromise =
-      sparseVec.indices.length > 0
+      !opts.denseOnly && sparseVec.indices.length > 0
         ? this._client.search(collection, {
             vector:       { name: "bm25", vector: sparseVec },
             limit:        candidateLimit,
@@ -344,12 +367,13 @@ class ChunkStore {
     const numLists = [denseResults, sparseResults].filter(l => l?.length > 0).length;
     const maxRRF = numLists > 0 ? numLists * (1 / (RRF_K + 1)) : 1;
 
-    // Return top `limit` results with normalized scores
+    // Return top `limit` results with normalized scores + vectors for MMR
     return merged.slice(0, limit).map((item) => ({
       id:       item.id,
-      score:    maxRRF > 0 ? item.rrfScore / maxRRF : 0, // normalize to 0-1
+      score:    maxRRF > 0 ? item.rrfScore / maxRRF : 0,
       content:  item.payload?.content ?? "",
       metadata: this._extractMetadata(item.payload),
+      _vector:  item._vector || null,
     }));
   }
 
@@ -418,11 +442,21 @@ class ChunkStore {
   }
 
   /**
-   * Rebuild BM25 vocabulary from Qdrant collection content.
-   * Called on cold start when the in-memory vectorizer is empty.
-   * Scrolls through stored chunks and feeds their content to the vectorizer.
+   * Restore BM25 vocabulary for a collection on cold start.
+   * Priority 1: Load from persisted disk file (stable term-ID mapping).
+   * Priority 2: Rebuild from Qdrant scroll (fallback if file missing).
+   *             After scroll rebuild, persist so future cold starts use disk.
    */
   async _rebuildVocabulary(collection) {
+    // Priority 1: disk-persisted vocabulary (stable term IDs)
+    const loaded = this._loadVocabulary(collection);
+    if (loaded) {
+      this._vectorizers.set(collection, loaded);
+      process.stderr.write(`  [BM25] Loaded persisted vocabulary for "${collection}": ${loaded.getVocabularySize()} terms\n`);
+      return;
+    }
+
+    // Priority 2: rebuild from Qdrant (term IDs may differ from original — one-time migration)
     try {
       const info = await this._collections.getCollectionInfo(collection);
       if (!info || (info.points_count || 0) === 0) return;
@@ -451,39 +485,87 @@ class ChunkStore {
       if (docCount > 0) {
         vectorizer.build();
         this._vectorizers.set(collection, vectorizer);
-        process.stderr.write(`  [BM25] Rebuilt vocabulary for "${collection}": ${vectorizer.getVocabularySize()} terms from ${docCount} docs\n`);
+        // Persist so future cold starts use the stable disk vocabulary
+        this._persistVocabulary(collection);
+        process.stderr.write(`  [BM25] Rebuilt + persisted vocabulary for "${collection}": ${vectorizer.getVocabularySize()} terms from ${docCount} docs\n`);
       }
     } catch (err) {
       process.stderr.write(`  [BM25] Failed to rebuild vocabulary for "${collection}": ${err.message}\n`);
     }
   }
 
+  // ─── BM25 vocabulary persistence ───────────────────────────────────────────
+
+  /** @returns {string} Path to the vocab JSON file for a collection. */
+  _vocabPath(collection) {
+    return path.join(BM25_VOCAB_DIR, `${collection}.json`);
+  }
+
+  /**
+   * Persist the in-memory BM25 vocabulary to disk.
+   * Called after addChunks() and after scroll-based rebuild.
+   */
+  _persistVocabulary(collection) {
+    const vectorizer = this._vectorizers.get(collection);
+    if (!vectorizer) return;
+    try {
+      if (!fs.existsSync(BM25_VOCAB_DIR)) {
+        fs.mkdirSync(BM25_VOCAB_DIR, { recursive: true });
+      }
+      fs.writeFileSync(this._vocabPath(collection), JSON.stringify(vectorizer.serialize()), 'utf-8');
+    } catch (err) {
+      process.stderr.write(`  [BM25] Failed to persist vocabulary for "${collection}": ${err.message}\n`);
+    }
+  }
+
+  /**
+   * Load a persisted BM25 vocabulary from disk.
+   * Returns null if file missing, corrupted, or schema version mismatch.
+   */
+  _loadVocabulary(collection) {
+    try {
+      const filePath = this._vocabPath(collection);
+      if (!fs.existsSync(filePath)) return null;
+      const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+      return SparseVectorizer.deserialize(data);
+    } catch (err) {
+      process.stderr.write(`  [BM25] Failed to load vocabulary for "${collection}": ${err.message}\n`);
+      return null;
+    }
+  }
+
   /**
    * Merge multiple ranked result lists using Reciprocal Rank Fusion.
    * RRF score = SUM_over_lists( 1 / (k + rank) )  where rank is 1-based.
+   * Preserves dense vector from results (for MMR diversity calculation).
    *
-   * @param {Array<Array<{ id: string|number, score: number, payload: object }>>} lists
+   * @param {Array<Array<{ id: string|number, score: number, payload: object, vector?: object }>>} lists
    * @param {number} k  RRF smoothing constant (typically 60)
-   * @returns {Array<{ id: string, rrfScore: number, payload: object }>}
+   * @returns {Array<{ id: string, rrfScore: number, payload: object, _vector?: number[] }>}
    */
   _rrfMerge(lists, k) {
-    /** @type {Map<string, { id: string, rrfScore: number, payload: object }>} */
     const acc = new Map();
 
     for (const list of lists) {
       if (!Array.isArray(list)) continue;
       list.forEach((item, idx) => {
-        const rank = idx + 1; // 1-based
+        const rank = idx + 1;
         const id   = String(item.id);
         const rrf  = 1 / (k + rank);
 
         if (acc.has(id)) {
-          acc.get(id).rrfScore += rrf;
+          const entry = acc.get(id);
+          entry.rrfScore += rrf;
+          // Keep vector from whichever list has it (dense list has vectors, sparse doesn't)
+          if (!entry._vector && item.vector) {
+            entry._vector = item.vector?.dense || item.vector;
+          }
         } else {
           acc.set(id, {
             id,
             rrfScore: rrf,
             payload:  item.payload ?? {},
+            _vector:  item.vector?.dense || item.vector || null,
           });
         }
       });

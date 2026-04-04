@@ -123,19 +123,25 @@ class SparseVectorizer {
   /**
    * Compute IDF weights from the accumulated corpus.
    * Must be called after all addDocument() calls and before computeSparseVector().
+   *
+   * INCREMENTAL: Existing term→ID mappings are preserved across multiple build() calls.
+   * Only NEW terms (not yet in _vocab) get fresh IDs starting after the current max.
+   * This ensures previously stored Qdrant sparse vectors remain valid.
    */
   build() {
-    this._vocab.clear();
-    this._idf.clear();
-
     const N = this._N;
     this._avgDocLen = N > 0 ? this._totalDocLen / N : 0;
 
-    let termId = 0;
-    for (const [token, df] of this._df.entries()) {
-      // Assign a stable integer index to each vocabulary term
-      this._vocab.set(token, termId++);
+    // Start new term IDs after existing vocabulary (preserves prior mappings)
+    let nextTermId = this._vocab.size;
 
+    for (const [token, df] of this._df.entries()) {
+      // Only assign ID to terms not already in vocabulary
+      if (!this._vocab.has(token)) {
+        this._vocab.set(token, nextTermId++);
+      }
+
+      // Recompute IDF for ALL terms (corpus stats changed)
       // BM25 IDF: log((N - df + 0.5) / (df + 0.5) + 1)
       const idf = Math.log((N - df + 0.5) / (df + 0.5) + 1);
       this._idf.set(token, idf);
@@ -219,6 +225,51 @@ class SparseVectorizer {
    */
   getVocabularySize() {
     return this._vocab.size;
+  }
+
+  // -------------------------------------------------------------------------
+  // Serialization (for disk persistence)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Serialize vocabulary state to a plain object suitable for JSON.stringify.
+   * Preserves exact term→ID mappings so deserialized vocab produces identical
+   * sparse vectors for the same input text.
+   *
+   * @returns {object}
+   */
+  serialize() {
+    return {
+      schema_version: 1,
+      vocab:       Array.from(this._vocab.entries()),
+      df:          Array.from(this._df.entries()),
+      idf:         Array.from(this._idf.entries()),
+      N:           this._N,
+      totalDocLen: this._totalDocLen,
+      avgDocLen:   this._avgDocLen,
+      built:       this._built,
+    };
+  }
+
+  /**
+   * Restore a SparseVectorizer from a serialized state.
+   * The restored instance can accept new addDocument() + build() calls
+   * and will preserve existing term→ID mappings (incremental build).
+   *
+   * @param {object} data - Output of serialize()
+   * @returns {SparseVectorizer}
+   */
+  static deserialize(data) {
+    if (!data || data.schema_version !== 1) return null;
+    const sv = new SparseVectorizer();
+    sv._vocab       = new Map(data.vocab);
+    sv._df          = new Map(data.df);
+    sv._idf         = new Map(data.idf);
+    sv._N           = data.N;
+    sv._totalDocLen  = data.totalDocLen;
+    sv._avgDocLen    = data.avgDocLen;
+    sv._built        = data.built;
+    return sv;
   }
 }
 

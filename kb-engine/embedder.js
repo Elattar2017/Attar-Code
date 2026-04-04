@@ -182,7 +182,7 @@ class UnifiedEmbedder {
    * Embed raw text for storage (no instruction prefix).
    * Used when indexing documents into Qdrant.
    * @param {string} text
-   * @returns {Promise<number[]>} 2560-dim vector
+   * @returns {Promise<number[]>} 1024-dim vector
    */
   async embedForStorage(text) {
     await this.getAvailableModels();
@@ -206,7 +206,7 @@ class UnifiedEmbedder {
    *
    * @param {string} text
    * @param {string} [queryType='general']  One of: 'general', 'error', 'code', 'structural'
-   * @returns {Promise<number[]>} 2560-dim vector
+   * @returns {Promise<number[]>} 1024-dim vector
    */
   async embedForQuery(text, queryType = "general") {
     await this.getAvailableModels();
@@ -228,7 +228,7 @@ class UnifiedEmbedder {
   }
 
   /**
-   * Batch embed for storage (no prefix). Returns array of 2560-dim vectors.
+   * Batch embed for storage (no prefix). Returns array of 1024-dim vectors.
    * @param {string[]} texts
    * @returns {Promise<number[][]>}
    */
@@ -260,7 +260,7 @@ class UnifiedEmbedder {
   }
 
   /**
-   * Batch embed for queries (with instruction prefix). Returns array of 2560-dim vectors.
+   * Batch embed for queries (with instruction prefix). Returns array of 1024-dim vectors.
    * @param {string[]} texts
    * @param {string} [queryType='general']  One of: 'general', 'error', 'code', 'structural'
    * @returns {Promise<number[][]>}

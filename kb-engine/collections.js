@@ -29,6 +29,14 @@ const PAYLOAD_INDEXES = [
   // min_token_len:1 required to index single-digit numbers ("3"), single letters ("A"),
   // and roman numerals ("I","V","X") used in chapter/section headings.
   { field_name: "section_path", field_schema: { type: "text", tokenizer: "word", min_token_len: 1, max_token_len: 80 } },
+  // Document DNA metadata indexes
+  { field_name: "dna_authority",  field_schema: "keyword" },
+  { field_name: "dna_trust",      field_schema: { type: "integer" } },
+  { field_name: "dna_freshness",  field_schema: "keyword" },
+  { field_name: "dna_depth",      field_schema: "keyword" },
+  { field_name: "dna_canonical",  field_schema: { type: "bool" } },
+  { field_name: "dna_key_topics", field_schema: "keyword" },
+  { field_name: "dna_best_for",   field_schema: "keyword" },
 ];
 
 // ─── CollectionManager ────────────────────────────────────────────────────────
@@ -61,7 +69,7 @@ class CollectionManager {
     await this._client.createCollection(name, {
       vectors: {
         dense: {
-          size:     EMBED_DIM,   // 2560
+          size:     EMBED_DIM,   // 1024
           distance: "Cosine",
         },
       },
@@ -87,15 +95,44 @@ class CollectionManager {
     }
   }
 
+  // ─── ensureIndexes (migration for existing collections) ─────────────────────
+
+  /**
+   * Create any missing payload indexes on an existing collection.
+   * Safe to call on collections that already have the indexes — Qdrant silently
+   * ignores duplicate createPayloadIndex calls.
+   * Used at startup to migrate existing collections when new indexes are added.
+   *
+   * @param {string} name  Collection name
+   * @returns {Promise<void>}
+   */
+  async ensureIndexes(name) {
+    for (const { field_name, field_schema } of PAYLOAD_INDEXES) {
+      try {
+        await this._client.createPayloadIndex(name, {
+          field_name,
+          field_schema,
+          wait: true,
+        });
+      } catch (_) {
+        // Index may already exist or collection may not exist — safe to ignore
+      }
+    }
+  }
+
   // ─── ensureAllCollections ───────────────────────────────────────────────────
 
   /**
    * Create all 15 default collections (from config.COLLECTIONS) if missing.
+   * Also ensures all payload indexes exist on existing collections (migration).
    * @returns {Promise<void>}
    */
   async ensureAllCollections() {
     for (const name of COLLECTIONS) {
+      const existed = await this.collectionExists(name);
       await this.ensureCollection(name);
+      // Migrate: add any new indexes to pre-existing collections
+      if (existed) await this.ensureIndexes(name);
     }
   }
 

@@ -3514,6 +3514,14 @@ print(json.dumps({"sheet": ws.title, "headers": headers, "rows": rows[:200], "to
       const res = await proxyPost("/kb/search", body);
       if (res.error) return `KB search error: ${res.error}\nMake sure search-proxy is running: node search-proxy.js`;
 
+      // Store retrieved chunks for citation detection (feedback loop)
+      if (res.results?.length > 0) {
+        SESSION._lastKbChunks = res.results.map(r => ({
+          id: r.id,
+          snippet: (r.text || r.content || '').slice(0, 200),
+        })).filter(c => c.id && c.snippet.length > 50);
+      }
+
       // Track search for repetition detection
       const resultCount = res.count || res.results?.length || 0;
       const topHash = (res.results?.[0]?.text || res.formatted || '').slice(0, 50);
@@ -8363,6 +8371,17 @@ async function chat(userMessage) {
     if (toolCalls.length === 0) {
       SESSION.messages.push({ role:"assistant", content: responseText });
 
+      // Feedback: detect which KB chunks were cited in the LLM response
+      if (SESSION._lastKbChunks?.length > 0 && typeof responseText === 'string' && responseText.length > 50) {
+        const citedIds = SESSION._lastKbChunks
+          .filter(c => responseText.includes(c.snippet.slice(0, 60)))
+          .map(c => c.id);
+        if (citedIds.length > 0) {
+          proxyPost("/kb/cite", { chunk_ids: citedIds }, 3000).catch(() => {});
+        }
+        SESSION._lastKbChunks = null;
+      }
+
       // Layer 3: Async memory extraction (non-blocking)
       if (memoryExtractor && userMessage) {
         const responseTextForExtract = typeof responseText === 'string' ? responseText : '';
@@ -9064,15 +9083,25 @@ function printHelp() {
       ["/kb search <query>",   "Search KB (hybrid: semantic + keyword + rerank)"],
       ["",                     "  e.g.  /kb search how to validate data in python"],
       ["",                     "        /kb search Chapter 2 overview"],
+      ["",                     "        /kb search which chapters discuss testing"],
       ["/kb collections",      "List all collections with chunk counts"],
       ["/kb remove <name>",    "Delete a collection and all its chunks"],
       ["",                     "  e.g.  /kb remove python"],
       ["/kb stats",            "Show KB retrieval metrics and health"],
+      ["/kb list",             "List indexed documents (legacy)"],
+      ["/kb reindex",          "Re-index all files in kb folder"],
+    ]],
+    ["Document DNA (metadata)", [
+      ["/kb dna <file>",       "Create or edit Document DNA (authority, trust, tags)"],
+      ["",                     "  Interactive prompts: title, author, authority level,"],
+      ["",                     "  trust rating, freshness, depth, topics, anti-tags"],
+      ["/kb show-dna <file>",  "View current DNA card for a document"],
+      ["/kb update-dna <file>","Apply DNA to existing Qdrant chunks (no re-ingest)"],
       ["",                     ""],
-      ["",                     "  Collections: nodejs, python, go, rust, java, csharp,"],
-      ["",                     "  php, ruby, swift, css_html, devops, databases, general, personal"],
-      ["",                     "  --deep: LLM enriches each chunk with context (~2-3s/chunk,"],
-      ["",                     "          better search quality, recommended for books)"],
+      ["",                     "  DNA controls: authority boost (canonical > community),"],
+      ["",                     "  trust rating (1-5), freshness (current/dated/legacy),"],
+      ["",                     "  anti-tags (topics to exclude from retrieval)"],
+      ["",                     "  Files: ~/.attar-code/knowledge/dna/{book_id}.dna.json"],
     ]],
     ["Web Search", [
       ["/search <query>",      "Search the web via DuckDuckGo"],
@@ -10136,6 +10165,173 @@ RULES:
           console.log(co(C.bRed, "  ✗ ") + `Cannot connect to search-proxy: ${e.message}\n`);
         }
 
+      } else if (sub === "show-dna") {
+        // /kb show-dna <filepath> — display current DNA for a document
+        const fp = parts.slice(2).join(" ").trim();
+        if (!fp) { console.log(co(C.bRed, "\n  ✗ ") + "Usage: /kb show-dna <filepath>\n"); break; }
+        const absPath = path.resolve(fp);
+
+        try {
+          const crypto = require("crypto");
+          const bookId = crypto.createHash("sha256").update(absPath).digest("hex").slice(0, 12);
+          const { loadDNA } = require("./kb-engine/ingestion/dna-loader");
+          const dna = loadDNA(bookId);
+
+          if (!dna) {
+            console.log(co(C.bYellow, "\n  ⚠ ") + "No DNA found for " + path.basename(absPath) + " (book_id: " + bookId + ")");
+            console.log(co(C.dim, "  Create one with: /kb dna " + fp + "\n"));
+            break;
+          }
+
+          console.log(co(C.bold, "\n  Document DNA — ") + (dna.identity?.title || path.basename(absPath)));
+          console.log(co(C.dim, "  book_id: " + bookId + "\n"));
+
+          const stars = { canonical: "★★★★★", "industry-standard": "★★★★", "known-author": "★★★", community: "★★", personal: "★" };
+
+          // Identity
+          if (dna.identity) {
+            if (dna.identity.title) console.log("  " + co(C.bGreen, "Title:      ") + dna.identity.title);
+            if (dna.identity.authors) console.log("  " + co(C.bGreen, "Authors:    ") + dna.identity.authors.join(", "));
+            if (dna.identity.publish_date) console.log("  " + co(C.bGreen, "Published:  ") + dna.identity.publish_date);
+            if (dna.identity.source_url) console.log("  " + co(C.bGreen, "Source:     ") + dna.identity.source_url);
+          }
+
+          // Authority
+          if (dna.authority) {
+            const level = dna.authority.level || "?";
+            const s = stars[level] || "";
+            console.log("  " + co(C.bGreen, "Authority:  ") + s + " " + level);
+            if (dna.authority.trust_rating) console.log("  " + co(C.bGreen, "Trust:      ") + "★".repeat(dna.authority.trust_rating) + "☆".repeat(5 - dna.authority.trust_rating) + " (" + dna.authority.trust_rating + "/5)");
+            if (dna.authority.freshness) console.log("  " + co(C.bGreen, "Freshness:  ") + dna.authority.freshness);
+          }
+
+          // Character
+          if (dna.character) {
+            if (dna.character.depth) console.log("  " + co(C.bGreen, "Depth:      ") + dna.character.depth);
+            if (dna.character.doc_type) console.log("  " + co(C.bGreen, "Type:       ") + dna.character.doc_type);
+          }
+
+          // Retrieval
+          if (dna.retrieval) {
+            if (dna.retrieval.key_topics?.length) console.log("  " + co(C.bGreen, "Topics:     ") + dna.retrieval.key_topics.join(", "));
+            if (dna.retrieval.best_for?.length) console.log("  " + co(C.bGreen, "Best for:   ") + dna.retrieval.best_for.join(", "));
+            if (dna.retrieval.anti_tags?.length) console.log("  " + co(C.bRed,   "Anti-tags:  ") + dna.retrieval.anti_tags.join(", "));
+            if (dna.retrieval.prerequisites) console.log("  " + co(C.bGreen, "Prereqs:    ") + dna.retrieval.prerequisites);
+          }
+
+          // Relations
+          if (dna.relations) {
+            if (dna.relations.supersedes) console.log("  " + co(C.bGreen, "Supersedes: ") + dna.relations.supersedes);
+            if (dna.relations.conflict_priority) console.log("  " + co(C.bGreen, "Priority:   ") + dna.relations.conflict_priority);
+          }
+
+          console.log(co(C.dim, "\n  File: ~/.attar-code/knowledge/dna/" + bookId + ".dna.json"));
+          console.log(co(C.dim, "  Edit: /kb dna " + fp + "\n"));
+        } catch (e) {
+          console.log(co(C.bRed, "\n  ✗ ") + "Error: " + e.message + "\n");
+        }
+
+      } else if (sub === "dna") {
+        // /kb dna <filepath> — interactive DNA creation for a document
+        const fp = parts.slice(2).join(" ").trim();
+        if (!fp) { console.log(co(C.bRed, "\n  ✗ ") + "Usage: /kb dna <filepath>  — create Document DNA for a file\n"); break; }
+        const absPath = path.resolve(fp);
+        if (!fs.existsSync(absPath)) { console.log(co(C.bRed, "\n  ✗ ") + "File not found: " + absPath + "\n"); break; }
+
+        try {
+          const crypto = require("crypto");
+          const bookId = crypto.createHash("sha256").update(absPath).digest("hex").slice(0, 12);
+          const { saveDNA, loadDNA } = require("./kb-engine/ingestion/dna-loader");
+          const existing = loadDNA(bookId);
+
+          console.log(co(C.bold, "\n  Document DNA Card — ") + path.basename(absPath));
+          console.log(co(C.dim, "  book_id: " + bookId + (existing ? " (updating existing DNA)" : " (creating new DNA)") + "\n"));
+
+          const rl = require("readline").createInterface({ input: process.stdin, output: process.stdout });
+          const ask = (q, def) => new Promise(r => rl.question("  " + q + (def ? ` [${def}]` : "") + ": ", a => r(a.trim() || def || "")));
+
+          const title = await ask("Title", existing?.identity?.title || path.basename(absPath, path.extname(absPath)));
+          const authors = await ask("Author(s) (comma-separated)", existing?.identity?.authors?.join(", ") || "");
+          const authLevel = await ask("Authority (canonical/industry-standard/known-author/community/personal)", existing?.authority?.level || "community");
+          const trust = await ask("Trust rating (1-5)", String(existing?.authority?.trust_rating || 3));
+          const freshness = await ask("Freshness (current/dated/legacy)", existing?.authority?.freshness || "current");
+          const depth = await ask("Depth (Beginner/Intermediate/Advanced/Expert)", existing?.character?.depth || "Intermediate");
+          const keyTopics = await ask("Key topics (comma-separated)", existing?.retrieval?.key_topics?.join(", ") || "");
+          const antiTags = await ask("Anti-tags — topics this doc does NOT cover (comma-separated)", existing?.retrieval?.anti_tags?.join(", ") || "");
+
+          rl.close();
+
+          const dna = {
+            _schema: "attar-code/doc-dna-v1",
+            identity: {
+              title,
+              ...(authors ? { authors: authors.split(",").map(s => s.trim()) } : {}),
+            },
+            authority: {
+              level: authLevel,
+              trust_rating: parseInt(trust) || 3,
+              freshness,
+            },
+            character: { depth },
+            retrieval: {
+              ...(keyTopics ? { key_topics: keyTopics.split(",").map(s => s.trim()) } : {}),
+              ...(antiTags ? { anti_tags: antiTags.split(",").map(s => s.trim()) } : {}),
+            },
+          };
+
+          saveDNA(bookId, dna);
+          console.log(co(C.bGreen, "\n  ✓ ") + "DNA saved for book_id " + bookId);
+          console.log(co(C.dim, "  Run /kb update-dna " + fp + " to apply to existing chunks in Qdrant\n"));
+        } catch (e) {
+          console.log(co(C.bRed, "\n  ✗ ") + "Error: " + e.message + "\n");
+        }
+
+      } else if (sub === "update-dna") {
+        // /kb update-dna <filepath> — apply DNA to existing Qdrant chunks via setPayload
+        const fp = parts.slice(2).join(" ").trim();
+        if (!fp) { console.log(co(C.bRed, "\n  ✗ ") + "Usage: /kb update-dna <filepath>  — apply DNA to existing chunks\n"); break; }
+        const absPath = path.resolve(fp);
+
+        try {
+          const crypto = require("crypto");
+          const bookId = crypto.createHash("sha256").update(absPath).digest("hex").slice(0, 12);
+          const { loadDNA, flattenDNA } = require("./kb-engine/ingestion/dna-loader");
+          const dna = loadDNA(bookId);
+          if (!dna) { console.log(co(C.bRed, "\n  ✗ ") + "No DNA file found for book_id " + bookId + ". Run /kb dna " + fp + " first.\n"); break; }
+
+          const flat = flattenDNA(dna);
+          console.log(co(C.dim, "\n  Applying " + Object.keys(flat).length + " DNA fields to all chunks with book_id=" + bookId + "..."));
+
+          // Find which collections have this book_id
+          const colRes = await proxyGet("/kb/collections");
+          const collections = (colRes.collections || colRes || []).map(c => c.name).filter(Boolean);
+          let totalUpdated = 0;
+
+          for (const col of collections) {
+            try {
+              const countRes = await fetch(`${CONFIG.proxyUrl}/kb/collections`, { signal: AbortSignal.timeout(3000) });
+              // Use Qdrant setPayload via proxy is not available — use direct Qdrant API
+              const qdrantRes = await fetch("http://127.0.0.1:6333/collections/" + col + "/points/payload", {
+                method: "POST",  // POST = merge (set_payload), NOT PUT which overwrites
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  payload: flat,
+                  filter: { must: [{ key: "book_id", match: { value: bookId } }] },
+                }),
+                signal: AbortSignal.timeout(30000),
+              });
+              if (qdrantRes.ok) {
+                const data = await qdrantRes.json();
+                if (data.status === "ok") totalUpdated++;
+              }
+            } catch (_) {}
+          }
+
+          console.log(co(C.bGreen, "  ✓ ") + "DNA applied across " + totalUpdated + " collection(s).\n");
+        } catch (e) {
+          console.log(co(C.bRed, "\n  ✗ ") + "Error: " + e.message + "\n");
+        }
+
       } else {
         console.log(co(C.bold, "\n  /kb commands:\n"));
         console.log("  " + co(C.bGreen, pad("/kb",                 22)) + co(C.dim, "Show KB status (collections, models, storage)"));
@@ -10144,6 +10340,9 @@ RULES:
         console.log("  " + co(C.bGreen, pad("/kb add-dir <path>",   24)) + co(C.dim, "Bulk ingest directory into KB"));
         console.log("  " + co(C.bGreen, pad("/kb search <query>",   24)) + co(C.dim, "Search KB (hybrid: semantic + keyword)"));
         console.log("  " + co(C.bGreen, pad("/kb collections",      24)) + co(C.dim, "List all collections with chunk counts"));
+        console.log("  " + co(C.bGreen, pad("/kb dna <file>",       24)) + co(C.dim, "Create/edit Document DNA (authority, tags, etc.)"));
+        console.log("  " + co(C.bGreen, pad("/kb show-dna <file>",  24)) + co(C.dim, "View current DNA for a document"));
+        console.log("  " + co(C.bGreen, pad("/kb update-dna <file>",24)) + co(C.dim, "Apply DNA to existing Qdrant chunks"));
         console.log("");
         console.log(co(C.dim, "  Collections: nodejs, python, go, rust, java, csharp, php, ruby, swift,"));
         console.log(co(C.dim, "    css_html, devops, databases, general, personal, fix_recipes"));
@@ -10500,7 +10699,7 @@ async function main() {
         "/memory": ["set"],
         "/hooks": ["list", "reload", "templates"],
         "/errors": ["list", "reload", "test"],
-        "/kb": ["add", "add-dir", "search", "list", "collections", "remove", "stats", "status", "reindex"],
+        "/kb": ["add", "add-dir", "search", "list", "collections", "remove", "stats", "status", "reindex", "dna", "show-dna", "update-dna"],
         "/effort": ["low", "medium", "high"],
         "/style": ["concise", "explanatory", "learning", "code", "default"],
         "/auto": ["on", "off"],

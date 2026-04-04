@@ -28,6 +28,7 @@ const { ChunkStore }        = require('../store');
 const { extractTocFromBookmarks, extractTocFromHeadings, mergeTocSources } = require('./toc-extractor');
 const { buildStructuralChunks } = require('./structural-indexer');
 const { sanitizeHeading, sanitizeAllHeadings } = require('./heading-sanitizer');
+const { loadDNA, flattenDNA } = require('./dna-loader');
 
 // Supported file extensions for directory ingestion
 const SUPPORTED_EXTS = new Set([
@@ -124,24 +125,38 @@ class IngestPipeline {
       case 'code': {
         // Code preprocessor returns pre-split function/class chunks — handle separately
         const { preprocessCode } = require('./preprocessors/code');
-        const result     = preprocessCode(absPath);
-        const language   = options.language || detected.language;
+        const crypto   = require('crypto');
+        const result   = preprocessCode(absPath);
+        const language = options.language || detected.language;
         const collection = routeToCollection(absPath, { language }, options);
+        const bookId   = crypto.createHash('sha256').update(absPath).digest('hex').slice(0, 12);
+        const dirName  = path.basename(path.dirname(absPath));
+        const dnaFields = flattenDNA(loadDNA(bookId));
 
         await this.store.ensureCollection(collection);
 
-        const chunks = result.chunks.map((c, i) => ({
-          content:  c.content,
-          metadata: {
-            ...extractMetadata(c.content, absPath, { language }),
-            source:      absPath,
-            filename:    path.basename(absPath),
-            doc_title:   result.title,
-            section_path: c.name || '',
-            chunk_index:  i,
-            total_chunks: result.chunks.length,
-          },
-        }));
+        const chunks = result.chunks.map((c, i) => {
+          const sectionName  = c.name || 'module';
+          const sectionPath  = `${result.title} > ${dirName} > ${sectionName}`;
+          const enriched     = enrichChunkFast(c.content, result.title, sectionPath);
+          return {
+            content:  enriched,
+            metadata: {
+              ...extractMetadata(c.content, absPath, { language }),
+              ...dnaFields,
+              source:       absPath,
+              filename:     path.basename(absPath),
+              doc_title:    result.title,
+              section_path: sectionPath,
+              chunk_index:  i,
+              total_chunks: result.chunks.length,
+              chunk_type:   'content',
+              book_id:      bookId,
+              chapter:      dirName,
+              section:      sectionName,
+            },
+          };
+        });
 
         const ids = await this.store.addChunks(collection, chunks);
         return {
@@ -263,9 +278,10 @@ class IngestPipeline {
     }
     if (useDeep) process.stderr.write('\n'); // clear progress line
 
-    // 6.5 Add chunk_type: "detail" and book_id to all enriched chunks
+    // 6.5 Add chunk_type: "detail", book_id, and DNA metadata to all enriched chunks
     const crypto = require('crypto');
     const bookId = crypto.createHash('sha256').update(absPath).digest('hex').slice(0, 12);
+    const dnaFields = flattenDNA(loadDNA(bookId));
     for (const c of enrichedChunks) {
       c.metadata.chunk_type = 'detail';
       c.metadata.book_id = bookId;
@@ -273,6 +289,8 @@ class IngestPipeline {
       const pathParts = (c.metadata.section_path || '').split(' > ');
       c.metadata.chapter = sanitizeHeading(pathParts[1] || '');
       c.metadata.section = sanitizeHeading(pathParts[2] || '');
+      // Merge Document DNA metadata (if sidecar file exists)
+      Object.assign(c.metadata, dnaFields);
     }
 
     // 6.6 Generate section AND chapter summaries ────────────────────────────────

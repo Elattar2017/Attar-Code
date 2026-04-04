@@ -60,9 +60,12 @@ const CONTEXT_TECH_MAP = {
 // ---------------------------------------------------------------------------
 // Pattern groups for query type detection
 // ---------------------------------------------------------------------------
-const ERROR_PATTERNS = [
-  /\berror\b/i,
+// Specific error TYPE names — always win over scope patterns.
+// These are concrete error class names and error codes that unambiguously indicate an error.
+const SPECIFIC_ERROR_PATTERNS = [
   /\btypeerror\b/i,
+  /\bsyntaxerror\b/i,
+  /\breferenceerror\b/i,
   /\bmodulenotfounderror\b/i,
   /\bimporterror\b/i,
   /\battributeerror\b/i,
@@ -75,21 +78,26 @@ const ERROR_PATTERNS = [
   /\bENOENT\b/,
   /\bEACCES\b/,
   /\bECONNREFUSED\b/,
-  /cannot\s+find/i,
-  /cannot\s+read/i,
+  /\btraceback\b/i,
+  /\bstack\s+trace\b/i,
+  /\bunhandled\b/i,
+  /no\s+module\s+named/i,
+  /cannot\s+find\s+module/i,
+  /cannot\s+read\s+propert/i,
+  /\b500\s+internal/i,
+];
+
+// Broad error words — checked AFTER scope patterns to avoid false positives
+// like "explain the error handling chapter" being classified as error.
+const BROAD_ERROR_PATTERNS = [
+  /\berror\b/i,
   /\bundefined\b/i,
   /\bnull\b/i,
   /\bfail(ed|ure)?\b/i,
   /\bcrash(ed|es)?\b/i,
   /\b500\b/,
   /\bexception\b/i,
-  /\btraceback\b/i,
   /\bpanic\b/i,
-  /\bsyntaxerror\b/i,
-  /\breferenceerror\b/i,
-  /\bunhandled\b/i,
-  /\bstack\s+trace\b/i,
-  /no\s+module\s+named/i,
   /not\s+installed/i,
 ];
 
@@ -121,6 +129,24 @@ const API_PATTERNS = [
   /\barguments?\b/i,
   /\bsignature\b/i,
   /\boverload\b/i,
+];
+
+// Cross-KB structural patterns — user wants to know which chapters/sections
+// across ALL documents mention/explain/discuss a specific TOPIC.
+// These must be checked BEFORE STRUCTURAL_PATTERNS (which handle single-document queries).
+const CROSS_STRUCTURAL_PATTERNS = [
+  // "which chapters/sections mention/explain/discuss/cover X"
+  /\bwhich\s+(?:chapters?|sections?|parts?)\s+(?:mention|explain|discuss|cover|describe|talk\s+about|include)\s+(.+)/i,
+  // "chapters/sections across/in all/from all/in every X"
+  /\b(?:chapters?|sections?)\s+(?:across|in\s+all|in\s+every|from\s+all)\s+.+?\s+(?:mention|discuss|cover|explain|about)\s+(.+)/i,
+  // "how many chapters/sections mention/discuss/cover/explain X"
+  /\bhow\s+many\s+(?:chapters?|sections?)\s+(?:mention|discuss|cover|explain|have|contain|include)\s+(.+)/i,
+  // "list all chapters/sections about/on/that cover/discussing/mentioning X"
+  /\blist\s+(?:all\s+)?(?:chapters?|sections?)\s+(?:about|on|that\s+(?:cover|discuss|explain|mention)|covering|discussing|mentioning|explaining)\s+(.+)/i,
+  // "where is X covered/mentioned/explained/discussed in my docs/books/kb/knowledge"
+  /\b(?:where|find)\s+.*?\b(?:is|are|does)\s+(.+?)\s+(?:covered|mentioned|explained|discussed)\b/i,
+  // "find sections/chapters that explain/mention X"
+  /\bfind\s+(?:all\s+)?(?:chapters?|sections?)\s+(?:that\s+)?(?:explain|mention|discuss|cover)\s+(.+)/i,
 ];
 
 const STRUCTURAL_PATTERNS = [
@@ -244,32 +270,56 @@ function analyzeQuery(query, context = {}) {
   // Detect tech early — we need it for collections
   const tech = detectTech(query, context);
 
-  // Determine query type (checked in order of specificity)
+  // Determine query type — two-tier error detection to avoid false positives.
+  //
+  // Order: specific error TYPES (TypeError, ENOENT, etc.) → scope → broad error
+  //        words (error, null, undefined) → code_examples → structural → conceptual → api
+  //
+  // This ensures "TypeError in chapter 3" → error (specific type wins)
+  // but "explain the error handling chapter" → scope (broad "error" doesn't override scope)
   let type = 'general';
-  let scopeHint = null;  // full query passed to two-phase discovery
+  let scopeHint = null;
   let scopeBook = null;
+  let crossTopic = null;
 
-  // Check scope patterns FIRST (most specific — user wants complete section)
-  // Patterns detect intent only; the actual heading is discovered via vector search.
-  for (const pattern of SCOPE_PATTERNS) {
-    if (pattern.test(query)) {
-      type = 'scope';
-      scopeHint = query;  // pass full query to phase 1 discovery
-      // Extract book hint if query ends with "from/in/of <title>"
-      const bookMatch = query.match(/\b(?:from|in|of)\s+["']?(.{3,60})["']?\s*$/i);
-      if (bookMatch) scopeBook = bookMatch[1].trim();
-      break;
+  // 1. SPECIFIC error type names always win (highest priority)
+  if (SPECIFIC_ERROR_PATTERNS.some((p) => p.test(query))) {
+    type = 'error';
+  }
+
+  // 2. Scope patterns (only if not already classified as a specific error)
+  if (type === 'general') {
+    for (const pattern of SCOPE_PATTERNS) {
+      if (pattern.test(query)) {
+        type = 'scope';
+        scopeHint = query;
+        const bookMatch = query.match(/\b(?:from|in|of)\s+["']?(.{3,60})["']?\s*$/i);
+        if (bookMatch) scopeBook = bookMatch[1].trim();
+        break;
+      }
     }
   }
 
-  // Check code example patterns
+  // 3. Cross-structural: "which chapters mention X across all docs"
+  if (type === 'general') {
+    for (const pattern of CROSS_STRUCTURAL_PATTERNS) {
+      const match = pattern.exec(query);
+      if (match) {
+        type = 'cross_structural';
+        crossTopic = (match[1] || '').trim();
+        break;
+      }
+    }
+  }
+
+  // 4. Code example patterns
   if (type === 'general' && CODE_EXAMPLE_PATTERNS.some((p) => p.test(query))) {
     type = 'code_examples';
   }
 
-  // Standard type detection (only if not already classified)
+  // 5. Broad error words, structural, conceptual, API (only if not already classified)
   if (type === 'general') {
-    if (ERROR_PATTERNS.some((p) => p.test(query))) {
+    if (BROAD_ERROR_PATTERNS.some((p) => p.test(query))) {
       type = 'error';
     } else if (STRUCTURAL_PATTERNS.some((p) => p.test(query))) {
       type = 'structural';
@@ -295,7 +345,7 @@ function analyzeQuery(query, context = {}) {
     return { type, preferVector, collections, tech };
   }
 
-  if (type === 'scope' || type === 'code_examples' || type === 'structural') {
+  if (type === 'scope' || type === 'code_examples' || type === 'structural' || type === 'cross_structural') {
     // Scope, code_examples, and structural queries search all content collections
     // because we don't know which collection the document was ingested into
     const allContent = ['python', 'nodejs', 'go', 'rust', 'java', 'csharp',
@@ -325,7 +375,7 @@ function analyzeQuery(query, context = {}) {
     }
   }
 
-  return { type, preferVector, collections, tech, scopeHint, scopeBook };
+  return { type, preferVector, collections, tech, scopeHint, scopeBook, crossTopic };
 }
 
 // ---------------------------------------------------------------------------

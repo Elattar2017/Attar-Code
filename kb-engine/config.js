@@ -57,8 +57,28 @@ module.exports = {
   // Search
   DEFAULT_SEARCH_LIMIT: 20,
   RERANK_TOP_N: 5,
+  RERANK_CANDIDATES: 40,  // candidates sent to reranker (more = better recall, +1-2s latency)
+
+  // HyDE (Hypothetical Document Embedding)
+  HYDE_ENABLED: true,
+  HYDE_TIMEOUT: 10000,    // 10s max for hypothetical generation
+  HYDE_MAX_TOKENS: 200,   // hypothetical answer length
+
+  // MMR (Maximal Marginal Relevance) diversity selection
+  MMR_ENABLED: true,
+  MMR_LAMBDA: 0.7,  // 0.7 = 70% relevance, 30% diversity (0.5-0.9 range recommended)
+
+  // Semantic query cache
+  QUERY_CACHE_ENABLED: true,
+  QUERY_CACHE_MAX: 500,            // max cached queries (LRU eviction)
+  QUERY_CACHE_TTL: 30 * 60 * 1000, // 30 minutes
+  QUERY_CACHE_THRESHOLD: 0.88,     // cosine similarity threshold (research: 0.88 optimal for technical KB)
   MIN_SCORE_THRESHOLD: 0.2, // low threshold — let term-boosting and reranking do the quality filtering
   RRF_K: 60,
+
+  // Cross-KB structural aggregation
+  CROSS_STRUCTURAL_LIMIT: 50,     // max results per collection for topic search
+  CROSS_STRUCTURAL_MIN_CHUNKS: 2, // chapter must have 2+ matching chunks to be listed
 
   // Ingestion
   BATCH_SIZE: 100,
@@ -68,6 +88,22 @@ module.exports = {
   // Paths
   INGESTION_STATE_FILE: path.join(ATTAR_HOME, "kb-ingestion-state.json"),
   KB_KNOWLEDGE_DIR: path.join(ATTAR_HOME, "knowledge"),
+  BM25_VOCAB_DIR: path.join(ATTAR_HOME, "bm25-vocab"),
+  DNA_DIR: path.join(ATTAR_HOME, "knowledge", "dna"),
+
+  // Document DNA scoring (multiplicative boosts — industry standard)
+  DNA_AUTHORITY_MULT: {
+    canonical: 1.15, "industry-standard": 1.10, "known-author": 1.05,
+    community: 1.0, personal: 0.95,
+  },
+  DNA_FRESHNESS_MULT: { current: 1.05, dated: 1.0, legacy: 0.90 },
+  DNA_TRUST_WEIGHT: 0.03,  // per-point above/below trust=3 baseline
+
+  // Quality feedback loop
+  FEEDBACK_ENABLED: false,  // disabled by default until stable
+  FEEDBACK_FILE: path.join(ATTAR_HOME, "kb-feedback.jsonl"),
+  FEEDBACK_DECAY: 0.95,
+  FEEDBACK_DECAY_INTERVAL_DAYS: 7,
 
   // Structural indexing
   STRUCTURAL_CHUNK_TYPE: 'structural',

@@ -8,9 +8,11 @@ describe('query-analyzer — structural queries', () => {
     expect(result.type).toBe('structural');
   });
 
-  test('detects "what is in chapter 2" as structural', () => {
+  test('"what is covered in chapter 2" → scope (numbered chapter = full retrieval)', () => {
     const result = analyzeQuery('what is covered in chapter 2');
-    expect(result.type).toBe('structural');
+    // Contains "chapter 2" → scope retrieval (fetches full content + summaries)
+    // so the LLM can answer "what is covered" comprehensively
+    expect(result.type).toBe('scope');
   });
 
   test('detects "table of contents" as structural', () => {
@@ -28,9 +30,9 @@ describe('query-analyzer — structural queries', () => {
     expect(result.type).toBe('structural');
   });
 
-  test('detects "chapter 5 subject" as structural', () => {
+  test('"what is the subject of chapter 5" → scope (numbered chapter = full retrieval)', () => {
     const result = analyzeQuery('what is the subject of chapter 5');
-    expect(result.type).toBe('structural');
+    expect(result.type).toBe('scope');
   });
 
   test('structural queries prefer dense', () => {

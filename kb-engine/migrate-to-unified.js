@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // kb-engine/migrate-to-unified.js
 //
-// Migration script: Dual-model (code_vector + text_vector) → Unified single-model (dense 2560-dim + bm25 sparse)
+// Migration script: Dual-model (code_vector + text_vector) → Unified single-model (dense 1024-dim + bm25 sparse)
 //
 // This script:
 //   1. Connects to Qdrant at http://127.0.0.1:6333
@@ -9,7 +9,7 @@
 //   3. For each collection that has points:
 //      a. Scrolls all points (batch 100), extracts content + metadata
 //      b. Deletes the collection
-//      c. Re-creates it with the new single-vector schema (dense 2560-dim + bm25 sparse)
+//      c. Re-creates it with the new single-vector schema (dense 1024-dim + bm25 sparse)
 //      d. Re-embeds all content with UnifiedEmbedder.embedBatch()
 //      e. Re-computes BM25 sparse vectors
 //      f. Upserts all points with original metadata preserved
@@ -175,7 +175,7 @@ async function main() {
       log(`  Deleting old collection...`);
       await client.deleteCollection(name);
 
-      // 4d. Re-create with new unified schema (dense 2560-dim + bm25 sparse)
+      // 4d. Re-create with new unified schema (dense 1024-dim + bm25 sparse)
       log(`  Re-creating with unified schema (dense ${config.EMBED_DIM}-dim + bm25 sparse)...`);
       await collectionMgr.ensureCollection(name);
 

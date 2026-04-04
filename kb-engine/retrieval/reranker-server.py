@@ -9,7 +9,7 @@ Usage:
   python reranker-server.py [model_name] [port]
 
   model_name: HuggingFace model ID (default: Qwen/Qwen3-Reranker-0.6B)
-  port:       HTTP port (default: 6334)
+  port:       HTTP port (default: 6335)
 
 API:
   POST /rerank  { query: str, documents: [str], instruction?: str }
@@ -142,5 +142,5 @@ def health():
 
 
 if __name__ == "__main__":
-    port = int(sys.argv[2]) if len(sys.argv) > 2 else 6334
+    port = int(sys.argv[2]) if len(sys.argv) > 2 else 6335
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
