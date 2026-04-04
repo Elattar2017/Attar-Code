@@ -9095,6 +9095,9 @@ function printHelp() {
       ["/kb dna <file>",       "Create or edit Document DNA (authority, trust, tags)"],
       ["",                     "  Interactive prompts: title, author, authority level,"],
       ["",                     "  trust rating, freshness, depth, topics, anti-tags"],
+      ["/kb auto-dna <file>",  "LLM reads document and generates DNA automatically"],
+      ["",                     "  Reviews first 2000 chars + headings, suggests all fields"],
+      ["",                     "  Shows draft for confirmation before saving"],
       ["/kb show-dna <file>",  "View current DNA card for a document"],
       ["/kb update-dna <file>","Apply DNA to existing Qdrant chunks (no re-ingest)"],
       ["",                     ""],
@@ -10286,6 +10289,177 @@ RULES:
           console.log(co(C.bRed, "\n  ✗ ") + "Error: " + e.message + "\n");
         }
 
+      } else if (sub === "auto-dna") {
+        // /kb auto-dna <filepath> — LLM reads document and generates draft DNA
+        const fp = parts.slice(2).join(" ").trim();
+        if (!fp) { console.log(co(C.bRed, "\n  ✗ ") + "Usage: /kb auto-dna <filepath>  — LLM generates DNA from document content\n"); break; }
+        const absPath = path.resolve(fp);
+        if (!fs.existsSync(absPath)) { console.log(co(C.bRed, "\n  ✗ ") + "File not found: " + absPath + "\n"); break; }
+
+        try {
+          const crypto = require("crypto");
+          const bookId = crypto.createHash("sha256").update(absPath).digest("hex").slice(0, 12);
+          const { saveDNA, loadDNA } = require("./kb-engine/ingestion/dna-loader");
+          const existing = loadDNA(bookId);
+          if (existing) {
+            console.log(co(C.bYellow, "\n  ⚠ ") + "DNA already exists for this document. Will generate a new draft.\n");
+          }
+
+          console.log(co(C.bold, "\n  Auto-generating DNA for: ") + path.basename(absPath));
+          console.log(co(C.dim, "  Reading document content...\n"));
+
+          // Extract content preview (first ~2000 chars + headings)
+          let contentPreview = "";
+          let docTitle = path.basename(absPath, path.extname(absPath));
+          const ext = path.extname(absPath).toLowerCase();
+
+          if (ext === ".pdf") {
+            // For PDFs, try pymupdf4llm first page or fallback to filename
+            try {
+              const { execFileSync } = require("child_process");
+              const script = `import sys\ntry:\n    import pymupdf4llm\n    md = pymupdf4llm.to_markdown(sys.argv[1], pages=[0,1,2])\n    print(md[:3000])\nexcept:\n    import fitz\n    doc = fitz.open(sys.argv[1])\n    text = ""\n    for i in range(min(3, len(doc))):\n        text += doc[i].get_text()\n    print(text[:3000])`;
+              const tmpScript = path.join(require("os").tmpdir(), `attar-autodna-${Date.now()}.py`);
+              fs.writeFileSync(tmpScript, script);
+              contentPreview = execFileSync("python", [tmpScript, absPath], { timeout: 30000, maxBuffer: 1024 * 1024 }).toString("utf-8").slice(0, 2500);
+              try { fs.unlinkSync(tmpScript); } catch (_) {}
+            } catch (e) {
+              contentPreview = "(Could not extract PDF content: " + e.message + ")";
+            }
+          } else {
+            // Text/MD/HTML — read directly
+            contentPreview = fs.readFileSync(absPath, "utf-8").slice(0, 2500);
+          }
+
+          // Extract headings for structure hint
+          const headings = (contentPreview.match(/^#{1,3}\s+.+$/gm) || []).slice(0, 15);
+          const headingList = headings.length > 0 ? "\n\nHeadings found:\n" + headings.join("\n") : "";
+
+          // Call LLM to generate DNA
+          const ollamaUrl = CONFIG.proxyUrl ? "http://127.0.0.1:11434" : "http://127.0.0.1:11434";
+          const modelName = SESSION?.modelName || "glm-4.7-flash:latest";
+
+          console.log(co(C.dim, "  Asking " + modelName + " to analyze document...\n"));
+
+          const prompt = `Analyze this document excerpt and generate a structured metadata card. Output ONLY valid JSON matching this exact schema (no markdown, no explanation):
+
+{
+  "title": "document title",
+  "authors": ["author name"],
+  "doc_type": "Book|Tutorial/Course|API Reference|Cookbook/Recipes|Blog/Article|Official Docs|Personal Notes",
+  "content_style": "code-heavy|concept-heavy|mixed|reference",
+  "depth": "Beginner|Intermediate|Advanced|Expert",
+  "authority": "canonical|industry-standard|known-author|community|personal",
+  "trust_rating": 3,
+  "freshness": "current|dated|legacy",
+  "key_topics": ["topic1", "topic2", "topic3"],
+  "best_for": ["How-to / Implementation", "Debugging / Troubleshooting", "Conceptual Understanding", "Best Practices / Idioms", "API Usage / Syntax", "Architecture / Design Patterns"],
+  "anti_tags": ["topics this document does NOT cover despite seeming relevant"],
+  "prerequisites": "what knowledge the reader needs"
+}
+
+Document filename: ${path.basename(absPath)}
+${headingList}
+
+First ~2000 characters:
+${contentPreview.slice(0, 2000)}`;
+
+          const res = await fetch(`${ollamaUrl}/api/chat`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model: modelName,
+              messages: [{ role: "user", content: prompt }],
+              stream: false,
+              think: false,
+              options: { temperature: 0.2, num_predict: 500 },
+            }),
+            signal: AbortSignal.timeout(60000),
+          });
+
+          if (!res.ok) {
+            console.log(co(C.bRed, "  ✗ ") + "LLM returned HTTP " + res.status + "\n");
+            break;
+          }
+
+          const data = await res.json();
+          let llmText = (data.message?.content || "").trim();
+
+          // Extract JSON from response (may be wrapped in ```json...```)
+          const jsonMatch = llmText.match(/\{[\s\S]*\}/);
+          if (!jsonMatch) {
+            console.log(co(C.bRed, "  ✗ ") + "LLM did not return valid JSON. Raw response:\n" + llmText.slice(0, 300) + "\n");
+            break;
+          }
+
+          let draft;
+          try {
+            draft = JSON.parse(jsonMatch[0]);
+          } catch (e) {
+            console.log(co(C.bRed, "  ✗ ") + "Failed to parse LLM JSON: " + e.message + "\n" + jsonMatch[0].slice(0, 200) + "\n");
+            break;
+          }
+
+          // Display draft
+          const stars = { canonical: "★★★★★", "industry-standard": "★★★★", "known-author": "★★★", community: "★★", personal: "★" };
+          console.log(co(C.bold, "  ── LLM-Generated DNA Draft ──\n"));
+          console.log("  " + co(C.bGreen, "Title:       ") + (draft.title || docTitle));
+          if (draft.authors?.length) console.log("  " + co(C.bGreen, "Authors:     ") + draft.authors.join(", "));
+          console.log("  " + co(C.bGreen, "Type:        ") + (draft.doc_type || "?"));
+          console.log("  " + co(C.bGreen, "Style:       ") + (draft.content_style || "?"));
+          console.log("  " + co(C.bGreen, "Depth:       ") + (draft.depth || "?"));
+          console.log("  " + co(C.bGreen, "Authority:   ") + (stars[draft.authority] || "") + " " + (draft.authority || "?"));
+          console.log("  " + co(C.bGreen, "Trust:       ") + "★".repeat(draft.trust_rating || 3) + "☆".repeat(5 - (draft.trust_rating || 3)) + " (" + (draft.trust_rating || 3) + "/5)");
+          console.log("  " + co(C.bGreen, "Freshness:   ") + (draft.freshness || "?"));
+          if (draft.key_topics?.length) console.log("  " + co(C.bGreen, "Topics:      ") + draft.key_topics.join(", "));
+          if (draft.best_for?.length) console.log("  " + co(C.bGreen, "Best for:    ") + draft.best_for.join(", "));
+          if (draft.anti_tags?.length) console.log("  " + co(C.bRed,   "Anti-tags:   ") + draft.anti_tags.join(", "));
+          if (draft.prerequisites) console.log("  " + co(C.bGreen, "Prereqs:     ") + draft.prerequisites);
+
+          // Ask for confirmation
+          const rl = require("readline").createInterface({ input: process.stdin, output: process.stdout });
+          const answer = await new Promise(r => rl.question("\n  " + co(C.bYellow, "Save this DNA? (y/n/edit): "), a => { rl.close(); r(a.trim().toLowerCase()); }));
+
+          if (answer === "y" || answer === "yes") {
+            const dna = {
+              _schema: "attar-code/doc-dna-v1",
+              _generated_by: "auto-dna",
+              identity: {
+                title: draft.title || docTitle,
+                ...(draft.authors?.length ? { authors: draft.authors } : {}),
+              },
+              technology: {
+                primary: draft.key_topics?.filter(t => ["Python", "JavaScript", "TypeScript", "Rust", "Go", "Java", "Ruby", "PHP", "Swift", "C++"].some(lang => t.toLowerCase().includes(lang.toLowerCase()))) || [],
+              },
+              character: {
+                doc_type: draft.doc_type || "Book",
+                content_style: draft.content_style || "mixed",
+                depth: draft.depth || "Intermediate",
+              },
+              authority: {
+                level: draft.authority || "community",
+                trust_rating: draft.trust_rating || 3,
+                freshness: draft.freshness || "current",
+              },
+              retrieval: {
+                ...(draft.key_topics?.length ? { key_topics: draft.key_topics } : {}),
+                ...(draft.best_for?.length ? { best_for: draft.best_for } : {}),
+                ...(draft.anti_tags?.length ? { anti_tags: draft.anti_tags } : {}),
+                ...(draft.prerequisites ? { prerequisites: draft.prerequisites } : {}),
+              },
+            };
+
+            saveDNA(bookId, dna);
+            console.log(co(C.bGreen, "\n  ✓ ") + "DNA saved for book_id " + bookId);
+            console.log(co(C.dim, "  Run /kb update-dna " + fp + " to apply to existing Qdrant chunks\n"));
+          } else if (answer === "edit" || answer === "e") {
+            console.log(co(C.dim, "\n  Run /kb dna " + fp + " to edit interactively.\n"));
+          } else {
+            console.log(co(C.dim, "\n  Discarded. Run /kb auto-dna " + fp + " to try again.\n"));
+          }
+        } catch (e) {
+          console.log(co(C.bRed, "\n  ✗ ") + "Error: " + e.message + "\n");
+        }
+
       } else if (sub === "update-dna") {
         // /kb update-dna <filepath> — apply DNA to existing Qdrant chunks via setPayload
         const fp = parts.slice(2).join(" ").trim();
@@ -10699,7 +10873,7 @@ async function main() {
         "/memory": ["set"],
         "/hooks": ["list", "reload", "templates"],
         "/errors": ["list", "reload", "test"],
-        "/kb": ["add", "add-dir", "search", "list", "collections", "remove", "stats", "status", "reindex", "dna", "show-dna", "update-dna"],
+        "/kb": ["add", "add-dir", "search", "list", "collections", "remove", "stats", "status", "reindex", "dna", "show-dna", "auto-dna", "update-dna"],
         "/effort": ["low", "medium", "high"],
         "/style": ["concise", "explanatory", "learning", "code", "default"],
         "/auto": ["on", "off"],
