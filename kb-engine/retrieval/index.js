@@ -4,6 +4,7 @@
 
 const { analyzeQuery } = require("./query-analyzer");
 const { expandQuery } = require("./query-expander");
+const { rewriteQuery, decomposeQuery, REWRITE_TYPES } = require("./query-rewriter");
 const { generateHypothetical, HYDE_TYPES } = require("./hyde");
 const { QueryCache } = require("./query-cache");
 const { Reranker } = require("./reranker");
@@ -147,25 +148,52 @@ class RetrievalPipeline {
     }
 
     // Build payload filter for structural queries
-    // Note: hybridSearch runs dense + BM25 in parallel.
-    // The structural filter restricts results to structural chunks.
     const structuralFilter = analysis.type === 'structural'
       ? [{ key: 'chunk_type', value: 'structural' }]
       : undefined;
 
+    // 1.5. Pre-search query understanding: rewrite + decompose
+    let searchQuery = query;
+    let subQueries = null;
+
+    if (this.config.QUERY_REWRITE_ENABLED && REWRITE_TYPES.has(analysis.type)) {
+      // Rewrite vague queries into optimized search queries
+      searchQuery = await rewriteQuery(query, undefined, context.model, { tech: analysis.tech, type: analysis.type });
+
+      // Decompose complex queries (comparisons, multi-topic) into sub-queries
+      subQueries = await decomposeQuery(searchQuery, undefined, context.model);
+      if (subQueries.length === 1 && subQueries[0] === searchQuery) {
+        subQueries = null; // no decomposition needed
+      }
+    }
+
     // 2. Hybrid search each collection
     let allResults = [];
-    for (const collection of collections) {
-      try {
-        const results = await this.store.hybridSearch(collection, query, {
-          limit: this.config.DEFAULT_SEARCH_LIMIT,
-          queryType: analysis.type,
-          filter: structuralFilter,
-        });
-        allResults.push(...results.map((r) => ({ ...r, collection })));
-      } catch (_) {
-        // collection may not exist yet — skip silently
+    const queriesToSearch = subQueries || [searchQuery];
+
+    for (const sq of queriesToSearch) {
+      for (const collection of collections) {
+        try {
+          const results = await this.store.hybridSearch(collection, sq, {
+            limit: this.config.DEFAULT_SEARCH_LIMIT,
+            queryType: analysis.type,
+            filter: structuralFilter,
+          });
+          allResults.push(...results.map((r) => ({ ...r, collection })));
+        } catch (_) {
+          // collection may not exist yet — skip silently
+        }
       }
+    }
+
+    // Deduplicate if multiple sub-queries produced overlapping results
+    if (subQueries) {
+      const seen = new Set();
+      allResults = allResults.filter((r) => {
+        if (seen.has(r.id)) return false;
+        seen.add(r.id);
+        return true;
+      });
     }
 
     // 3. Sort by score descending

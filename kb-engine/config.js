@@ -59,6 +59,10 @@ module.exports = {
   RERANK_TOP_N: 5,
   RERANK_CANDIDATES: 40,  // candidates sent to reranker (more = better recall, +1-2s latency)
 
+  // Query Understanding (pre-search rewriting + decomposition)
+  QUERY_REWRITE_ENABLED: true,
+  QUERY_REWRITE_TIMEOUT: 8000,    // 8s max for LLM rewrite/decompose
+
   // HyDE (Hypothetical Document Embedding)
   HYDE_ENABLED: true,
   HYDE_TIMEOUT: 10000,    // 10s max for hypothetical generation
