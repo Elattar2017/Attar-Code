@@ -386,6 +386,15 @@ app.post("/kb/feedback/toggle", (req, res) => {
   res.json({ ok: true, enabled: feedbackActive });
 });
 
+app.post("/kb/feedback/session-end", (req, res) => {
+  if (feedbackActive && feedbackTracker) {
+    feedbackTracker.logSessionEnd();
+    res.json({ ok: true });
+  } else {
+    res.json({ ok: false });
+  }
+});
+
 // ─── KB cite (semantic citation detection) ───────────────────────────────────
 // Accepts response_text + chunk data for embedding-based similarity comparison.
 // Falls back to direct chunk_ids logging if no response_text provided.

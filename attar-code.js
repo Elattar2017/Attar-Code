@@ -7956,6 +7956,13 @@ async function chat(userMessage) {
 
   SESSION.messages.push({ role:"user", content: userMessage });
   SESSION._currentUserMessage = userMessage;  // preserve for kb_search scope detection
+
+  // Feedback: if previous turn used KB but this turn doesn't mention KB topics,
+  // signal satisfaction (user moved on). Fired via proxy endpoint.
+  if (SESSION._kbSearchCount > 0 && SESSION._lastKbChunks?.length > 0) {
+    // User is starting a new turn — the previous KB search was sufficient
+    proxyPost("/kb/feedback/session-end", {}, 3000).catch(() => {});
+  }
   SESSION._kbSearchCount = 0;                 // reset per-turn search counter
   startSpinner("thinking");
 
