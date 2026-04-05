@@ -27,9 +27,10 @@ const { IngestionTracker }  = require('./progress');
 const { ChunkStore }        = require('../store');
 const { extractTocFromBookmarks, extractTocFromHeadings, mergeTocSources } = require('./toc-extractor');
 const { buildStructuralChunks } = require('./structural-indexer');
-const { sanitizeHeading, sanitizeAllHeadings } = require('./heading-sanitizer');
+const { sanitizeHeading, sanitizeAllHeadings, classifyHeading } = require('./heading-sanitizer');
 const { normalizeHeadings } = require('./heading-normalizer');
 const { loadDNA, flattenDNA } = require('./dna-loader');
+const { loadGuidelines, preScanDocument, buildHeadingFilter } = require('./ingest-guidelines');
 
 // Supported file extensions for directory ingestion
 const SUPPORTED_EXTS = new Set([
@@ -188,11 +189,33 @@ class IngestPipeline {
     }
 
     // 2.5 Normalize headings — convert common chapter/section patterns to Markdown headings
-    //     (especially important for PDFs where headings are bold text or numbered)
     processed.content = normalizeHeadings(processed.content);
 
-    // 2.55 Sanitize headings — clean OCR artifacts, strip markdown, classify, demote non-headings
-    //      (Unstructured.io-style: classify first, clean second)
+    // 2.55 Pre-scan: detect messy documents + load ingestion guidelines
+    const crypto2 = require('crypto');
+    const scanBookId = crypto2.createHash('sha256').update(absPath).digest('hex').slice(0, 12);
+    const guidelines = loadGuidelines(scanBookId);
+    const scan = preScanDocument(processed.content);
+
+    if (scan.needsGuidelines && !guidelines) {
+      process.stderr.write(`  [Ingest] ⚠ Document has ${scan.headingCount} headings (${scan.uniqueHeadings} unique)`);
+      if (scan.singleWordHeadings.length > 0) process.stderr.write(` — ${scan.singleWordHeadings.length} single-word headings`);
+      if (Object.keys(scan.repeatedHeadings).length > 0) process.stderr.write(` — ${Object.keys(scan.repeatedHeadings).length} repeated headings`);
+      process.stderr.write(`\n  [Ingest] Run /kb guidelines ${path.basename(absPath)} to set ingestion rules\n`);
+    }
+
+    // 2.56 Apply guidelines-based heading filter (if guidelines exist)
+    if (guidelines) {
+      const filter = buildHeadingFilter(guidelines);
+      processed.content = processed.content.replace(/^(#{1,6})\s+(.+)$/gm, (match, hashes, text) => {
+        const result = filter(text.trim());
+        if (result.action === 'reject') return `**${text.trim()}**`; // demote to bold
+        return match; // keep as heading
+      });
+      process.stderr.write(`  [Ingest] Applied ingestion guidelines for "${path.basename(absPath)}"\n`);
+    }
+
+    // 2.57 Sanitize headings — clean OCR artifacts, strip markdown, classify, demote non-headings
     processed.content = sanitizeAllHeadings(processed.content);
 
     // 2.6 Extract TOC and build structural chunks

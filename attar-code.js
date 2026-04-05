@@ -3506,12 +3506,13 @@ print(json.dumps({"sheet": ws.title, "headers": headers, "rows": rows[:200], "to
       // Reset disambiguation flag after each search
       if (SESSION._kbDisambiguated) SESSION._kbDisambiguated = false;
 
-      // ── Detect structural intent from original user message ─────
-      const structuralCheck = /\blist\s+(?:all\s+)?(?:chapters?|sections?|topics?)\b/i.test(userOriginal) ||
-                              /\bhow\s+many\s+chapters?\b/i.test(userOriginal) ||
-                              /\btable\s+of\s+contents\b/i.test(userOriginal) ||
-                              /\boverview\s+of\b/i.test(userOriginal) ||
-                              /\bstructure\s+of\b/i.test(userOriginal);
+      // ── Detect structural intent using the query analyzer (not hardcoded regex) ─
+      let structuralCheck = false;
+      try {
+        const { analyzeQuery: aq } = require('./kb-engine/retrieval/query-analyzer');
+        const userAnalysis = aq(userOriginal);
+        structuralCheck = userAnalysis.type === 'structural' || userAnalysis.type === 'cross_structural';
+      } catch (_) {}
 
       // ── Execute the search ────────────────────────────────────────
       const body = { query: structuralCheck ? userOriginal : searchQuery, num: args.num || 5 };
@@ -9147,6 +9148,13 @@ function printHelp() {
       ["",                     "  anti-tags (topics to exclude from retrieval)"],
       ["",                     "  Files: ~/.attar-code/knowledge/dna/{book_id}.dna.json"],
     ]],
+    ["Ingestion Guidelines", [
+      ["/kb guidelines <file>", "Set ingestion rules for messy/unusual documents"],
+      ["",                     "  Pre-scans document, shows heading stats"],
+      ["",                     "  Set: reject words, reject patterns, max heading words,"],
+      ["",                     "  reject repeated headings. Applied during next /kb add."],
+      ["",                     "  Auto-detected during ingestion — CLI warns if needed"],
+    ]],
     ["Quality Feedback Loop", [
       ["/kb feedback",          "Show feedback loop status (enabled/disabled, search count)"],
       ["/kb feedback on",       "Enable citation tracking + quality scoring"],
@@ -10219,6 +10227,83 @@ RULES:
           console.log(co(C.bRed, "  ✗ ") + `Cannot connect to search-proxy: ${e.message}\n`);
         }
 
+      } else if (sub === "guidelines") {
+        // /kb guidelines <filepath> — set ingestion rules for a messy document
+        const fp = parts.slice(2).join(" ").trim();
+        if (!fp) { console.log(co(C.bRed, "\n  ✗ ") + "Usage: /kb guidelines <filepath>\n"); break; }
+        const absPath = path.resolve(fp);
+        if (!fs.existsSync(absPath)) { console.log(co(C.bRed, "\n  ✗ ") + "File not found: " + absPath + "\n"); break; }
+
+        try {
+          const crypto = require("crypto");
+          const bookId = crypto.createHash("sha256").update(absPath).digest("hex").slice(0, 12);
+          const { saveGuidelines, loadGuidelines, preScanDocument } = require("./kb-engine/ingestion/ingest-guidelines");
+          const { normalizeHeadings } = require("./kb-engine/ingestion/heading-normalizer");
+          const existing = loadGuidelines(bookId);
+
+          // Quick pre-scan
+          let content = "";
+          const ext = path.extname(absPath).toLowerCase();
+          if (ext === ".pdf") {
+            try {
+              const { execFileSync } = require("child_process");
+              const script = `import sys\ntry:\n    import pymupdf4llm\n    print(pymupdf4llm.to_markdown(sys.argv[1])[:50000])\nexcept:\n    import fitz\n    doc = fitz.open(sys.argv[1])\n    print("".join(doc[i].get_text() for i in range(min(20, len(doc))))[:50000])`;
+              const tmp = path.join(require("os").tmpdir(), "attar-scan-" + Date.now() + ".py");
+              fs.writeFileSync(tmp, script);
+              content = execFileSync("python", [tmp, absPath], { timeout: 60000, maxBuffer: 5 * 1024 * 1024 }).toString("utf-8");
+              try { fs.unlinkSync(tmp); } catch (_) {}
+            } catch (e) { content = ""; }
+          } else {
+            content = fs.readFileSync(absPath, "utf-8").slice(0, 50000);
+          }
+
+          content = normalizeHeadings(content);
+          const scan = preScanDocument(content);
+
+          console.log(co(C.bold, "\n  Ingestion Guidelines — ") + path.basename(absPath));
+          console.log(co(C.dim, "  book_id: " + bookId + (existing ? " (updating existing)" : " (creating new)") + "\n"));
+          console.log("  " + co(C.bGreen, "Headings found:   ") + scan.headingCount + " (" + scan.uniqueHeadings + " unique)");
+          if (scan.singleWordHeadings.length > 0) console.log("  " + co(C.bYellow, "Single-word:      ") + scan.singleWordHeadings.join(", "));
+          if (Object.keys(scan.repeatedHeadings).length > 0) {
+            console.log("  " + co(C.bYellow, "Repeated:         ") + Object.entries(scan.repeatedHeadings).map(([h, c]) => h + " (" + c + "x)").join(", "));
+          }
+          if (scan.suspiciousHeadings.length > 0) console.log("  " + co(C.bRed, "Suspicious:       ") + scan.suspiciousHeadings.join(", "));
+          console.log("  " + co(C.dim, "Needs guidelines: ") + (scan.needsGuidelines ? co(C.bYellow, "YES") : co(C.bGreen, "NO")));
+
+          const rl = require("readline").createInterface({ input: process.stdin, output: process.stdout });
+          const ask = (q, def) => new Promise(r => rl.question("  " + q + (def ? ` [${def}]` : "") + ": ", a => r(a.trim() || def || "")));
+
+          console.log(co(C.dim, "\n  Set rules for how headings should be processed during ingestion.\n"));
+
+          const rejectWords = await ask("Words to REJECT as headings (comma-sep)", existing?.reject_words?.join(", ") || scan.singleWordHeadings.join(", "));
+          const rejectPatterns = await ask("Regex patterns to REJECT (comma-sep)", existing?.reject_patterns?.join(", ") || "");
+          const maxWords = await ask("Max words per heading", String(existing?.max_heading_words || 12));
+          const rejectRepeatedStr = await ask("Reject repeated headings? (y/n)", existing?.reject_repeated_headings ? "y" : (Object.keys(scan.repeatedHeadings).length > 0 ? "y" : "n"));
+          let knownRepeated = "";
+          if (rejectRepeatedStr.toLowerCase() === "y" && Object.keys(scan.repeatedHeadings).length > 0) {
+            knownRepeated = await ask("Which repeated headings to reject (comma-sep)", Object.keys(scan.repeatedHeadings).join(", "));
+          }
+
+          rl.close();
+
+          const guidelines = {
+            _schema: "attar-code/ingest-guidelines-v1",
+            _created: new Date().toISOString(),
+            reject_words: rejectWords ? rejectWords.split(",").map(w => w.trim()).filter(Boolean) : [],
+            reject_patterns: rejectPatterns ? rejectPatterns.split(",").map(p => p.trim()).filter(Boolean) : [],
+            max_heading_words: parseInt(maxWords) || 12,
+            min_heading_length: 2,
+            reject_repeated_headings: rejectRepeatedStr.toLowerCase() === "y",
+            known_repeated_headings: knownRepeated ? knownRepeated.split(",").map(h => h.trim()).filter(Boolean) : [],
+          };
+
+          saveGuidelines(bookId, guidelines);
+          console.log(co(C.bGreen, "\n  ✓ ") + "Guidelines saved for book_id " + bookId);
+          console.log(co(C.dim, "  Re-ingest with: /kb add " + fp + " to apply guidelines\n"));
+        } catch (e) {
+          console.log(co(C.bRed, "\n  ✗ ") + "Error: " + e.message + "\n");
+        }
+
       } else if (sub === "feedback") {
         // /kb feedback [on|off] — toggle quality feedback loop
         const action = parts[2]?.toLowerCase();
@@ -10958,7 +11043,7 @@ async function main() {
         "/memory": ["set"],
         "/hooks": ["list", "reload", "templates"],
         "/errors": ["list", "reload", "test"],
-        "/kb": ["add", "add-dir", "search", "list", "collections", "remove", "stats", "status", "reindex", "dna", "show-dna", "auto-dna", "update-dna", "feedback"],
+        "/kb": ["add", "add-dir", "search", "list", "collections", "remove", "stats", "status", "reindex", "dna", "show-dna", "auto-dna", "update-dna", "feedback", "guidelines"],
         "/effort": ["low", "medium", "high"],
         "/style": ["concise", "explanatory", "learning", "code", "default"],
         "/auto": ["on", "off"],
