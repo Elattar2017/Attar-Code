@@ -28,6 +28,7 @@ const { ChunkStore }        = require('../store');
 const { extractTocFromBookmarks, extractTocFromHeadings, mergeTocSources } = require('./toc-extractor');
 const { buildStructuralChunks } = require('./structural-indexer');
 const { sanitizeHeading, sanitizeAllHeadings } = require('./heading-sanitizer');
+const { normalizeHeadings } = require('./heading-normalizer');
 const { loadDNA, flattenDNA } = require('./dna-loader');
 
 // Supported file extensions for directory ingestion
@@ -154,6 +155,7 @@ class IngestPipeline {
               book_id:      bookId,
               chapter:      dirName,
               section:      sectionName,
+              ...(result.importHeader ? { import_header: result.importHeader } : {}),
             },
           };
         });
@@ -450,99 +452,4 @@ class IngestPipeline {
 
 // ─── Heading Normalizer ─────────────────────────────────────────────────────
 // Converts common chapter/section patterns to Markdown headings.
-// PDF→Markdown output often has bold text instead of proper # headings.
-
-function normalizeHeadings(content) {
-  let result = content;
-
-  // Pattern: "Chapter N: Title" or "Chapter N. Title" (with or without bold)
-  result = result.replace(/^(\*\*)?Chapter\s+(\d+)[:.]\s*(.+?)(\*\*)?$/gm, (m, b1, num, title, b2) => {
-    return `# Chapter ${num}: ${title.replace(/\*\*/g, '').trim()}`;
-  });
-
-  // Pattern: "**N.N Title**" or "**N.N.N Title**" → ## or ###
-  // \s* at start handles leading whitespace from pymupdf4llm output
-  result = result.replace(/^\s*\*\*(\d+\.\d+(?:\.\d+)?)\s+(.+?)\*\*\s*$/gm, (m, num, title) => {
-    const depth = num.split('.').length;
-    const prefix = depth <= 2 ? '##' : '###';
-    return `${prefix} ${num} ${title.trim()}`;
-  });
-
-  // Pattern: "Part N: Title" (with or without bold)
-  result = result.replace(/^(\*\*)?Part\s+(\d+|[IVX]+)[:.]\s*(.+?)(\*\*)?$/gm, (m, b1, num, title, b2) => {
-    return `# Part ${num}: ${title.replace(/\*\*/g, '').trim()}`;
-  });
-
-  // Pattern: "Appendix A: Title" or "Appendix N: Title"
-  result = result.replace(/^(\*\*)?Appendix\s+([A-Z]|\d+)[:.]\s*(.+?)(\*\*)?$/gm, (m, b1, id, title, b2) => {
-    return `# Appendix ${id}: ${title.replace(/\*\*/g, '').trim()}`;
-  });
-
-  // Pattern: ALL CAPS line (2-8 words, <80 chars) — likely a heading
-  result = result.replace(/^([A-Z][A-Z\s]{5,78})$/gm, (m, text) => {
-    const trimmed = text.trim();
-    const wordCount = trimmed.split(/\s+/).length;
-    if (wordCount >= 2 && wordCount <= 8
-      && !/[{}()\[\]=<>;_`]/.test(trimmed)
-      && !/\?$/.test(trimmed)
-      && !/\.\s*$/.test(trimmed)             // not a sentence ending with period
-    ) {
-      return `## ${trimmed}`;
-    }
-    return m;
-  });
-
-  // Pattern: "N. Title" standalone (short line, starts with capital)
-  // Guards: no code syntax, no questions, no sentences, max 10 words
-  result = result.replace(/^(\d{1,2})\.\s+([A-Z][^\n]{5,75})$/gm, (m, num, title) => {
-    const t = title.trim();
-    if (!/[{}()\[\]=;`]/.test(t)        // no code syntax
-      && !/\?$/.test(t)                  // not a question
-      && !/\.\s*$/.test(t)              // not a sentence
-      && !/\b\w+_\w+\b/.test(t)         // no snake_case
-      && t.split(/\s+/).length <= 10     // max 10 words
-    ) {
-      return `## ${num}. ${t}`;
-    }
-    return m;
-  });
-
-  // Pattern: "N.N Title" without bold
-  // Same guards as N. Title
-  result = result.replace(/^(\d{1,2}\.\d{1,2})\s+([A-Z][^\n]{5,75})$/gm, (m, num, title) => {
-    const t = title.trim();
-    if (!/[{}()\[\]=;`]/.test(t)
-      && !/\?$/.test(t)
-      && !/\.\s*$/.test(t)
-      && !/\b\w+_\w+\b/.test(t)
-      && t.split(/\s+/).length <= 10
-    ) {
-      return `## ${num} ${t}`;
-    }
-    return m;
-  });
-
-  // Pattern: "**Bold Heading Text**" on its own line (likely a heading if short)
-  // Positive indicators: short, capitalized, no code syntax
-  // Negative indicators: code punctuation, questions, sentences, snake_case, keywords
-  // \s* handles leading whitespace from pymupdf4llm
-  result = result.replace(/^\s*\*\*([^*\n]{5,80})\*\*\s*$/gm, (m, text) => {
-    const trimmed = text.trim();
-    if (/^[A-Z]/.test(trimmed)                          // starts with capital
-      && !/[{}()\[\]=;`]/.test(trimmed)                  // no code syntax (colons OK for headings)
-      && !/\?$/.test(trimmed)                            // not a question
-      && !/\.\s*$/.test(trimmed)                         // not a sentence (ends with period)
-      && !/\b\w+_\w+\b/.test(trimmed)                    // no snake_case identifiers (v_start, my_func)
-      && !/\b(if|for|while|def|class|return|import|from|print|True|False|None)\b/.test(trimmed)
-      && !/\b(var|let|const|function|async|await|new|this)\b/.test(trimmed)
-      && trimmed.split(/\s+/).length <= 10               // max 10 words
-    ) {
-      return `## ${trimmed}`;
-    }
-    return m;
-  });
-
-  return result;
-}
-
 module.exports = { IngestPipeline, normalizeHeadings };

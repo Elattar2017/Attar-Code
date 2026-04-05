@@ -127,12 +127,21 @@ function extractMetadata(content, filePath, options) {
   }
 
   // ── Content type: code / mixed / prose ────────────────────────────────────
-  const fenceMatches = content.match(/```/g) || [];
-  const codeBlockCount = Math.floor(fenceMatches.length / 2); // complete pairs only
-  const totalLines = content.split('\n').length;
-  const codeRatio  = codeBlockCount > 0
-    ? Math.min((codeBlockCount * 10) / totalLines, 1)
-    : 0;
+  // Count actual lines inside code fences (not the crude "10 lines per block" estimate)
+  const lines = content.split('\n');
+  const totalLines = lines.length;
+  let codeLines = 0;
+  let inFence = false;
+  let codeBlockCount = 0;
+  for (const line of lines) {
+    if (/^```/.test(line.trim())) {
+      if (!inFence) codeBlockCount++;
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) codeLines++;
+  }
+  const codeRatio = totalLines > 0 ? codeLines / totalLines : 0;
 
   let content_type;
   if (codeRatio > 0.5)       content_type = 'code';

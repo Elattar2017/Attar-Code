@@ -122,8 +122,8 @@ function preprocessCode(filePath) {
   }
 
   return {
-    chunks: blocks.map((b) => ({
-      content: importHeader ? importHeader + "\n\n" + b.content : b.content,
+    chunks: blocks.map((b, i) => ({
+      content: (i === 0 && importHeader) ? importHeader + "\n\n" + b.content : b.content,
       name: b.name,
       type: b.type,
     })),
