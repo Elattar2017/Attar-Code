@@ -139,14 +139,20 @@ function askWithTimeout(setPending, promptText, defaultChoice, timeoutMs) {
 function progressiveDisclosure(query, searchType, resultCount) {
   if (resultCount === 0) return '';
 
+  // Extract core topic (strip "which chapters discuss", "explain", "how to" etc.)
+  const topic = query
+    .replace(/^(?:which|what|how|list|show|find|explain|describe|summarize)\s+(?:all\s+)?(?:chapters?|sections?|topics?)\s+(?:discuss|mention|cover|about|on|that)\s+/i, '')
+    .replace(/^(?:explain|describe|summarize|show|tell me about|how (?:do|does|to))\s+/i, '')
+    .trim()
+    .slice(0, 40);
+
   const suggestions = [];
-  const shortQuery = query.slice(0, 40);
 
   if (searchType === 'search') {
-    suggestions.push(`→ "read the section on ${shortQuery}" — get the complete section`);
-    suggestions.push(`→ "which chapters discuss ${shortQuery}" — see all chapters covering this`);
+    suggestions.push(`→ "read the section on ${topic}" — get the complete section`);
+    suggestions.push(`→ "which chapters discuss ${topic}" — see all chapters covering this`);
   } else if (searchType === 'scope') {
-    suggestions.push(`→ "search ${shortQuery}" — find specific passages about this topic`);
+    suggestions.push(`→ "search ${topic}" — find specific passages about this topic`);
     suggestions.push(`→ "list chapters" — browse all available chapters`);
   } else if (searchType === 'cross_structural') {
     suggestions.push(`→ "explain chapter N" — read a specific chapter in full`);
