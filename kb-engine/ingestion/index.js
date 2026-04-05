@@ -330,6 +330,7 @@ class IngestPipeline {
             source: absPath,
             filename: path.basename(absPath),
             detail_chunk_count: chunks.length,
+            ...dnaFields,
           },
         });
         process.stderr.write(`  ${level} summary: ${name} (${chunks.length} chunks)\n`);
@@ -371,8 +372,11 @@ class IngestPipeline {
     // 7.5 Store structural chunks (if any)
     let structuralIds = [];
     if (structuralChunks.length > 0) {
-      // Add book_id to structural chunks too
-      for (const sc of structuralChunks) { sc.metadata.book_id = bookId; }
+      // Add book_id + DNA to structural chunks too
+      for (const sc of structuralChunks) {
+        sc.metadata.book_id = bookId;
+        Object.assign(sc.metadata, dnaFields);
+      }
       structuralIds = await this.store.addChunks(collection, structuralChunks);
     }
 
