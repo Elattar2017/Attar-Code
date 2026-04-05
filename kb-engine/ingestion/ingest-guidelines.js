@@ -52,21 +52,47 @@ function saveGuidelines(bookId, guidelines) {
  * @param {string} content  Markdown content (after preprocessing, before chunking)
  * @returns {{ headingCount: number, uniqueHeadings: number, suspiciousHeadings: string[], singleWordHeadings: string[], repeatedHeadings: object, needsGuidelines: boolean }}
  */
-function preScanDocument(content) {
-  const headingLines = content.match(/^#{1,6}\s+.+$/gm) || [];
-  const headingTexts = headingLines.map(l => l.replace(/^#{1,6}\s+/, "").trim());
+// Known structural headings that are LEGITIMATE even as single words
+const LEGIT_SINGLE_WORDS = new Set([
+  'contents', 'introduction', 'preface', 'foreword', 'acknowledgments',
+  'acknowledgements', 'abstract', 'summary', 'conclusion', 'conclusions',
+  'glossary', 'bibliography', 'references', 'appendix', 'index',
+  'overview', 'prerequisites', 'motivation', 'background', 'discussion',
+  'methodology', 'results', 'exercises', 'problems', 'solutions',
+]);
 
-  // Count unique
+function preScanDocument(content) {
+  // Normalize line endings (Windows \r\n → \n) before processing
+  const lines = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+
+  // Extract headings with their line numbers (for approximate page reference)
+  const headings = [];
+  for (let i = 0; i < lines.length; i++) {
+    const match = lines[i].trim().match(/^(#{1,6})\s+(.+)$/);
+    if (match) {
+      headings.push({
+        text: match[2].trim(),
+        level: match[1].length,
+        line: i + 1,
+        approxPage: Math.max(1, Math.ceil((i + 1) / 45)), // ~45 lines per page estimate
+      });
+    }
+  }
+
+  const headingTexts = headings.map(h => h.text);
   const unique = new Set(headingTexts);
 
-  // Find suspicious headings
-  const suspicious = headingTexts.filter(h => {
-    const words = h.split(/\s+/);
+  // Find suspicious headings (exclude known structural words)
+  const suspicious = headings.filter(h => {
+    const words = h.text.split(/\s+/);
+    const lower = h.text.toLowerCase();
+    // Skip known legitimate structural headings
+    if (words.length === 1 && LEGIT_SINGLE_WORDS.has(lower)) return false;
     return (
-      (words.length === 1 && h.length < 15) ||  // single short word
-      /^[a-z]/.test(h) ||                        // starts lowercase
-      /@/.test(h) ||                              // has @ symbol
-      /^\d+$/.test(h)                             // just a number
+      (words.length === 1 && h.text.length < 15 && !LEGIT_SINGLE_WORDS.has(lower)) ||
+      /^[a-z]/.test(h.text) ||
+      /@/.test(h.text) ||
+      /^\d+$/.test(h.text)
     );
   });
 
@@ -80,22 +106,48 @@ function preScanDocument(content) {
     if (c >= 3) repeated[h] = c;
   }
 
-  // Single-word headings
-  const singleWord = [...new Set(headingTexts.filter(h => h.split(/\s+/).length === 1 && h.length < 15))];
+  // Single-word headings (exclude known structural words)
+  const singleWord = [...new Set(headings
+    .filter(h => {
+      const words = h.text.split(/\s+/);
+      return words.length === 1 && h.text.length < 15 && !LEGIT_SINGLE_WORDS.has(h.text.toLowerCase());
+    })
+    .map(h => h.text)
+  )];
 
-  // Determine if guidelines are needed
+  // Single-word headings WITH page info (for display)
+  const singleWordWithPages = headings
+    .filter(h => {
+      const words = h.text.split(/\s+/);
+      return words.length === 1 && h.text.length < 15 && !LEGIT_SINGLE_WORDS.has(h.text.toLowerCase());
+    })
+    .map(h => ({ text: h.text, page: h.approxPage }));
+
+  // Suspicious WITH page info
+  const suspiciousWithPages = suspicious.map(h => ({ text: h.text, page: h.approxPage }));
+
+  // Repeated WITH first occurrence page
+  const repeatedWithPages = {};
+  for (const [h, c] of Object.entries(repeated)) {
+    const first = headings.find(hh => hh.text === h);
+    repeatedWithPages[h] = { count: c, firstPage: first?.approxPage || '?' };
+  }
+
   const needsGuidelines =
-    headingTexts.length > 50 ||                // way too many headings
-    suspicious.length > 10 ||                   // many suspicious headings
-    Object.keys(repeated).length > 0 ||         // repeated identical headings
-    singleWord.length > 5;                      // many single-word headings
+    headingTexts.length > 50 ||
+    suspicious.length > 10 ||
+    Object.keys(repeated).length > 0 ||
+    singleWord.length > 3;  // lowered from 5 since we excluded legit words
 
   return {
     headingCount: headingTexts.length,
     uniqueHeadings: unique.size,
-    suspiciousHeadings: [...new Set(suspicious)].slice(0, 10),
+    suspiciousHeadings: [...new Set(suspicious.map(s => s.text))].slice(0, 10),
+    suspiciousWithPages: suspiciousWithPages.slice(0, 10),
     singleWordHeadings: singleWord.slice(0, 10),
+    singleWordWithPages: singleWordWithPages.slice(0, 10),
     repeatedHeadings: repeated,
+    repeatedWithPages,
     needsGuidelines,
   };
 }

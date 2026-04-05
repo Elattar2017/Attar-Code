@@ -10148,21 +10148,31 @@ RULES:
                   const pageNumHeadings = headingLines.filter(h => /\s\d{1,3}$/.test(h) || /^\d{1,3}\s+[A-Z]/.test(h.replace(/^#+\s+/, '')));
 
                   if (scan.singleWordHeadings.length > 2) {
+                    // Show with page numbers so user can verify
+                    const swExamples = (scan.singleWordWithPages || scan.singleWordHeadings.map(t => ({ text: t, page: '?' })))
+                      .slice(0, 6)
+                      .map(h => `"${h.text}" (p.${h.page})`)
+                      .join(", ");
                     steps.push({
                       title: "Reject single-word headings",
-                      examples: scan.singleWordHeadings.slice(0, 6).join(", "),
-                      explain: "These look like puzzle answers or code output, not chapter titles.",
+                      examples: swExamples,
+                      explain: "These will be converted to plain text — they won't appear as chapter/section names in search results.\n      Note: Structural words (Contents, Introduction, etc.) are already protected and NOT affected.",
                       key: "reject_single",
                       default: "y",
                     });
                   }
 
                   if (Object.keys(scan.repeatedHeadings).length > 0) {
-                    const rep = Object.entries(scan.repeatedHeadings).slice(0, 3);
+                    const rep = Object.entries(scan.repeatedWithPages || scan.repeatedHeadings).slice(0, 3);
+                    const repExamples = rep.map(([h, info]) => {
+                      const count = typeof info === 'object' ? info.count : info;
+                      const page = typeof info === 'object' ? info.firstPage : '?';
+                      return `"${h.slice(0, 30)}" (${count}x, first at p.${page})`;
+                    }).join(", ");
                     steps.push({
                       title: "Reject repeated headings",
-                      examples: rep.map(([h, c]) => `"${h}" (${c}x)`).join(", "),
-                      explain: "A heading appearing many times is likely a recurring label, not a unique chapter.",
+                      examples: repExamples,
+                      explain: "These appear multiple times as identical headings. Rejecting keeps the FIRST occurrence\n      and converts duplicates to plain text — prevents 48 identical 'chapters' in search.",
                       key: "reject_repeated",
                       default: "y",
                     });
@@ -10180,10 +10190,14 @@ RULES:
                   }
 
                   if (scan.suspiciousHeadings.length > 2) {
+                    const suspExamples = (scan.suspiciousWithPages || scan.suspiciousHeadings.map(t => ({ text: t, page: '?' })))
+                      .slice(0, 5)
+                      .map(h => `"${h.text}" (p.${h.page})`)
+                      .join(", ");
                     steps.push({
                       title: "Reject suspicious headings",
-                      examples: scan.suspiciousHeadings.slice(0, 5).join(", "),
-                      explain: "These look like social handles, Roman numerals, or code output.",
+                      examples: suspExamples,
+                      explain: "These will be converted to plain text — check the page numbers to verify they're not real headings.",
                       key: "reject_suspicious",
                       default: "y",
                     });
