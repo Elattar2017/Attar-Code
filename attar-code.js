@@ -10131,59 +10131,135 @@ RULES:
                 const scan = psd(scanContent);
 
                 if (scan.needsGuidelines) {
-                  console.log(co(C.bYellow, "  ⚠ Unusual document structure detected:"));
-                  console.log(co(C.dim, `    ${scan.headingCount} headings (${scan.uniqueHeadings} unique)`));
-                  if (scan.singleWordHeadings.length > 0) console.log(co(C.dim, "    Single-word: " + scan.singleWordHeadings.slice(0, 5).join(", ")));
-                  if (Object.keys(scan.repeatedHeadings).length > 0) console.log(co(C.dim, "    Repeated: " + Object.entries(scan.repeatedHeadings).map(([h,c]) => h + " (" + c + "x)").slice(0, 3).join(", ")));
+                  console.log(co(C.bYellow, "\n  ⚠ Unusual document structure detected:") + co(C.dim, ` ${scan.headingCount} headings (${scan.uniqueHeadings} unique)\n`));
 
-                  const rlScan = require("readline").createInterface({ input: process.stdin, output: process.stdout });
-                  const autoFix = await new Promise(r => rlScan.question("  " + co(C.bYellow, "Auto-fix headings? (y/n) [y]: "), a => { rlScan.close(); r((a.trim() || "y").toLowerCase()); }));
+                  // Build list of applicable guidelines (only show relevant ones)
+                  const steps = [];
 
-                  if (autoFix === "y" || autoFix === "yes") {
-                    // LLM-assisted suggestion or fallback to auto-detected values
-                    let suggestedGuidelines = {
+                  // Detect page numbers in headings
+                  const headingLines = scanContent.match(/^#{1,6}\s+.+$/gm) || [];
+                  const pageNumHeadings = headingLines.filter(h => /\s\d{1,3}$/.test(h) || /^\d{1,3}\s+[A-Z]/.test(h.replace(/^#+\s+/, '')));
+
+                  if (scan.singleWordHeadings.length > 2) {
+                    steps.push({
+                      title: "Reject single-word headings",
+                      examples: scan.singleWordHeadings.slice(0, 6).join(", "),
+                      explain: "These look like puzzle answers or code output, not chapter titles.",
+                      key: "reject_single",
+                      default: "y",
+                    });
+                  }
+
+                  if (Object.keys(scan.repeatedHeadings).length > 0) {
+                    const rep = Object.entries(scan.repeatedHeadings).slice(0, 3);
+                    steps.push({
+                      title: "Reject repeated headings",
+                      examples: rep.map(([h, c]) => `"${h}" (${c}x)`).join(", "),
+                      explain: "A heading appearing many times is likely a recurring label, not a unique chapter.",
+                      key: "reject_repeated",
+                      default: "y",
+                    });
+                  }
+
+                  if (pageNumHeadings.length > 2) {
+                    const sample = pageNumHeadings[0]?.replace(/^#+\s+/, '').slice(0, 60) || '';
+                    steps.push({
+                      title: "Strip page numbers from headings",
+                      examples: `"${sample}"`,
+                      explain: "Numbers embedded during PDF extraction will be removed.",
+                      key: "strip_pages",
+                      default: "y",
+                    });
+                  }
+
+                  if (scan.suspiciousHeadings.length > 2) {
+                    steps.push({
+                      title: "Reject suspicious headings",
+                      examples: scan.suspiciousHeadings.slice(0, 5).join(", "),
+                      explain: "These look like social handles, Roman numerals, or code output.",
+                      key: "reject_suspicious",
+                      default: "y",
+                    });
+                  }
+
+                  // Always offer max heading words
+                  steps.push({
+                    title: "Maximum words per heading",
+                    examples: "Headings longer than the limit are usually sentences, not titles.",
+                    explain: "Default: 12 words.",
+                    key: "max_words",
+                    default: "12",
+                  });
+
+                  if (steps.length === 0) {
+                    // No applicable guidelines — proceed
+                  } else {
+                    // Walk user through each guideline
+                    const rlScan = require("readline").createInterface({ input: process.stdin, output: process.stdout });
+                    const askScan = (q, def) => new Promise(r => rlScan.question(q + (def ? ` [${def}]` : "") + ": ", a => r(a.trim() || def || "")));
+
+                    const guidelines = {
                       _schema: "attar-code/ingest-guidelines-v1",
-                      reject_words: scan.singleWordHeadings,
+                      reject_words: [],
                       reject_patterns: [],
                       max_heading_words: 12,
                       min_heading_length: 2,
-                      reject_repeated_headings: Object.keys(scan.repeatedHeadings).length > 0,
-                      known_repeated_headings: Object.keys(scan.repeatedHeadings),
+                      reject_repeated_headings: false,
+                      known_repeated_headings: [],
                     };
 
-                    // Try LLM suggestion
-                    try {
-                      const ollamaUrl = "http://127.0.0.1:11434";
-                      const modelName = SESSION?.modelName || CONFIG?.model || "glm-4.7-flash:latest";
-                      const llmPrompt = `Analyze these document headings and suggest which to reject. Output ONLY valid JSON.\n\nDocument: ${path.basename(absPathResolved)}\nHeadings: ${scan.headingCount} total, ${scan.uniqueHeadings} unique\nSingle-word (noise): ${scan.singleWordHeadings.join(", ")}\nRepeated 3+ times: ${Object.entries(scan.repeatedHeadings).map(([h,c]) => h + " (" + c + "x)").join(", ")}\nSuspicious: ${scan.suspiciousHeadings.join(", ")}\n\nJSON: {"reject_words":["word1"],"reject_repeated_headings":true,"known_repeated_headings":["heading1"]}`;
+                    // First prompt: auto or step-through
+                    const mode = await askScan("  " + co(C.bYellow, `${steps.length} guidelines to review. (s)tep-through or (a)uto-accept all?`), "s");
 
-                      const llmRes = await fetch(`${ollamaUrl}/api/chat`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ model: modelName, messages: [{ role: "user", content: llmPrompt }], stream: false, think: false, options: { temperature: 0.1, num_predict: 200 } }),
-                        signal: AbortSignal.timeout(15000),
-                      });
-                      if (llmRes.ok) {
-                        const llmData = await llmRes.json();
-                        const llmJson = (llmData.message?.content || "").match(/\{[\s\S]*\}/);
-                        if (llmJson) {
-                          const parsed = JSON.parse(llmJson[0]);
-                          if (parsed.reject_words) suggestedGuidelines.reject_words = parsed.reject_words;
-                          if (parsed.reject_repeated_headings !== undefined) suggestedGuidelines.reject_repeated_headings = parsed.reject_repeated_headings;
-                          if (parsed.known_repeated_headings) suggestedGuidelines.known_repeated_headings = parsed.known_repeated_headings;
-                          console.log(co(C.dim, "  AI suggested guidelines applied."));
+                    if (mode === "a" || mode === "auto") {
+                      // Auto: accept all defaults
+                      guidelines.reject_words = scan.singleWordHeadings;
+                      guidelines.reject_repeated_headings = Object.keys(scan.repeatedHeadings).length > 0;
+                      guidelines.known_repeated_headings = Object.keys(scan.repeatedHeadings);
+                      console.log(co(C.bGreen, "  ✓ ") + "All guidelines auto-accepted.\n");
+                    } else {
+                      // Step through each
+                      for (let i = 0; i < steps.length; i++) {
+                        const step = steps[i];
+                        console.log(co(C.bold, `\n  Guideline ${i + 1}/${steps.length}: ${step.title}`));
+                        console.log(co(C.dim, `    Found: ${step.examples}`));
+                        console.log(co(C.dim, `    ${step.explain}`));
+
+                        if (step.key === "max_words") {
+                          const val = await askScan("    " + co(C.bYellow, "Max words per heading?"), step.default);
+                          guidelines.max_heading_words = parseInt(val) || 12;
+                          console.log(co(C.bGreen, `    ✓ Max ${guidelines.max_heading_words} words per heading.`));
+                        } else {
+                          const answer = await askScan("    " + co(C.bYellow, "Apply this fix? (y/n)"), step.default);
+                          const accepted = answer === "y" || answer === "yes";
+
+                          if (accepted) {
+                            if (step.key === "reject_single") {
+                              guidelines.reject_words = scan.singleWordHeadings;
+                              console.log(co(C.bGreen, `    ✓ ${scan.singleWordHeadings.length} single-word headings will be demoted.`));
+                            } else if (step.key === "reject_repeated") {
+                              guidelines.reject_repeated_headings = true;
+                              guidelines.known_repeated_headings = Object.keys(scan.repeatedHeadings);
+                              console.log(co(C.bGreen, `    ✓ ${Object.keys(scan.repeatedHeadings).length} repeated heading(s) will be merged.`));
+                            } else if (step.key === "strip_pages") {
+                              guidelines.strip_page_numbers = true;
+                              console.log(co(C.bGreen, "    ✓ Page numbers will be stripped."));
+                            } else if (step.key === "reject_suspicious") {
+                              guidelines.reject_words = [...new Set([...guidelines.reject_words, ...scan.suspiciousHeadings])];
+                              console.log(co(C.bGreen, `    ✓ ${scan.suspiciousHeadings.length} suspicious headings will be demoted.`));
+                            }
+                          } else {
+                            console.log(co(C.dim, "    ✗ Skipped."));
+                          }
                         }
                       }
-                    } catch (_) {
-                      console.log(co(C.dim, "  (LLM unavailable — using auto-detected values)"));
                     }
 
-                    svg(scanId, suggestedGuidelines);
-                    const rw = suggestedGuidelines.reject_words?.length || 0;
-                    const rr = suggestedGuidelines.known_repeated_headings?.length || 0;
-                    console.log(co(C.bGreen, "  ✓ ") + "Guidelines saved: " + rw + " reject words, " + rr + " repeated headings rejected.\n");
-                  } else {
-                    console.log(co(C.dim, "  Proceeding without guidelines.\n"));
+                    rlScan.close();
+                    svg(scanId, guidelines);
+                    const rw = guidelines.reject_words?.length || 0;
+                    const rr = guidelines.known_repeated_headings?.length || 0;
+                    console.log(co(C.bGreen, "\n  ✓ ") + "Guidelines saved: " + rw + " reject words" + (rr > 0 ? ", " + rr + " repeated headings rejected" : "") + ".\n");
                   }
                 }
               }
