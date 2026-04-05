@@ -62,6 +62,11 @@ class RetrievalPipeline {
     // 1. Analyze query → type, preferVector, collections, tech
     const analysis = analyzeQuery(query, context);
 
+    // Allow caller to override query type (e.g. force_structural from CLI)
+    if (context.forceQueryType && context.forceQueryType !== analysis.type) {
+      analysis.type = context.forceQueryType;
+    }
+
     // Allow caller to force specific collections (e.g. searchFixRecipes)
     const collections =
       context.forceCollections || analysis.collections;

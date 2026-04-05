@@ -3506,11 +3506,19 @@ print(json.dumps({"sheet": ws.title, "headers": headers, "rows": rows[:200], "to
       // Reset disambiguation flag after each search
       if (SESSION._kbDisambiguated) SESSION._kbDisambiguated = false;
 
+      // ── Detect structural intent from original user message ─────
+      const structuralCheck = /\blist\s+(?:all\s+)?(?:chapters?|sections?|topics?)\b/i.test(userOriginal) ||
+                              /\bhow\s+many\s+chapters?\b/i.test(userOriginal) ||
+                              /\btable\s+of\s+contents\b/i.test(userOriginal) ||
+                              /\boverview\s+of\b/i.test(userOriginal) ||
+                              /\bstructure\s+of\b/i.test(userOriginal);
+
       // ── Execute the search ────────────────────────────────────────
-      const body = { query: searchQuery, num: args.num || 5 };
+      const body = { query: structuralCheck ? userOriginal : searchQuery, num: args.num || 5 };
       if (args.language) body.language = args.language;
       if (args.doc_type) body.doc_type = args.doc_type;
       if (args.collection) body.collection = args.collection;
+      if (structuralCheck) body.force_structural = true; // hint to pipeline
       const res = await proxyPost("/kb/search", body);
       if (res.error) return `KB search error: ${res.error}\nMake sure search-proxy is running: node search-proxy.js`;
 

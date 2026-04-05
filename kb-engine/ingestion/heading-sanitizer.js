@@ -143,13 +143,34 @@ function stripMarkdownFormatting(text) {
  * → "CHAPTER 4. A QUICK OVERVIEW OF THE PYTHON LANGUAGE"
  */
 function fixMalformedChapterHeading(text) {
+  // Pattern 1: Chapter heading bleeds into subsection number
+  // "CHAPTER 4. Title 4.2 Subtitle" → "CHAPTER 4. Title"
   const match = text.match(
     /^((?:CHAPTER|Chapter|PART|Part)\s+\d+[\.:]\s*.+?)\s+(\d+\.\d+\s+.+)$/i
   );
   if (match) {
     return match[1].trim();
   }
-  return text;
+
+  // Pattern 2: Page number embedded in heading (very common in PDF extraction)
+  // "CHAPTER 2. A CASE FOR PUZZLE-BASED 18 LEARNING" → strip the standalone number
+  // "3.4. HOW TO TEST AND TRAIN YOUR SKILLS?29" → strip trailing number
+  let fixed = text;
+
+  // Strip leading standalone page number: "28 CHAPTER 3..." → "CHAPTER 3..."
+  fixed = fixed.replace(/^\d{1,4}\s+(?=[A-Z])/, '');
+
+  // Strip trailing standalone number (page number at end): "HEADING TEXT 42" → "HEADING TEXT"
+  fixed = fixed.replace(/\s+\d{1,4}\s*$/, '');
+
+  // Strip number stuck to last word: "SKILLS?29" → "SKILLS?"
+  fixed = fixed.replace(/([^0-9])(\d{1,4})$/, '$1');
+
+  // Strip embedded standalone number between ALL CAPS words:
+  // "CASE FOR PUZZLE-BASED 18 LEARNING" → "CASE FOR PUZZLE-BASED LEARNING"
+  fixed = fixed.replace(/\b([A-Z]{2,})\s+(\d{1,4})\s+([A-Z]{2,})\b/g, '$1 $3');
+
+  return fixed;
 }
 
 /**
@@ -307,6 +328,28 @@ function classifyHeading(text) {
     return { isHeading: false, confidence: 1.0, reason: 'purely_numeric' };
   }
 
+  // Rule 10: All-lowercase text (puzzle answers, random phrases)
+  // "mouse", "hello world", "galaxy" — NOT headings
+  if (trimmed === trimmed.toLowerCase() && trimmed.length < 30 && words.length <= 3) {
+    return { isHeading: false, confidence: 0.9, reason: 'all_lowercase_short' };
+  }
+
+  // Rule 11: Single word that's a common short word (even capitalized)
+  // "Yes", "No", "True", "False", "None", "Unzip", etc. are not headings
+  if (words.length === 1 && trimmed.length < 10 && !/^(Chapter|Section|Part|Appendix|Introduction|Preface|Contents|Index|Summary|Conclusion|Abstract|Glossary|Bibliography|References)\b/i.test(trimmed)) {
+    return { isHeading: false, confidence: 0.85, reason: 'single_short_word' };
+  }
+
+  // Rule 12: Contains @ symbol (social handles, email-like)
+  if (/@/.test(trimmed)) {
+    return { isHeading: false, confidence: 0.9, reason: 'contains_at_symbol' };
+  }
+
+  // Rule 13: Roman numeral alone or single letter alone (A, B, C, IV, ii)
+  if (/^[A-Za-z]{1,4}$/.test(trimmed) && /^[ivxlcdmIVXLCDMA-Z]{1,4}$/i.test(trimmed)) {
+    return { isHeading: false, confidence: 0.9, reason: 'single_letter_or_numeral' };
+  }
+
   // ── Positive signals (accumulate confidence) ──
 
   let confidence = 0.5; // baseline
@@ -314,8 +357,10 @@ function classifyHeading(text) {
   // Starts with capital letter
   if (/^[A-Z]/.test(trimmed)) confidence += 0.1;
 
-  // Short (1-6 words) — very likely heading
-  if (words.length <= 6) confidence += 0.15;
+  // Short (1-6 words) — very likely heading ONLY if 2+ words
+  // Single words get reduced boost to prevent false positives
+  if (words.length >= 2 && words.length <= 6) confidence += 0.15;
+  else if (words.length === 1) confidence += 0.05; // minimal boost for single words
 
   // Contains structural prefix
   if (/^(Chapter|Section|Part|Appendix|Module|Unit|Lesson|Topic)\b/i.test(trimmed)) {
