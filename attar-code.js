@@ -10098,7 +10098,102 @@ RULES:
           if (res.error) { console.log(co(C.bRed, "  ✗ ") + res.error + "\n"); break; }
           console.log(co(C.bGreen, "  ✓ ") + `Ingested URL: ${fp} → ${res.chunks_stored || res.chunks || "?"} chunks in ${res.collection || "auto"}${collNote}\n`);
         } else {
-          console.log(co(C.dim, `\n  Adding to knowledge base${collNote}${deepNote}...\n`));
+          // ── Pre-scan: detect messy documents and collect guidelines inline ──
+          const absPathResolved = path.resolve(fp);
+          try {
+            const cryptoScan = require("crypto");
+            const scanId = cryptoScan.createHash("sha256").update(absPathResolved).digest("hex").slice(0, 12);
+            const { loadGuidelines: ldg, saveGuidelines: svg, preScanDocument: psd } = require("./kb-engine/ingestion/ingest-guidelines");
+            const { normalizeHeadings: nh } = require("./kb-engine/ingestion/heading-normalizer");
+
+            const existingGl = ldg(scanId);
+            if (existingGl) {
+              console.log(co(C.dim, "  Applying saved ingestion guidelines for this document.\n"));
+            } else {
+              // Quick content extraction (10 pages PDF or 30KB text)
+              let scanContent = "";
+              const scanExt = path.extname(absPathResolved).toLowerCase();
+              if (scanExt === ".pdf") {
+                try {
+                  const { execFileSync } = require("child_process");
+                  const scanScript = `import sys\ntry:\n    import pymupdf4llm\n    print(pymupdf4llm.to_markdown(sys.argv[1], pages=list(range(10)))[:30000])\nexcept:\n    import fitz\n    doc = fitz.open(sys.argv[1])\n    print("".join(doc[i].get_text() for i in range(min(10, len(doc))))[:30000])`;
+                  const scanTmp = path.join(require("os").tmpdir(), "attar-prescan-" + Date.now() + ".py");
+                  fs.writeFileSync(scanTmp, scanScript);
+                  scanContent = execFileSync("python", [scanTmp, absPathResolved], { timeout: 30000, maxBuffer: 2 * 1024 * 1024 }).toString("utf-8");
+                  try { fs.unlinkSync(scanTmp); } catch (_) {}
+                } catch (_) {}
+              } else {
+                try { scanContent = fs.readFileSync(absPathResolved, "utf-8").slice(0, 30000); } catch (_) {}
+              }
+
+              if (scanContent.length > 100) {
+                scanContent = nh(scanContent);
+                const scan = psd(scanContent);
+
+                if (scan.needsGuidelines) {
+                  console.log(co(C.bYellow, "  ⚠ Unusual document structure detected:"));
+                  console.log(co(C.dim, `    ${scan.headingCount} headings (${scan.uniqueHeadings} unique)`));
+                  if (scan.singleWordHeadings.length > 0) console.log(co(C.dim, "    Single-word: " + scan.singleWordHeadings.slice(0, 5).join(", ")));
+                  if (Object.keys(scan.repeatedHeadings).length > 0) console.log(co(C.dim, "    Repeated: " + Object.entries(scan.repeatedHeadings).map(([h,c]) => h + " (" + c + "x)").slice(0, 3).join(", ")));
+
+                  const rlScan = require("readline").createInterface({ input: process.stdin, output: process.stdout });
+                  const autoFix = await new Promise(r => rlScan.question("  " + co(C.bYellow, "Auto-fix headings? (y/n) [y]: "), a => { rlScan.close(); r((a.trim() || "y").toLowerCase()); }));
+
+                  if (autoFix === "y" || autoFix === "yes") {
+                    // LLM-assisted suggestion or fallback to auto-detected values
+                    let suggestedGuidelines = {
+                      _schema: "attar-code/ingest-guidelines-v1",
+                      reject_words: scan.singleWordHeadings,
+                      reject_patterns: [],
+                      max_heading_words: 12,
+                      min_heading_length: 2,
+                      reject_repeated_headings: Object.keys(scan.repeatedHeadings).length > 0,
+                      known_repeated_headings: Object.keys(scan.repeatedHeadings),
+                    };
+
+                    // Try LLM suggestion
+                    try {
+                      const ollamaUrl = "http://127.0.0.1:11434";
+                      const modelName = SESSION?.modelName || CONFIG?.model || "glm-4.7-flash:latest";
+                      const llmPrompt = `Analyze these document headings and suggest which to reject. Output ONLY valid JSON.\n\nDocument: ${path.basename(absPathResolved)}\nHeadings: ${scan.headingCount} total, ${scan.uniqueHeadings} unique\nSingle-word (noise): ${scan.singleWordHeadings.join(", ")}\nRepeated 3+ times: ${Object.entries(scan.repeatedHeadings).map(([h,c]) => h + " (" + c + "x)").join(", ")}\nSuspicious: ${scan.suspiciousHeadings.join(", ")}\n\nJSON: {"reject_words":["word1"],"reject_repeated_headings":true,"known_repeated_headings":["heading1"]}`;
+
+                      const llmRes = await fetch(`${ollamaUrl}/api/chat`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ model: modelName, messages: [{ role: "user", content: llmPrompt }], stream: false, think: false, options: { temperature: 0.1, num_predict: 200 } }),
+                        signal: AbortSignal.timeout(15000),
+                      });
+                      if (llmRes.ok) {
+                        const llmData = await llmRes.json();
+                        const llmJson = (llmData.message?.content || "").match(/\{[\s\S]*\}/);
+                        if (llmJson) {
+                          const parsed = JSON.parse(llmJson[0]);
+                          if (parsed.reject_words) suggestedGuidelines.reject_words = parsed.reject_words;
+                          if (parsed.reject_repeated_headings !== undefined) suggestedGuidelines.reject_repeated_headings = parsed.reject_repeated_headings;
+                          if (parsed.known_repeated_headings) suggestedGuidelines.known_repeated_headings = parsed.known_repeated_headings;
+                          console.log(co(C.dim, "  AI suggested guidelines applied."));
+                        }
+                      }
+                    } catch (_) {
+                      console.log(co(C.dim, "  (LLM unavailable — using auto-detected values)"));
+                    }
+
+                    svg(scanId, suggestedGuidelines);
+                    const rw = suggestedGuidelines.reject_words?.length || 0;
+                    const rr = suggestedGuidelines.known_repeated_headings?.length || 0;
+                    console.log(co(C.bGreen, "  ✓ ") + "Guidelines saved: " + rw + " reject words, " + rr + " repeated headings rejected.\n");
+                  } else {
+                    console.log(co(C.dim, "  Proceeding without guidelines.\n"));
+                  }
+                }
+              }
+            }
+          } catch (scanErr) {
+            // Pre-scan failure must never block ingestion
+            if (scanErr.message) process.stderr.write("  [Pre-scan] " + scanErr.message + "\n");
+          }
+
+          console.log(co(C.dim, `  Adding to knowledge base${collNote}${deepNote}...`));
           if (deep) console.log(co(C.bYellow, "  ⚡ Deep enrichment: LLM generates context for each chunk (~2-3s per chunk)\n"));
           const res = await proxyPost("/kb/ingest", body, 0);
           if (res.error) { console.log(co(C.bRed, "  ✗ ") + res.error + "\n"); break; }
