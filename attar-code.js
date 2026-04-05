@@ -10119,9 +10119,37 @@ RULES:
               if (scanExt === ".pdf") {
                 try {
                   const { execFileSync } = require("child_process");
-                  // Scan full document to catch messy content deep in the PDF
-                  // Force UTF-8 stdout on Windows (avoids cp1252 UnicodeEncodeError)
-                  const scanScript = `import sys,os\nos.environ["PYTHONIOENCODING"]="utf-8"\nsys.stdout.reconfigure(encoding="utf-8")\ntry:\n    import pymupdf4llm\n    print(pymupdf4llm.to_markdown(sys.argv[1])[:80000])\nexcept:\n    import fitz\n    doc = fitz.open(sys.argv[1])\n    print("".join(doc[i].get_text() for i in range(len(doc)))[:80000])`;
+                  // Sample from beginning, MIDDLE, and END of document
+                  // Catches issues throughout — not just first pages
+                  const scanScript = `import sys,os
+os.environ["PYTHONIOENCODING"]="utf-8"
+sys.stdout.reconfigure(encoding="utf-8")
+try:
+    import pymupdf4llm
+    full = pymupdf4llm.to_markdown(sys.argv[1])
+    # Sample: first 30K + middle 20K + last 20K
+    n = len(full)
+    mid = max(0, n//2 - 10000)
+    tail = max(0, n - 20000)
+    sample = full[:30000]
+    if n > 60000:
+        sample += "\\n\\n# --- MIDDLE OF DOCUMENT ---\\n\\n" + full[mid:mid+20000]
+    if n > 40000:
+        sample += "\\n\\n# --- END OF DOCUMENT ---\\n\\n" + full[tail:tail+20000]
+    print(sample[:90000])
+except:
+    import fitz
+    doc = fitz.open(sys.argv[1])
+    pages = len(doc)
+    # Sample pages: first 10, middle 5, last 5
+    page_ids = list(range(min(10, pages)))
+    if pages > 20:
+        mid = pages // 2
+        page_ids += list(range(mid-2, mid+3))
+    if pages > 15:
+        page_ids += list(range(max(0, pages-5), pages))
+    page_ids = sorted(set(p for p in page_ids if 0 <= p < pages))
+    print("".join(doc[i].get_text() for i in page_ids)[:90000])`;
                   const scanTmp = path.join(require("os").tmpdir(), "attar-prescan-" + Date.now() + ".py");
                   fs.writeFileSync(scanTmp, scanScript);
                   scanContent = execFileSync("python", [scanTmp, absPathResolved], { timeout: 60000, maxBuffer: 10 * 1024 * 1024, env: { ...process.env, PYTHONIOENCODING: "utf-8" } }).toString("utf-8").slice(0, 80000);
