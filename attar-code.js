@@ -3527,12 +3527,20 @@ print(json.dumps({"sheet": ws.title, "headers": headers, "rows": rows[:200], "to
       const topHash = (res.results?.[0]?.text || res.formatted || '').slice(0, 50);
       let repetitionWarning = '';
 
-      // Per-turn search count — warn after 3+ to stop searching and use results
+      // Per-turn search count — hard block after 5, warn at 3+
       SESSION._kbSearchCount = (SESSION._kbSearchCount || 0) + 1;
+      if (SESSION._kbSearchCount > 5) {
+        printToolDone("kb_search BLOCKED — limit reached");
+        return "⛔ SEARCH LIMIT REACHED (5/5). You MUST answer NOW using results from your previous searches. Do NOT call kb_search again.";
+      }
       if (SESSION._kbSearchCount >= 3) {
-        repetitionWarning = '\n\n⚠ You have made ' + SESSION._kbSearchCount + ' KB searches this turn. ' +
-          'STOP SEARCHING. Use the results you already have to answer the user directly with TEXT. ' +
-          'Do NOT search again — synthesize what you found into a response.';
+        repetitionWarning = '\n\n⛔ SEARCH LIMIT (' + SESSION._kbSearchCount + '/5). Answer NOW with what you have. Do NOT search again.';
+      }
+
+      // Low-score detection: if KB doesn't cover this topic, tell the model to use its own knowledge
+      const topScore = res.results?.[0]?.score || 0;
+      if (topScore < 0.4 && SESSION._kbSearchCount >= 2) {
+        repetitionWarning += '\n⚠ LOW RELEVANCE (best score: ' + topScore.toFixed(2) + '). KB likely does not cover this topic. Use your own knowledge to answer.';
       }
 
       if (workingMemory) {
@@ -8661,7 +8669,9 @@ async function chat(userMessage) {
       const _planWorkTools = new Set(["todo_write","todo_done","check_environment",
         "detect_build_system","project_structure","read_file"]);
       const isPlanPhase = SESSION.planMode && SESSION.plan;
-      if ((_realWorkTools.has(name) || (isPlanPhase && _planWorkTools.has(name)))
+      // Second+ kb_search in same turn doesn't count as progress (prevents search loops from resetting hard wall)
+      const isRepeatedSearch = (name === "kb_search" && (SESSION._kbSearchCount || 0) > 1);
+      if (!isRepeatedSearch && (_realWorkTools.has(name) || (isPlanPhase && _planWorkTools.has(name)))
           && !resultStr.includes("BLOCKED") && !resultStr.includes("Permission denied")) {
         _lastRealWorkStep = totalSteps;
       }
