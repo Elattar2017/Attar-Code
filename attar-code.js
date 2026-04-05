@@ -8152,10 +8152,12 @@ async function chat(userMessage) {
 
       let ollMessages = [{ role:"system", content: sysPrompt }, ...compressedMessages];
 
+      // Force text response (no tools) after 3+ kb_search calls with results — model must answer
+      const forceTextResponse = (SESSION._kbSearchCount || 0) >= 3 && SESSION._kbAccumulatedResults?.length > 0;
       const reqBody = {
         model:    CONFIG.model,
         messages: ollMessages,
-        ...(selectedTools.length > 0 ? { tools: selectedTools } : {}),
+        ...(!forceTextResponse && selectedTools.length > 0 ? { tools: selectedTools } : {}),
         options:  {
           temperature:       effectiveTemp,
           num_ctx:           retryCount > 3 ? effectiveCtx * 2 : effectiveCtx,
