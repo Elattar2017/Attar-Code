@@ -10234,14 +10234,26 @@ except:
                     });
                   }
 
-                  // Always offer max heading words
-                  steps.push({
-                    title: "Maximum words per heading",
-                    examples: "Headings longer than the limit are usually sentences, not titles.",
-                    explain: "Default: 12 words.",
-                    key: "max_words",
+                  // Only show max heading words if there ARE long headings (>8 words)
+                  const allHeadingTexts = (scanContent.match(/^#{1,6}\s+(.+)$/gm) || []).map(h => h.replace(/^#{1,6}\s+/, '').trim());
+                  const longHeadings = allHeadingTexts
+                    .map(h => ({ text: h, words: h.split(/\s+/).length }))
+                    .filter(h => h.words > 8)
+                    .sort((a, b) => b.words - a.words)
+                    .slice(0, 5);
+
+                  if (longHeadings.length > 0) {
+                    const longExamples = longHeadings
+                      .map(h => `${h.words} words: "${h.text.slice(0, 60)}${h.text.length > 60 ? '...' : ''}"`)
+                      .join("\n      ");
+                    steps.push({
+                      title: "Maximum words per heading",
+                      examples: "Longest headings in your document:\n      " + longExamples,
+                      explain: "Headings with more words than the limit will be converted to plain text.\n      Look at the examples above — pick a number that keeps real headings but rejects sentences.",
+                      key: "max_words",
                     default: "12",
                   });
+                  } // end if (longHeadings.length > 0)
 
                   if (steps.length === 0) {
                     // No applicable guidelines — proceed
