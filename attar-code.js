@@ -10163,19 +10163,22 @@ RULES:
                   }
 
                   if (Object.keys(scan.repeatedHeadings).length > 0) {
-                    const rep = Object.entries(scan.repeatedWithPages || scan.repeatedHeadings).slice(0, 3);
-                    const repExamples = rep.map(([h, info]) => {
+                    // Each repeated heading gets its own step — user decides per heading
+                    for (const [heading, info] of Object.entries(scan.repeatedWithPages || scan.repeatedHeadings).slice(0, 5)) {
                       const count = typeof info === 'object' ? info.count : info;
                       const page = typeof info === 'object' ? info.firstPage : '?';
-                      return `"${h.slice(0, 30)}" (${count}x, first at p.${page})`;
-                    }).join(", ");
-                    steps.push({
-                      title: "Reject repeated headings",
-                      examples: repExamples,
-                      explain: "These appear multiple times as identical headings. Rejecting keeps the FIRST occurrence\n      and converts duplicates to plain text — prevents 48 identical 'chapters' in search.",
-                      key: "reject_repeated",
-                      default: "y",
-                    });
+                      const isChapter = /^chapter\b/i.test(heading);
+                      steps.push({
+                        title: `Repeated: "${heading.slice(0, 40)}" (${count}x)`,
+                        examples: `First at p.${page}. Appears ${count} times in the document.`,
+                        explain: isChapter
+                          ? "This looks like a REAL chapter repeated by PDF page headers.\n      (f)irst = keep first as heading, demote rest. (a)ll = demote all. (s)kip = keep all."
+                          : "This does NOT look like a real heading — likely repeated section text.\n      (a)ll = demote all to plain text. (f)irst = keep first only. (s)kip = keep all.",
+                        key: "reject_repeated_one",
+                        headingText: heading,
+                        default: isChapter ? "f" : "a",
+                      });
+                    }
                   }
 
                   if (pageNumHeadings.length > 2) {
@@ -10250,6 +10253,24 @@ RULES:
                           const val = await askScan("    " + co(C.bYellow, "Max words per heading?"), step.default);
                           guidelines.max_heading_words = parseInt(val) || 12;
                           console.log(co(C.bGreen, `    ✓ Max ${guidelines.max_heading_words} words per heading.`));
+                        } else if (step.key === "reject_repeated_one") {
+                          // Per-heading: (a)ll = demote all, (f)irst = keep first, (s)kip = keep all
+                          const answer = await askScan("    " + co(C.bYellow, "(a)ll=demote all, (f)irst=keep first, (s)kip=keep all"), step.default);
+                          if (answer === "a" || answer === "all") {
+                            // Demote ALL occurrences — not a real heading
+                            if (!guidelines.reject_patterns) guidelines.reject_patterns = [];
+                            // Use exact match pattern to reject this heading text
+                            guidelines.reject_patterns.push(`^${step.headingText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`);
+                            console.log(co(C.bGreen, `    ✓ ALL "${step.headingText.slice(0, 30)}" demoted to plain text.`));
+                          } else if (answer === "f" || answer === "first") {
+                            // Keep first, demote duplicates
+                            guidelines.reject_repeated_headings = true;
+                            if (!guidelines.known_repeated_headings) guidelines.known_repeated_headings = [];
+                            guidelines.known_repeated_headings.push(step.headingText);
+                            console.log(co(C.bGreen, `    ✓ First kept, ${(scan.repeatedHeadings[step.headingText] || 2) - 1} duplicates demoted.`));
+                          } else {
+                            console.log(co(C.dim, "    ✗ Skipped — all occurrences kept as headings."));
+                          }
                         } else {
                           const answer = await askScan("    " + co(C.bYellow, "Apply this fix? (y/n)"), step.default);
                           const accepted = answer === "y" || answer === "yes";
@@ -10258,10 +10279,6 @@ RULES:
                             if (step.key === "reject_single") {
                               guidelines.reject_words = scan.singleWordHeadings;
                               console.log(co(C.bGreen, `    ✓ ${scan.singleWordHeadings.length} single-word headings will be demoted.`));
-                            } else if (step.key === "reject_repeated") {
-                              guidelines.reject_repeated_headings = true;
-                              guidelines.known_repeated_headings = Object.keys(scan.repeatedHeadings);
-                              console.log(co(C.bGreen, `    ✓ ${Object.keys(scan.repeatedHeadings).length} repeated heading(s) will be merged.`));
                             } else if (step.key === "strip_pages") {
                               guidelines.strip_page_numbers = true;
                               console.log(co(C.bGreen, "    ✓ Page numbers will be stripped."));
