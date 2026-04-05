@@ -3484,6 +3484,23 @@ print(json.dumps({"sheet": ws.title, "headers": headers, "rows": rows[:200], "to
 
       // ── Route based on menu result (or auto-route) ──
       if (menuResult.searchType === 'scope') {
+        // Disambiguation: if multiple data sources have this chapter, ask which one
+        if (!SESSION._kbDisambiguated && !args.source) {
+          try {
+            const srcRes = await fetch(`${CONFIG.proxyUrl}/kb/sources`, { signal: AbortSignal.timeout(5000) });
+            const srcData = await srcRes.json();
+            if (srcData.sources?.length > 1) {
+              SESSION._kbDisambiguated = true;
+              const srcList = srcData.sources.map((s, i) =>
+                `${i + 1}. "${s.doc_title}" (${s.chunk_count} chunks)`
+              ).join('\n');
+              printToolDone(`${srcData.sources.length} documents in KB — disambiguation needed`);
+              return `⚠ MULTIPLE DOCUMENTS IN KB:\n${srcList}\n\nASK the user which document they want chapter/section from. Then call kb_search again with their answer.`;
+            }
+          } catch (_) {}
+        }
+        if (SESSION._kbDisambiguated) SESSION._kbDisambiguated = false;
+
         // Redirect to read-section (inline — no extra LLM call)
         const sBody = { query: menuResult.effectiveQuery };
         if (args.source) sBody.source = args.source;
