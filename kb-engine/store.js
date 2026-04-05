@@ -389,6 +389,30 @@ class ChunkStore {
     return info.points_count ?? 0;
   }
 
+  // ─── getPointsByIds (batch fetch by UUID) ──────────────────────────────────
+
+  /**
+   * Fetch multiple points by their UUIDs in one call.
+   * Used for chunk linking (fetching prev/next neighbors).
+   *
+   * @param {string} collection
+   * @param {string[]} ids  Array of Qdrant point UUIDs
+   * @returns {Promise<Array<{ id: string, content: string, metadata: object }>>}
+   */
+  async getPointsByIds(collection, ids) {
+    if (!ids || ids.length === 0) return [];
+    try {
+      const points = await this._client.retrieve(collection, { ids, with_payload: true, with_vector: false });
+      return (points || []).map((p) => ({
+        id:       String(p.id),
+        content:  p.payload?.content ?? "",
+        metadata: this._extractMetadata(p.payload),
+      }));
+    } catch (_) {
+      return [];
+    }
+  }
+
   // ─── Private helpers ──────────────────────────────────────────────────────
 
   /**

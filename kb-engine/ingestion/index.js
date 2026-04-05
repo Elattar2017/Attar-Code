@@ -369,6 +369,31 @@ class IngestPipeline {
     // 7. Store ─────────────────────────────────────────────────────────────────
     const ids = await this.store.addChunks(collection, enrichedChunks);
 
+    // 7.1 Chunk linking: write prev/next IDs for continuous context expansion.
+    //     Only link within same chapter (section_path first 2 parts match).
+    if (ids.length > 1) {
+      const linkPayloads = [];
+      for (let i = 0; i < ids.length; i++) {
+        const currChapter = (enrichedChunks[i]?.metadata?.chapter || '');
+        const prevChapter = i > 0 ? (enrichedChunks[i - 1]?.metadata?.chapter || '') : '';
+        const nextChapter = i < ids.length - 1 ? (enrichedChunks[i + 1]?.metadata?.chapter || '') : '';
+
+        const payload = {};
+        if (i > 0 && currChapter === prevChapter)            payload.prev_chunk_id = ids[i - 1];
+        if (i < ids.length - 1 && currChapter === nextChapter) payload.next_chunk_id = ids[i + 1];
+
+        if (Object.keys(payload).length > 0) {
+          linkPayloads.push({ id: ids[i], payload });
+        }
+      }
+      // Batch setPayload for all linked chunks
+      for (const { id, payload } of linkPayloads) {
+        try {
+          await this.store._client.setPayload(collection, { payload, points: [id] });
+        } catch (_) {}
+      }
+    }
+
     // 7.5 Store structural chunks (if any)
     let structuralIds = [];
     if (structuralChunks.length > 0) {

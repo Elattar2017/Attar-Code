@@ -282,6 +282,49 @@ class RetrievalPipeline {
       }
     }
 
+    // 5.5. Chunk linking: expand top results with prev/next neighbors
+    if (this.config.CHUNK_LINK_EXPAND && top.length > 0) {
+      const neighborIds = new Set();
+      const idToChunk = new Map();
+
+      for (const chunk of top) {
+        const prev = chunk.metadata?.prev_chunk_id;
+        const next = chunk.metadata?.next_chunk_id;
+        if (prev && !top.some(t => t.id === prev)) neighborIds.add(prev);
+        if (next && !top.some(t => t.id === next)) neighborIds.add(next);
+        idToChunk.set(chunk.id, chunk);
+      }
+
+      if (neighborIds.size > 0) {
+        // Fetch all neighbors in one batch per collection
+        const collectionSet = new Set(top.map(t => t.collection).filter(Boolean));
+        const neighborMap = new Map();
+
+        for (const col of collectionSet) {
+          const colNeighborIds = [...neighborIds]; // same IDs searched in each collection
+          const fetched = await this.store.getPointsByIds(col, colNeighborIds);
+          for (const f of fetched) neighborMap.set(f.id, f);
+        }
+
+        // Expand each chunk with its neighbors' content
+        for (const chunk of top) {
+          const prev = chunk.metadata?.prev_chunk_id;
+          const next = chunk.metadata?.next_chunk_id;
+          const prevChunk = prev ? neighborMap.get(prev) : null;
+          const nextChunk = next ? neighborMap.get(next) : null;
+
+          if (prevChunk || nextChunk) {
+            const parts = [];
+            if (prevChunk) parts.push('[...preceding context]\n' + prevChunk.content.slice(-500));
+            parts.push(chunk.content);
+            if (nextChunk) parts.push(nextChunk.content.slice(0, 500) + '\n[continues...]');
+            chunk.content = parts.join('\n\n---\n\n');
+            chunk._expanded = true;
+          }
+        }
+      }
+    }
+
     // 6. Assemble context (pass query for term-boosting)
     const result = assembleContext(top, {
       maxChunks: options.maxChunks || this.config.RERANK_TOP_N,

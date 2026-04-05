@@ -80,6 +80,10 @@ module.exports = {
   MIN_SCORE_THRESHOLD: 0.2, // low threshold — let term-boosting and reranking do the quality filtering
   RRF_K: 60,
 
+  // Chunk linking (context expansion with neighbors)
+  CHUNK_LINK_EXPAND: true,        // expand retrieved chunks with prev/next neighbors
+  CHUNK_LINK_MAX_EXPAND: 1,       // how many neighbors on each side (1 = prev + next)
+
   // Cross-KB structural aggregation
   CROSS_STRUCTURAL_LIMIT: 50,     // max results per collection for topic search
   CROSS_STRUCTURAL_MIN_CHUNKS: 2, // chapter must have 2+ matching chunks to be listed
