@@ -255,6 +255,7 @@ async function kbSearch(query, num = 5) {
       const result = await kbEngine.retrieval.search(query, {}, { maxChunks: num });
       // Normalize to the same shape the CLI expects
       const results = (result.chunks || []).map((c, i) => ({
+        id:       c.id || "",
         rank:     i + 1,
         text:     c.content || "",
         source:   c.metadata?.source || "?",
