@@ -249,10 +249,12 @@ async function deepResearch(query, numSearch = 5, numFetch = 2) {
  * @param {number} num   Max results
  * @returns {Promise<{ results: Array, engine: string }>}
  */
-async function kbSearch(query, num = 5, forceStructural = false) {
+async function kbSearch(query, num = 5, forceStructural = false, forceQueryType = null) {
   if (kbReady && kbEngine && kbEngine.retrieval) {
     try {
-      const context = forceStructural ? { forceQueryType: 'structural' } : {};
+      const context = {};
+      if (forceStructural) context.forceQueryType = 'structural';
+      if (forceQueryType) context.forceQueryType = forceQueryType;
       const result = await kbEngine.retrieval.search(query, context, { maxChunks: num });
       // Normalize to the same shape the CLI expects
       const results = (result.chunks || []).map((c, i) => ({
@@ -330,10 +332,10 @@ app.post("/fetch", async (req, res) => {
 
 // ─── KB search (backward compatible) ─────────────────────────────────────────
 app.post("/kb/search", async (req, res) => {
-  const { query, num = 5, force_structural } = req.body;
+  const { query, num = 5, force_structural, force_query_type } = req.body;
   if (!query) return res.status(400).json({ error: "query required" });
 
-  const result = await kbSearch(query, num, force_structural);
+  const result = await kbSearch(query, num, force_structural, force_query_type);
   if (result.error && result.results.length === 0) {
     return res.status(500).json({ error: result.error });
   }

@@ -3468,58 +3468,46 @@ print(json.dumps({"sheet": ws.title, "headers": headers, "rows": rows[:200], "to
     case "kb_search": {
       printToolRunning("kb_search", args.query);
 
-      // ── Scope-aware query routing ──────────────────────────────────
-      // Use the USER's original message for scope detection (not the model's rewritten query).
-      // The model often rewrites "explain chapter 3" → "Python chapter 3 tutorial intro"
-      // which loses the scope-triggering phrasing.
+      // ── Conversational intent routing (replaces hardcoded regex) ──
       const userOriginal = SESSION._currentUserMessage || '';
-      const scopeCheck = /\b(?:chapter|section|part|appendix)\s*\d/i.test(userOriginal) ||
-                         /\b(?:explain|summarize|describe|show|give me|tell me about|walk me through)\s+(?:the\s+)?(?:whole\s+|entire\s+|full\s+)?(?:chapter|section|part|appendix)/i.test(userOriginal) ||
-                         /\b\d+\.\d+(?:\.\d+)?\s+\w/i.test(userOriginal);  // dotted section number: "3.1.2 About..."
+      const { analyzeQuery: aq } = require('./kb-engine/retrieval/query-analyzer');
+      const { presentMenu, progressiveDisclosure } = require('./kb-engine/retrieval/kb-search-menu');
 
-      // If user's message looks like a scope query, use it as the search query
-      // instead of the model's rewritten version
-      let searchQuery = args.query;
-      if (scopeCheck && userOriginal.length > 5) {
-        searchQuery = userOriginal;
+      const analysis = aq(userOriginal || args.query);
+
+      // Present menu only when truly ambiguous (90% of queries auto-route)
+      const menuResult = await presentMenu(
+        userOriginal, args.query, analysis,
+        (resolver) => { pendingApproval = resolver; }, // setPending for readline integration
+        { autoMode: CONFIG.autoApprove || CONFIG.permissionMode === 'autonomous', stopSpinner, startSpinner }
+      );
+
+      // ── Route based on menu result (or auto-route) ──
+      if (menuResult.searchType === 'scope') {
+        // Redirect to read-section (inline — no extra LLM call)
+        const sBody = { query: menuResult.effectiveQuery };
+        if (args.source) sBody.source = args.source;
+        const sRes = await proxyPost("/kb/read-section", sBody, 30000);
+        if (sRes.error) return `KB read-section error: ${sRes.error}`;
+        if (sRes.note) {
+          printToolDone(sRes.note);
+          if (!sRes.results?.length) return sRes.note;
+          return sRes.note + "\n\n" + sRes.results.map((r, i) => `[${i+1}] ${r.text || r.content || ""}`).join("\n\n---\n\n");
+        }
+        const sCount = sRes.count || sRes.results?.length || 0;
+        printToolDone(`Scope: ${sRes.scopeId || 'section'} — ${sCount} chunks`);
+        return sRes.formatted || sRes.results?.map(r => r.text).join('\n\n---\n\n') || 'No content found.';
       }
 
-      // ── Generic disambiguation: structural ref + multiple data sources → ASK ──
-      // Only for structural queries (chapter/section/part). Topic queries search across all.
-      if (scopeCheck && !SESSION._kbDisambiguated) {
-        try {
-          const srcRes = await fetch(`${CONFIG.proxyUrl}/kb/sources`, { signal: AbortSignal.timeout(10000) });
-          const srcData = await srcRes.json();
-          if (srcData.sources?.length > 1) {
-            SESSION._kbDisambiguated = true;
-            const srcList = srcData.sources.map((s, i) =>
-              `${i + 1}. "${s.doc_title}" (${s.collections.join(', ')}, ${s.chunk_count} chunks)`
-            ).join('\n');
-            printToolDone(`${srcData.sources.length} data sources — disambiguation needed`);
-            return `⚠ MULTIPLE DATA SOURCES IN KB:\n${srcList}\n\n` +
-              `ASK the user which data source they want this chapter/section from.\n` +
-              `After they answer, call kb_search again with their chosen source context.`;
-          }
-        } catch (_) {}
-      }
-
-      // Reset disambiguation flag after each search
-      if (SESSION._kbDisambiguated) SESSION._kbDisambiguated = false;
-
-      // ── Detect structural intent using the query analyzer (not hardcoded regex) ─
-      let structuralCheck = false;
-      try {
-        const { analyzeQuery: aq } = require('./kb-engine/retrieval/query-analyzer');
-        const userAnalysis = aq(userOriginal);
-        structuralCheck = userAnalysis.type === 'structural' || userAnalysis.type === 'cross_structural';
-      } catch (_) {}
-
-      // ── Execute the search ────────────────────────────────────────
-      const body = { query: structuralCheck ? userOriginal : searchQuery, num: args.num || 5 };
+      // ── Execute search ────────────────────────────────────────
+      const body = { query: menuResult.effectiveQuery, num: args.num || 5 };
       if (args.language) body.language = args.language;
       if (args.doc_type) body.doc_type = args.doc_type;
       if (args.collection) body.collection = args.collection;
-      if (structuralCheck) body.force_structural = true; // hint to pipeline
+      // Pass search type hints to pipeline
+      if (menuResult.searchType === 'structural' || analysis.type === 'structural') body.force_structural = true;
+      if (menuResult.searchType === 'cross_structural') body.force_query_type = 'cross_structural';
+      if (menuResult.searchType === 'code_examples') body.force_query_type = 'code_examples';
       const res = await proxyPost("/kb/search", body);
       if (res.error) return `KB search error: ${res.error}\nMake sure search-proxy is running: node search-proxy.js`;
 
@@ -3588,7 +3576,15 @@ print(json.dumps({"sheet": ws.title, "headers": headers, "rows": rows[:200], "to
         `[${i+1}] Score: ${r.score} | Source: ${r.filename || r.source || "?"}\n${r.text || r.content || ""}`
       ).join("\n\n---\n\n");
       printToolDone(`Found ${res.results.length} chunks from knowledge base`);
-      return lines + repetitionWarning;
+
+      // Progressive disclosure: suggest next steps after results
+      const suggestions = progressiveDisclosure(args.query, menuResult?.searchType || 'search', res.results.length);
+
+      // Track for follow-up queries
+      SESSION._lastKbQuery = args.query;
+      SESSION._lastKbType = menuResult?.searchType || 'search';
+
+      return lines + suggestions + repetitionWarning;
     }
 
     case "kb_read_section": {
