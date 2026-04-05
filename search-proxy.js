@@ -42,14 +42,14 @@ let kbEngine = null;       // KBEngine instance (if available)
 let kbReady  = false;      // true once engine.start() succeeds
 let kbError  = null;       // initialization error message (if any)
 
-// Feedback tracker (quality scoring loop)
+// Feedback tracker (quality scoring loop) — always created, runtime-toggled
 let feedbackTracker = null;
+let feedbackActive = false;
 try {
   const { FeedbackTracker } = require("./kb-engine/feedback");
   const kbConfig = require("./kb-engine/config");
-  if (kbConfig.FEEDBACK_ENABLED) {
-    feedbackTracker = new FeedbackTracker(kbConfig.FEEDBACK_FILE);
-  }
+  feedbackTracker = new FeedbackTracker(kbConfig.FEEDBACK_FILE);
+  feedbackActive = !!kbConfig.FEEDBACK_ENABLED;
 } catch (_) {}
 
 // ─── PDF extractor ────────────────────────────────────────────────────────────
@@ -344,7 +344,7 @@ app.post("/kb/search", async (req, res) => {
   if (result.count)        payload.count = result.count;
 
   // Feedback: log which chunk IDs were retrieved
-  if (feedbackTracker && result.results?.length > 0) {
+  if (feedbackActive && feedbackTracker && result.results?.length > 0) {
     const chunkIds = result.results.map(r => r.id).filter(Boolean);
     if (chunkIds.length > 0) feedbackTracker.logSearch(chunkIds, query);
 
@@ -367,18 +367,94 @@ app.post("/kb/search", async (req, res) => {
   res.json(payload);
 });
 
-// ─── KB cite (feedback: which chunks the LLM actually used) ─────────────────
-app.post("/kb/cite", (req, res) => {
-  const { chunk_ids } = req.body;
-  if (!Array.isArray(chunk_ids) || chunk_ids.length === 0) {
-    return res.status(400).json({ error: "chunk_ids array required" });
+// ─── KB feedback toggle ──────────────────────────────────────────────────────
+app.get("/kb/feedback/status", (req, res) => {
+  res.json({
+    enabled: feedbackActive,
+    available: !!feedbackTracker,
+    searchCount: feedbackTracker?.searchCount || 0,
+  });
+});
+
+app.post("/kb/feedback/toggle", (req, res) => {
+  const { enabled } = req.body;
+  if (!feedbackTracker) {
+    return res.json({ ok: false, reason: "feedback tracker not available" });
   }
-  if (feedbackTracker) {
+  feedbackActive = enabled !== undefined ? !!enabled : !feedbackActive;
+  res.json({ ok: true, enabled: feedbackActive });
+});
+
+// ─── KB cite (semantic citation detection) ───────────────────────────────────
+// Accepts response_text + chunk data for embedding-based similarity comparison.
+// Falls back to direct chunk_ids logging if no response_text provided.
+app.post("/kb/cite", async (req, res) => {
+  const { chunk_ids, response_text, chunks } = req.body;
+
+  if (!feedbackActive || !feedbackTracker) {
+    return res.json({ ok: false, reason: feedbackActive ? "tracker unavailable" : "feedback disabled" });
+  }
+
+  // Mode 1: Semantic citation via embedding similarity (when response_text + chunks provided)
+  if (response_text && Array.isArray(chunks) && chunks.length > 0 && kbEngine?.store?._embedder) {
+    try {
+      const embedder = kbEngine.store._embedder;
+      const responseSample = response_text.slice(0, 1500);
+
+      // Embed LLM response + all chunk texts in one batch
+      const textsToEmbed = [responseSample, ...chunks.map(c => (c.content || "").slice(0, 500))];
+      const embeddings = await embedder.embedBatch(textsToEmbed);
+
+      if (embeddings.length < 2) {
+        return res.json({ ok: false, reason: "embedding failed" });
+      }
+
+      const responseEmb = embeddings[0];
+      const citedIds = [];
+
+      // Cosine similarity between response and each chunk
+      for (let i = 0; i < chunks.length; i++) {
+        const chunkEmb = embeddings[i + 1];
+        if (!chunkEmb) continue;
+
+        // Compute cosine
+        let dot = 0, normA = 0, normB = 0;
+        for (let j = 0; j < responseEmb.length; j++) {
+          dot   += responseEmb[j] * chunkEmb[j];
+          normA += responseEmb[j] * responseEmb[j];
+          normB += chunkEmb[j] * chunkEmb[j];
+        }
+        const denom = Math.sqrt(normA) * Math.sqrt(normB);
+        const cosine = denom > 0 ? dot / denom : 0;
+
+        if (cosine > 0.5) {
+          citedIds.push(chunks[i].id);
+        }
+      }
+
+      if (citedIds.length > 0) {
+        feedbackTracker.logCitation(citedIds);
+      }
+
+      return res.json({
+        ok: true,
+        method: "semantic",
+        cited: citedIds.length,
+        total: chunks.length,
+        cited_ids: citedIds,
+      });
+    } catch (e) {
+      // Fall through to simple mode on embedding failure
+    }
+  }
+
+  // Mode 2: Direct chunk_ids logging (legacy / fallback)
+  if (Array.isArray(chunk_ids) && chunk_ids.length > 0) {
     feedbackTracker.logCitation(chunk_ids);
-    res.json({ ok: true, cited: chunk_ids.length });
-  } else {
-    res.json({ ok: false, reason: "feedback disabled" });
+    return res.json({ ok: true, method: "direct", cited: chunk_ids.length });
   }
+
+  return res.status(400).json({ error: "chunk_ids array or response_text + chunks required" });
 });
 
 // ─── KB read section (two-phase: discover + retrieve complete section) ────────

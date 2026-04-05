@@ -3514,12 +3514,12 @@ print(json.dumps({"sheet": ws.title, "headers": headers, "rows": rows[:200], "to
       const res = await proxyPost("/kb/search", body);
       if (res.error) return `KB search error: ${res.error}\nMake sure search-proxy is running: node search-proxy.js`;
 
-      // Store retrieved chunks for citation detection (feedback loop)
+      // Store retrieved chunks for semantic citation detection (feedback loop)
       if (res.results?.length > 0) {
         SESSION._lastKbChunks = res.results.map(r => ({
           id: r.id,
-          snippet: (r.text || r.content || '').slice(0, 200),
-        })).filter(c => c.id && c.snippet.length > 50);
+          content: (r.text || r.content || '').slice(0, 500),
+        })).filter(c => c.id && c.content.length > 30);
       }
 
       // Track search for repetition detection
@@ -8371,14 +8371,13 @@ async function chat(userMessage) {
     if (toolCalls.length === 0) {
       SESSION.messages.push({ role:"assistant", content: responseText });
 
-      // Feedback: detect which KB chunks were cited in the LLM response
+      // Feedback: semantic citation detection — send response + chunks to proxy
+      // for embedding-based similarity comparison (cosine > 0.5 = cited)
       if (SESSION._lastKbChunks?.length > 0 && typeof responseText === 'string' && responseText.length > 50) {
-        const citedIds = SESSION._lastKbChunks
-          .filter(c => responseText.includes(c.snippet.slice(0, 60)))
-          .map(c => c.id);
-        if (citedIds.length > 0) {
-          proxyPost("/kb/cite", { chunk_ids: citedIds }, 3000).catch(() => {});
-        }
+        proxyPost("/kb/cite", {
+          response_text: responseText.slice(0, 1500),
+          chunks: SESSION._lastKbChunks,
+        }, 10000).catch(() => {});
         SESSION._lastKbChunks = null;
       }
 
@@ -9105,6 +9104,16 @@ function printHelp() {
       ["",                     "  trust rating (1-5), freshness (current/dated/legacy),"],
       ["",                     "  anti-tags (topics to exclude from retrieval)"],
       ["",                     "  Files: ~/.attar-code/knowledge/dna/{book_id}.dna.json"],
+    ]],
+    ["Quality Feedback Loop", [
+      ["/kb feedback",          "Show feedback loop status (enabled/disabled, search count)"],
+      ["/kb feedback on",       "Enable citation tracking + quality scoring"],
+      ["",                     "  After each search, logs which chunks were retrieved"],
+      ["",                     "  After LLM response, detects cited chunks via semantic"],
+      ["",                     "  embedding similarity (cosine > 0.5 = cited)"],
+      ["",                     "  Every 100 searches: aggregates quality_score per chunk"],
+      ["",                     "  and writes to Qdrant — high-quality chunks rank higher"],
+      ["/kb feedback off",      "Disable citation tracking (no events logged)"],
     ]],
     ["Web Search", [
       ["/search <query>",      "Search the web via DuckDuckGo"],
@@ -10168,6 +10177,40 @@ RULES:
           console.log(co(C.bRed, "  ✗ ") + `Cannot connect to search-proxy: ${e.message}\n`);
         }
 
+      } else if (sub === "feedback") {
+        // /kb feedback [on|off] — toggle quality feedback loop
+        const action = parts[2]?.toLowerCase();
+        try {
+          if (action === "on" || action === "off") {
+            const res = await proxyPost("/kb/feedback/toggle", { enabled: action === "on" });
+            if (res.ok) {
+              console.log(co(C.bGreen, "\n  ✓ ") + "Feedback loop " + (res.enabled ? co(C.bGreen, "ENABLED") : co(C.dim, "DISABLED")));
+              if (res.enabled) {
+                console.log(co(C.dim, "  Citation detection: semantic embedding similarity (cosine > 0.5)"));
+                console.log(co(C.dim, "  Logs: ~/.attar-code/kb-feedback.jsonl"));
+                console.log(co(C.dim, "  Aggregation: every 100 searches → quality_score written to Qdrant\n"));
+              } else {
+                console.log(co(C.dim, "  No search/citation events will be logged.\n"));
+              }
+            } else {
+              console.log(co(C.bRed, "\n  ✗ ") + (res.reason || "Failed") + "\n");
+            }
+          } else {
+            // Show status
+            const res = await proxyGet("/kb/feedback/status");
+            console.log(co(C.bold, "\n  Feedback Loop Status:\n"));
+            console.log("  " + co(C.bGreen, "Enabled:      ") + (res.enabled ? co(C.bGreen, "YES") : co(C.dim, "NO")));
+            console.log("  " + co(C.bGreen, "Available:    ") + (res.available ? "yes" : "no (tracker not loaded)"));
+            console.log("  " + co(C.bGreen, "Searches:     ") + (res.searchCount || 0) + " logged");
+            console.log("  " + co(C.bGreen, "Detection:    ") + "semantic embedding similarity (cosine > 0.5)");
+            console.log("  " + co(C.bGreen, "Aggregation:  ") + "every 100 searches → quality_score to Qdrant");
+            console.log(co(C.dim, "\n  /kb feedback on   — enable citation tracking"));
+            console.log(co(C.dim, "  /kb feedback off  — disable citation tracking\n"));
+          }
+        } catch (e) {
+          console.log(co(C.bRed, "\n  ✗ ") + "Cannot connect to proxy: " + e.message + "\n");
+        }
+
       } else if (sub === "show-dna") {
         // /kb show-dna <filepath> — display current DNA for a document
         const fp = parts.slice(2).join(" ").trim();
@@ -10873,7 +10916,7 @@ async function main() {
         "/memory": ["set"],
         "/hooks": ["list", "reload", "templates"],
         "/errors": ["list", "reload", "test"],
-        "/kb": ["add", "add-dir", "search", "list", "collections", "remove", "stats", "status", "reindex", "dna", "show-dna", "auto-dna", "update-dna"],
+        "/kb": ["add", "add-dir", "search", "list", "collections", "remove", "stats", "status", "reindex", "dna", "show-dna", "auto-dna", "update-dna", "feedback"],
         "/effort": ["low", "medium", "high"],
         "/style": ["concise", "explanatory", "learning", "code", "default"],
         "/auto": ["on", "off"],
