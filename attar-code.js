@@ -10201,10 +10201,8 @@ RULES:
                   if (steps.length === 0) {
                     // No applicable guidelines — proceed
                   } else {
-                    // Pause main REPL readline to avoid input conflict
-                    if (SESSION._mainRl) SESSION._mainRl.pause();
-
-                    const rlScan = require("readline").createInterface({ input: process.stdin, output: process.stdout });
+                    // Use main REPL readline for sub-prompts (avoids double-echo and input conflicts)
+                    const rlScan = SESSION._mainRl || require("readline").createInterface({ input: process.stdin, output: process.stdout });
                     const askScan = (q, def) => new Promise(r => rlScan.question(q + (def ? ` [${def}]` : "") + ": ", a => r(a.trim() || def || "")));
 
                     const guidelines = {
@@ -10264,10 +10262,7 @@ RULES:
                       }
                     }
 
-                    rlScan.close();
-                    // Resume main REPL readline
-                    if (SESSION._mainRl) SESSION._mainRl.resume();
-
+                    // Don't close rlScan — it IS the main REPL readline
                     svg(scanId, guidelines);
                     const rw = guidelines.reject_words?.length || 0;
                     const rr = guidelines.known_repeated_headings?.length || 0;
