@@ -99,6 +99,46 @@ class RetrievalPipeline {
       // Discovery or retrieval found nothing → fall through to regular search
     }
 
+    // ── PAGE_REF query: "page 45" — find chunks near that page number ──
+    if (analysis.type === 'page_ref' && analysis.pageNumber) {
+      let pageResults = [];
+      for (const collection of collections) {
+        try {
+          // Try exact page match first
+          let results = await this.store.scrollByFilter(collection,
+            [{ key: 'page_start', match: { value: analysis.pageNumber } }],
+            { limit: 10, sortBy: 'chunk_index' }
+          );
+          // If no exact match, try nearby pages (±3)
+          if (results.length === 0) {
+            for (let delta = 1; delta <= 3 && results.length === 0; delta++) {
+              for (const tryPage of [analysis.pageNumber - delta, analysis.pageNumber + delta]) {
+                if (tryPage > 0) {
+                  results = await this.store.scrollByFilter(collection,
+                    [{ key: 'page_start', match: { value: tryPage } }],
+                    { limit: 10, sortBy: 'chunk_index' }
+                  );
+                  if (results.length > 0) break;
+                }
+              }
+            }
+          }
+          pageResults.push(...results.map(r => ({ ...r, collection })));
+        } catch (_) {}
+      }
+      if (pageResults.length === 0) {
+        return { chunks: [], formatted: `No content found near page ${analysis.pageNumber}.`, count: 0, type: 'page_ref' };
+      }
+      // Format as scope-like result
+      const formatted = pageResults.map(r => r.content).join('\n\n---\n\n');
+      return {
+        chunks: pageResults.map((r, i) => ({ ...r, score: 1.0 - i * 0.01 })),
+        formatted: `Content near page ${analysis.pageNumber}:\n\n${formatted}`,
+        count: pageResults.length,
+        type: 'page_ref',
+      };
+    }
+
     // ── CROSS_STRUCTURAL query: "which chapters mention X across all docs" ──
     if (analysis.type === 'cross_structural') {
       return this._crossStructuralSearch(analysis.crossTopic || '', collections, query);
@@ -210,9 +250,17 @@ class RetrievalPipeline {
       allResults = allResults.filter((r) => {
         const antiTags = r.metadata?.dna_anti_tags;
         if (!Array.isArray(antiTags) || antiTags.length === 0) return true;
-        // Check if ANY anti-tag appears as substring in the query
         const queryLower = query.toLowerCase();
         return !antiTags.some(tag => queryLower.includes(tag.toLowerCase()));
+      });
+    }
+
+    // 3.6. Negation filter: remove results matching user's exclusion terms
+    if (analysis.excludeTerms?.length > 0) {
+      allResults = allResults.filter((r) => {
+        const meta = r.metadata || {};
+        const text = ((meta.doc_title || '') + ' ' + (meta.chapter || '') + ' ' + (meta.section || '')).toLowerCase();
+        return !analysis.excludeTerms.some(term => text.includes(term.toLowerCase()));
       });
     }
 

@@ -134,16 +134,26 @@ class Chunker {
     let currentLines = [];
     let currentPath = docTitle || '';
     let inCodeBlock = false;
+    let currentPage = null; // Track page from <!-- page:N --> markers
+
+    const PAGE_MARKER_RE = /^<!--\s*page:(\d+)\s*-->$/;
 
     const flushSection = () => {
       const text = currentLines.join('\n');
       if (text.trim() !== '') {
-        sections.push({ content: text, section_path: currentPath || docTitle || '' });
+        sections.push({ content: text, section_path: currentPath || docTitle || '', page_start: currentPage });
       }
       currentLines = [];
     };
 
     for (const line of lines) {
+      // Detect page markers (from PDF extraction) — track but don't include in content
+      const pageMatch = line.match(PAGE_MARKER_RE);
+      if (pageMatch) {
+        currentPage = parseInt(pageMatch[1]);
+        continue; // don't include marker in chunk content
+      }
+
       // Toggle code block state
       if (FENCE_RE.test(line.trim())) {
         inCodeBlock = !inCodeBlock;

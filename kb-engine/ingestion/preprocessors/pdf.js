@@ -66,17 +66,38 @@ async function preprocessPdf(filePath, opts = {}) {
   }
 
   // Strategy 2: pymupdf4llm -> Strategy 3: fitz plain text
+  // Both paths emit <!-- page:N --> markers for page tracking in chunks
   try {
     const script = `
-import sys, json
+import sys, json, os
+os.environ["PYTHONIOENCODING"] = "utf-8"
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+except:
+    pass
 try:
     import pymupdf4llm
-    md = pymupdf4llm.to_markdown(sys.argv[1])
+    # Use page_chunks=True to get per-page markdown, then join with page markers
+    try:
+        pages = pymupdf4llm.to_markdown(sys.argv[1], page_chunks=True)
+        if isinstance(pages, list):
+            parts = []
+            for i, page in enumerate(pages):
+                text = page["text"] if isinstance(page, dict) else str(page)
+                parts.append(f"<!-- page:{i+1} -->\\n{text}")
+            md = "\\n\\n".join(parts)
+        else:
+            md = str(pages)
+    except:
+        md = pymupdf4llm.to_markdown(sys.argv[1])
     print(json.dumps({"content": md, "ok": True}))
 except ImportError:
     import fitz
     doc = fitz.open(sys.argv[1])
-    text = "\\n\\n".join(page.get_text() for page in doc)
+    parts = []
+    for i in range(len(doc)):
+        parts.append(f"<!-- page:{i+1} -->\\n{doc[i].get_text()}")
+    text = "\\n\\n".join(parts)
     print(json.dumps({"content": text, "ok": True}))
 `;
     const tmpScript = path.join(os.tmpdir(), `attar-pdf-extract-${Date.now()}.py`);

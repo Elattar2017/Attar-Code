@@ -62,6 +62,15 @@ function flattenDNA(dna) {
   if (!dna || typeof dna !== "object") return {};
   const flat = {};
 
+  // Identity
+  if (dna.identity) {
+    if (dna.identity.title !== undefined)         flat.dna_title = dna.identity.title;
+    if (Array.isArray(dna.identity.authors) && dna.identity.authors.length > 0)
+      flat.dna_authors = dna.identity.authors;
+    if (dna.identity.publish_date !== undefined)  flat.dna_publish_date = dna.identity.publish_date;
+    if (dna.identity.source_url !== undefined)    flat.dna_source_url = dna.identity.source_url;
+  }
+
   // Authority
   if (dna.authority) {
     if (dna.authority.level !== undefined)        flat.dna_authority = dna.authority.level;

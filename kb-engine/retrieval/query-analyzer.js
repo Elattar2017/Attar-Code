@@ -163,6 +163,24 @@ const STRUCTURAL_PATTERNS = [
   /\boutline\b/i,
 ];
 
+// Page reference patterns — user wants content at a specific page number
+const PAGE_REF_PATTERNS = [
+  /\bpage\s+(\d+)\b/i,
+  /\bwhat(?:'s| is)\s+(?:on|at)\s+page\s+(\d+)\b/i,
+  /\bat\s+page\s+(\d+)\b/i,
+  /\bp\.\s*(\d+)\b/i,
+];
+
+// Metadata patterns — user wants document info (author, date, version), not content
+const METADATA_PATTERNS = [
+  /\bwho\s+(?:wrote|authored|created|is the author)\b/i,
+  /\bauthor(?:s)?\s+(?:of|for)\b/i,
+  /\bwhen\s+(?:was|is)\s+(?:this\s+|it\s+)?(?:published|written|created)\b/i,
+  /\bpublish(?:ed|ing)?\s+date\b/i,
+  /\bwhat\s+(?:year|date)\s+(?:was|is)\b/i,
+  /\bwho\s+(?:is|are)\s+the\s+author/i,
+];
+
 // Scope patterns — user wants a COMPLETE section/chapter, not just top-5 results.
 // These detect scope INTENT only — the actual heading is discovered via vector search
 // in the two-phase retrieval pipeline (retrieval/index.js).
@@ -270,6 +288,15 @@ function analyzeQuery(query, context = {}) {
   // Detect tech early — we need it for collections
   const tech = detectTech(query, context);
 
+  // Extract negation/exclusion terms ("except chapter 1", "without testing")
+  let excludeTerms = [];
+  const NEGATION_RE = /\b(?:except|excluding|not from|without|ignore|skip|other than)\s+["']?(.+?)["']?$/i;
+  const negMatch = query.match(NEGATION_RE);
+  if (negMatch) {
+    excludeTerms = negMatch[1].split(/,|\band\b/).map(t => t.trim()).filter(Boolean);
+    query = query.replace(NEGATION_RE, '').trim(); // clean query for search
+  }
+
   // Determine query type — two-tier error detection to avoid false positives.
   //
   // Order: specific error TYPES (TypeError, ENOENT, etc.) → scope → broad error
@@ -285,6 +312,24 @@ function analyzeQuery(query, context = {}) {
   // 1. SPECIFIC error type names always win (highest priority)
   if (SPECIFIC_ERROR_PATTERNS.some((p) => p.test(query))) {
     type = 'error';
+  }
+
+  // 1.5. Metadata queries ("who wrote this", "when was it published")
+  if (type === 'general' && METADATA_PATTERNS.some((p) => p.test(query))) {
+    type = 'metadata';
+  }
+
+  // 1.6. Page reference queries ("page 45", "what's on page 12")
+  let pageNumber = null;
+  if (type === 'general') {
+    for (const pat of PAGE_REF_PATTERNS) {
+      const m = query.match(pat);
+      if (m) {
+        type = 'page_ref';
+        pageNumber = parseInt(m[1]);
+        break;
+      }
+    }
   }
 
   // 2. Scope patterns (only if not already classified as a specific error)
@@ -375,7 +420,7 @@ function analyzeQuery(query, context = {}) {
     }
   }
 
-  return { type, preferVector, collections, tech, scopeHint, scopeBook, crossTopic };
+  return { type, preferVector, collections, tech, scopeHint, scopeBook, crossTopic, excludeTerms, pageNumber };
 }
 
 // ---------------------------------------------------------------------------

@@ -37,6 +37,7 @@ const PAYLOAD_INDEXES = [
   { field_name: "dna_canonical",  field_schema: { type: "bool" } },
   { field_name: "dna_key_topics", field_schema: "keyword" },
   { field_name: "dna_best_for",   field_schema: "keyword" },
+  { field_name: "page_start",     field_schema: { type: "integer" } },
 ];
 
 // ─── CollectionManager ────────────────────────────────────────────────────────

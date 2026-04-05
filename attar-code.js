@@ -3475,6 +3475,32 @@ print(json.dumps({"sheet": ws.title, "headers": headers, "rows": rows[:200], "to
 
       const analysis = aq(userOriginal || args.query);
 
+      // ── Metadata queries ("who wrote this book") — answered from DNA, not Qdrant ──
+      if (analysis.type === 'metadata') {
+        try {
+          const { loadDNA } = require('./kb-engine/ingestion/dna-loader');
+          const srcRes = await proxyGet("/kb/sources");
+          const answers = [];
+          for (const src of (srcRes.sources || srcRes || [])) {
+            const bookId = src.book_id;
+            if (!bookId) continue;
+            const dna = loadDNA(bookId);
+            if (dna?.identity) {
+              const parts = [`"${dna.identity.title || src.doc_title || '?'}"`];
+              if (dna.identity.authors?.length) parts.push(`Authors: ${dna.identity.authors.join(', ')}`);
+              if (dna.identity.publish_date) parts.push(`Published: ${dna.identity.publish_date}`);
+              if (dna.identity.source_url) parts.push(`Source: ${dna.identity.source_url}`);
+              if (dna.authority?.level) parts.push(`Authority: ${dna.authority.level}`);
+              answers.push(parts.join(' | '));
+            } else {
+              answers.push(`"${src.doc_title || '?'}" — no DNA metadata. Run /kb dna or /kb auto-dna to add.`);
+            }
+          }
+          printToolDone("Document metadata");
+          return answers.length > 0 ? answers.join('\n') : 'No documents in KB. Add files with /kb add <file>.';
+        } catch (_) {}
+      }
+
       // Present menu only when truly ambiguous (90% of queries auto-route)
       const menuResult = await presentMenu(
         userOriginal, args.query, analysis,
@@ -8000,6 +8026,16 @@ async function chat(userMessage) {
 
   SESSION.messages.push({ role:"user", content: userMessage });
   SESSION._currentUserMessage = userMessage;  // preserve for kb_search scope detection
+
+  // Follow-up detection: if user says "tell me more" etc., inject last KB context
+  if (SESSION._lastKbQuery) {
+    const followUpRe = /^(tell me more|more about|expand|continue|go deeper|details|next section|and what about|what else|more details|more on|elaborate)/i;
+    if (followUpRe.test(userMessage)) {
+      const contextHint = `[Context: user is following up on previous KB search for "${SESSION._lastKbQuery}" (type: ${SESSION._lastKbType || 'search'}). ` +
+        `Search the KB again for "${SESSION._lastKbQuery}" and provide more detail. If type was 'scope', try reading the next section.]`;
+      SESSION.messages.push({ role: "system", content: contextHint });
+    }
+  }
 
   // Feedback: if previous turn used KB but this turn doesn't mention KB topics,
   // signal satisfaction (user moved on). Fired via proxy endpoint.

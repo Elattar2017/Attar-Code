@@ -110,8 +110,19 @@ function classifyQueryNature(query) {
  * @param {string} query
  * @returns {boolean}
  */
+/**
+ * Check if query is predominantly non-Latin script (Arabic, CJK, Cyrillic, etc.)
+ * Non-English queries should bypass the English LLM rewriter and decomposer.
+ */
+function isLikelyNonEnglish(query) {
+  if (!query || query.length < 4) return false;
+  const nonLatin = (query.match(/[^\u0000-\u024F\s\d]/g) || []).length;
+  return nonLatin / query.length > 0.2;
+}
+
 function needsRewriting(query) {
   if (!query || query.length < 5) return false;
+  if (isLikelyNonEnglish(query)) return false; // non-English → skip rewriter
   if (query.length > 150) return true;  // pasted error dump
   return classifyQueryNature(query).isNaturalLanguage;
 }
@@ -122,6 +133,7 @@ function needsRewriting(query) {
  * @returns {boolean}
  */
 function needsDecomposition(query) {
+  if (isLikelyNonEnglish(query)) return false; // non-English → skip decomposition
   return DECOMPOSE_PATTERNS.some(p => p.test(query));
 }
 
@@ -231,6 +243,7 @@ module.exports = {
   decomposeQuery,
   needsRewriting,
   needsDecomposition,
+  isLikelyNonEnglish,
   classifyQueryNature,
   REWRITE_TYPES,
 };
