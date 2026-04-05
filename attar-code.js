@@ -10101,6 +10101,9 @@ RULES:
           // ── Pre-scan: detect messy documents and collect guidelines inline ──
           const absPathResolved = path.resolve(fp);
           try {
+            if (!fs.existsSync(absPathResolved)) {
+              process.stderr.write("  [Pre-scan] File not found: " + absPathResolved + "\n");
+            } else {
             const cryptoScan = require("crypto");
             const scanId = cryptoScan.createHash("sha256").update(absPathResolved).digest("hex").slice(0, 12);
             const { loadGuidelines: ldg, saveGuidelines: svg, preScanDocument: psd } = require("./kb-engine/ingestion/ingest-guidelines");
@@ -10116,14 +10119,18 @@ RULES:
               if (scanExt === ".pdf") {
                 try {
                   const { execFileSync } = require("child_process");
-                  const scanScript = `import sys\ntry:\n    import pymupdf4llm\n    print(pymupdf4llm.to_markdown(sys.argv[1], pages=list(range(10)))[:30000])\nexcept:\n    import fitz\n    doc = fitz.open(sys.argv[1])\n    print("".join(doc[i].get_text() for i in range(min(10, len(doc))))[:30000])`;
+                  // Scan full document to catch messy content deep in the PDF
+                  // Force UTF-8 stdout on Windows (avoids cp1252 UnicodeEncodeError)
+                  const scanScript = `import sys,os\nos.environ["PYTHONIOENCODING"]="utf-8"\nsys.stdout.reconfigure(encoding="utf-8")\ntry:\n    import pymupdf4llm\n    print(pymupdf4llm.to_markdown(sys.argv[1])[:80000])\nexcept:\n    import fitz\n    doc = fitz.open(sys.argv[1])\n    print("".join(doc[i].get_text() for i in range(len(doc)))[:80000])`;
                   const scanTmp = path.join(require("os").tmpdir(), "attar-prescan-" + Date.now() + ".py");
                   fs.writeFileSync(scanTmp, scanScript);
-                  scanContent = execFileSync("python", [scanTmp, absPathResolved], { timeout: 30000, maxBuffer: 2 * 1024 * 1024 }).toString("utf-8");
+                  scanContent = execFileSync("python", [scanTmp, absPathResolved], { timeout: 60000, maxBuffer: 10 * 1024 * 1024, env: { ...process.env, PYTHONIOENCODING: "utf-8" } }).toString("utf-8").slice(0, 80000);
                   try { fs.unlinkSync(scanTmp); } catch (_) {}
-                } catch (_) {}
+                } catch (scanPdfErr) {
+                  process.stderr.write("  [Pre-scan] PDF extraction failed: " + (scanPdfErr.message || "").slice(0, 100) + "\n");
+                }
               } else {
-                try { scanContent = fs.readFileSync(absPathResolved, "utf-8").slice(0, 30000); } catch (_) {}
+                try { scanContent = fs.readFileSync(absPathResolved, "utf-8").slice(0, 80000); } catch (_) {}
               }
 
               if (scanContent.length > 100) {
@@ -10194,7 +10201,9 @@ RULES:
                   if (steps.length === 0) {
                     // No applicable guidelines — proceed
                   } else {
-                    // Walk user through each guideline
+                    // Pause main REPL readline to avoid input conflict
+                    if (SESSION._mainRl) SESSION._mainRl.pause();
+
                     const rlScan = require("readline").createInterface({ input: process.stdin, output: process.stdout });
                     const askScan = (q, def) => new Promise(r => rlScan.question(q + (def ? ` [${def}]` : "") + ": ", a => r(a.trim() || def || "")));
 
@@ -10256,6 +10265,9 @@ RULES:
                     }
 
                     rlScan.close();
+                    // Resume main REPL readline
+                    if (SESSION._mainRl) SESSION._mainRl.resume();
+
                     svg(scanId, guidelines);
                     const rw = guidelines.reject_words?.length || 0;
                     const rr = guidelines.known_repeated_headings?.length || 0;
@@ -10264,6 +10276,7 @@ RULES:
                 }
               }
             }
+            } // end if (fs.existsSync)
           } catch (scanErr) {
             // Pre-scan failure must never block ingestion
             if (scanErr.message) process.stderr.write("  [Pre-scan] " + scanErr.message + "\n");
@@ -11230,6 +11243,9 @@ async function main() {
       return [hits.length ? hits : allCommands, line];
     },
   });
+
+  // Expose main readline so slash command handlers can pause it for sub-prompts
+  SESSION._mainRl = rl;
 
   const prompt = () => {
     const cwd  = SESSION.cwd.replace(os.homedir(),"~");
