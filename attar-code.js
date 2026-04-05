@@ -3527,11 +3527,25 @@ print(json.dumps({"sheet": ws.title, "headers": headers, "rows": rows[:200], "to
       const topHash = (res.results?.[0]?.text || res.formatted || '').slice(0, 50);
       let repetitionWarning = '';
 
-      // Per-turn search count — hard block after 5, warn at 3+
+      // Per-turn search count — accumulate results, block after 5
       SESSION._kbSearchCount = (SESSION._kbSearchCount || 0) + 1;
+
+      // Store each search result for accumulation
+      if (!SESSION._kbAccumulatedResults) SESSION._kbAccumulatedResults = [];
+      if (res.results?.length > 0) {
+        for (const r of res.results.slice(0, 3)) {
+          const text = (r.text || r.content || '').slice(0, 300);
+          if (text && !SESSION._kbAccumulatedResults.some(a => a === text)) {
+            SESSION._kbAccumulatedResults.push(text);
+          }
+        }
+      }
+
+      // At count > 5: DON'T execute but return accumulated results with ANSWER NOW
       if (SESSION._kbSearchCount > 5) {
-        printToolDone("kb_search BLOCKED — limit reached");
-        return "⛔ SEARCH LIMIT REACHED (5/5). You MUST answer NOW using results from your previous searches. Do NOT call kb_search again.";
+        printToolDone("kb_search limit — returning accumulated results");
+        const accumulated = SESSION._kbAccumulatedResults.slice(0, 8).join('\n\n---\n\n');
+        return "⛔ SEARCH LIMIT REACHED. Here are ALL results from your previous " + (SESSION._kbSearchCount - 1) + " searches. ANSWER THE USER NOW using these:\n\n" + accumulated + "\n\n⛔ Do NOT call any more tools. Write your answer as TEXT immediately.";
       }
       if (SESSION._kbSearchCount >= 3) {
         repetitionWarning = '\n\n⛔ SEARCH LIMIT (' + SESSION._kbSearchCount + '/5). Answer NOW with what you have. Do NOT search again.';
@@ -7972,6 +7986,7 @@ async function chat(userMessage) {
     proxyPost("/kb/feedback/session-end", {}, 3000).catch(() => {});
   }
   SESSION._kbSearchCount = 0;                 // reset per-turn search counter
+  SESSION._kbAccumulatedResults = null;        // reset accumulated KB results
   startSpinner("thinking");
 
   // ── State ─────────────────────────────────────────────────────────
