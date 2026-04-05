@@ -61,9 +61,29 @@ class QueryCache {
   }
 
   /**
+   * Compute a hash of config flags that affect search results.
+   * Cache entries are only valid when the config hash matches.
+   * @returns {string}
+   */
+  static configHash() {
+    try {
+      const config = require('../config');
+      return [
+        config.CHUNK_LINK_EXPAND ? 'link' : '',
+        config.MMR_ENABLED ? 'mmr' : '',
+        config.HYDE_ENABLED ? 'hyde' : '',
+        config.RERANK_TOP_N,
+        config.RERANK_CANDIDATES,
+      ].join('|');
+    } catch (_) {
+      return '';
+    }
+  }
+
+  /**
    * Look up the cache for a query embedding.
    * Returns the cached result with the HIGHEST cosine similarity above threshold,
-   * or null if no match found or entry expired.
+   * or null if no match found, entry expired, or config changed since caching.
    *
    * @param {number[]} embedding - Query embedding vector
    * @returns {object|null} Cached search result, or null
@@ -72,6 +92,7 @@ class QueryCache {
     if (!embedding || embedding.length === 0 || this._entries.length === 0) return null;
 
     const now = Date.now();
+    const currentConfig = QueryCache.configHash();
     let bestMatch = null;
     let bestSim = -1;
 
@@ -83,6 +104,9 @@ class QueryCache {
         this._entries.splice(i, 1);
         continue;
       }
+
+      // Config mismatch — skip (different settings produce different results)
+      if (entry.configHash && entry.configHash !== currentConfig) continue;
 
       const sim = cosineSim(embedding, entry.embedding);
       if (sim >= this._threshold && sim > bestSim) {
@@ -113,6 +137,7 @@ class QueryCache {
       results,
       queryText,
       collections,
+      configHash: QueryCache.configHash(),
       timestamp: Date.now(),
     });
   }
