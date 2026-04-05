@@ -41,6 +41,28 @@ const PATTERNS = {
     /^(?:\s*)class\s+(\w+)/gm,
     /^(?:\s*)module\s+(\w+)/gm,
   ],
+  csharp: [
+    /^(?:\s*)(?:public|private|protected|internal)?\s*(?:static\s+)?(?:async\s+)?(?:[\w<>\[\]]+)\s+(\w+)\s*\(/gm,
+    /^(?:\s*)(?:public|private|protected|internal)?\s*(?:abstract\s+|sealed\s+|static\s+)?class\s+(\w+)/gm,
+    /^(?:\s*)(?:public|private|protected|internal)?\s*interface\s+(\w+)/gm,
+    /^(?:\s*)(?:public|private|protected|internal)?\s*record\s+(\w+)/gm,
+    /^(?:\s*)namespace\s+([\w.]+)/gm,
+    /^(?:\s*)(?:public|private|protected|internal)?\s*enum\s+(\w+)/gm,
+  ],
+  swift: [
+    /^(?:\s*)(?:public|private|internal|open)?\s*func\s+(\w+)/gm,
+    /^(?:\s*)(?:public|private|internal|open)?\s*class\s+(\w+)/gm,
+    /^(?:\s*)(?:public|private|internal|open)?\s*struct\s+(\w+)/gm,
+    /^(?:\s*)(?:public|private|internal|open)?\s*protocol\s+(\w+)/gm,
+    /^(?:\s*)(?:public|private|internal|open)?\s*enum\s+(\w+)/gm,
+    /^(?:\s*)extension\s+(\w+)/gm,
+  ],
+  kotlin: [
+    /^(?:\s*)(?:public|private|protected|internal)?\s*fun\s+(\w+)/gm,
+    /^(?:\s*)(?:public|private|protected|internal)?\s*(?:data\s+|sealed\s+|abstract\s+|open\s+)?class\s+(\w+)/gm,
+    /^(?:\s*)(?:public|private|protected|internal)?\s*interface\s+(\w+)/gm,
+    /^(?:\s*)(?:public|private|protected|internal)?\s*object\s+(\w+)/gm,
+  ],
 };
 
 function preprocessCode(filePath) {
@@ -57,11 +79,11 @@ function preprocessCode(filePath) {
     ".go": "go",
     ".rs": "rust",
     ".java": "java",
-    ".kt": "java",
-    ".cs": "java",
+    ".kt": "kotlin",
+    ".cs": "csharp",
     ".php": "php",
     ".rb": "ruby",
-    ".swift": "java",
+    ".swift": "swift",
   };
   const language = LANG_MAP[ext] || "javascript";
 

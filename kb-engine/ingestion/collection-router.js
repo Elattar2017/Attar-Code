@@ -44,9 +44,14 @@ function routeToCollection(filePath, metadata, options) {
 
   const fp = filePath.toLowerCase();
 
-  // Route by technology/framework keyword in filepath
+  // Route by technology/framework keyword in filepath.
+  // Uses word-boundary matching to avoid false positives like 'go' matching 'django' or 'mongo'.
+  // Split path into segments (dirs + filename) and match against each segment.
+  const segments = fp.replace(/\\/g, '/').split('/').flatMap(s => s.split(/[-_.]/));
   for (const route of ROUTES) {
-    if (route.patterns.some(p => fp.includes(p))) return route.collection;
+    if (route.patterns.some(p => segments.includes(p) || fp.includes('/' + p + '/') || fp.includes('/' + p + '.'))) {
+      return route.collection;
+    }
   }
 
   // Route by detected language (from format-detector or caller-supplied metadata)

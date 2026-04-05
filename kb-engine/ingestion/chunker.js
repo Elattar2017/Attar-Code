@@ -208,6 +208,11 @@ class Chunker {
       return [text];
     }
 
+    // Precompute guard regions once for this text block
+    this._codeRegions = null;
+    this._tableRegions = null;
+    this._precomputeGuardRegions(text);
+
     const separators = ['\n\n', '\n', '. ', ' '];
 
     for (const sep of separators) {
@@ -322,9 +327,12 @@ class Chunker {
       let tail = tailWords.join(' ');
 
       // Try to start overlap at a sentence boundary
-      const sentenceStart = tail.search(/\.\s+[A-Z]/);
+      // Priority: ". [Capital]" → ". [lowercase]" → ".\n" (any sentence end)
+      let sentenceStart = tail.search(/[.!?]\s+[A-Z]/);
+      if (sentenceStart === -1) sentenceStart = tail.search(/[.!?]\s+\w/);
+      if (sentenceStart === -1) sentenceStart = tail.search(/[.!?]\n/);
       if (sentenceStart !== -1 && sentenceStart < tail.length * 0.5) {
-        tail = tail.slice(sentenceStart + 2); // skip ". " and start at capital
+        tail = tail.slice(sentenceStart + 2);
       }
 
       result.push(tail + '\n' + chunks[i]);
@@ -332,55 +340,80 @@ class Chunker {
     return result;
   }
 
-  // ─── Guard Helpers ───────────────────────────────────────────────────────────
+  // ─── Guard Helpers (precomputed for performance) ─────────────────────────────
 
   /**
-   * Check whether a character position in the text falls inside a fenced code block.
-   * Counts ``` fence markers that appear before `position` on their own line.
+   * Precompute fence and table regions for a text block.
+   * Call once before _splitAt, then use _isInCodeBlock/_isInTable with O(log n) lookup.
    *
    * @param {string} content
-   * @param {number} position
-   * @returns {boolean}
    */
-  _isInsideCodeBlock(content, position) {
-    const before = content.slice(0, position);
-    const lines = before.split('\n');
-    let fenceCount = 0;
+  _precomputeGuardRegions(content) {
+    const lines = content.split('\n');
+    let offset = 0;
+    let inFence = false;
+
+    this._codeRegions = [];  // [{ start, end }]
+    this._tableRegions = []; // [{ start, end }]
+
+    let fenceStart = 0;
+    let tableStart = -1;
 
     for (const line of lines) {
-      if (FENCE_RE.test(line.trim())) {
-        fenceCount++;
+      const lineStart = offset;
+      const lineEnd = offset + line.length + 1;
+      const trimmed = line.trim();
+
+      // Fence tracking
+      if (FENCE_RE.test(trimmed)) {
+        if (!inFence) {
+          fenceStart = lineStart;
+          inFence = true;
+        } else {
+          this._codeRegions.push({ start: fenceStart, end: lineEnd });
+          inFence = false;
+        }
       }
+
+      // Table tracking — contiguous runs of lines with | at both start and end
+      const isTableRow = /^\|.+\|\s*$/.test(line) || /^\|[-:| ]+\|\s*$/.test(line);
+      if (isTableRow) {
+        if (tableStart === -1) tableStart = lineStart;
+      } else {
+        if (tableStart !== -1) {
+          this._tableRegions.push({ start: tableStart, end: offset });
+          tableStart = -1;
+        }
+      }
+
+      offset = lineEnd;
     }
 
-    // Odd fence count means we're currently inside a code block
-    return fenceCount % 2 === 1;
+    // Close unclosed regions
+    if (inFence) this._codeRegions.push({ start: fenceStart, end: offset });
+    if (tableStart !== -1) this._tableRegions.push({ start: tableStart, end: offset });
   }
 
   /**
-   * Check whether a character position in the text falls inside a markdown table.
-   * A "table region" is a contiguous run of lines matching TABLE_ROW_RE.
-   *
-   * @param {string} content
-   * @param {number} position
-   * @returns {boolean}
+   * Check if position is inside a precomputed code block region.
+   */
+  _isInsideCodeBlock(content, position) {
+    if (!this._codeRegions || this._guardContent !== content) {
+      this._precomputeGuardRegions(content);
+      this._guardContent = content;
+    }
+    return this._codeRegions.some(r => position >= r.start && position < r.end);
+  }
+
+  /**
+   * Check if position is inside a precomputed table region.
    */
   _isInsideTable(content, position) {
-    const lines = content.split('\n');
-    let charOffset = 0;
-
-    for (const line of lines) {
-      const lineStart = charOffset;
-      const lineEnd = charOffset + line.length + 1; // +1 for the \n
-
-      if (lineStart <= position && position < lineEnd) {
-        return TABLE_ROW_RE.test(line);
-      }
-
-      charOffset = lineEnd;
+    if (!this._tableRegions || this._guardContent !== content) {
+      this._precomputeGuardRegions(content);
+      this._guardContent = content;
     }
-
-    return false;
+    return this._tableRegions.some(r => position >= r.start && position < r.end);
   }
 }
 
