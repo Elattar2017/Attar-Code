@@ -12,12 +12,15 @@ const os       = require("os");
 const crypto   = require("crypto");
 const { execSync, spawn } = require("child_process");
 
-// ── Custom token-level markdown renderer (replaces marked-terminal) ──
+// ── Custom token-level markdown renderer ──
 // Uses marked.lexer() for tokenization, then formats each token individually.
-// This gives full control over code blocks, tables, lists, etc.
+// Features: syntax-highlighted code blocks, responsive tables, ANSI-aware wrapping,
+// OSC 8 hyperlinks, DEC synchronized updates for flicker-free rendering.
 let markedRender;
 let cliHighlight;
+let wrapAnsi;
 try { cliHighlight = require('cli-highlight'); } catch (_) {}
+try { wrapAnsi = require('wrap-ansi'); } catch (_) {}
 
 try {
   const { marked } = require('marked');
@@ -54,8 +57,15 @@ try {
         if (token.depth === 2) return '\n' + C.bold + C.under + text + R + '\n\n';
         return '\n' + C.bold + text + R + '\n\n';
       }
-      case 'paragraph':
-        return _fmtInline(token.tokens) + '\n\n';
+      case 'paragraph': {
+        const pText = _fmtInline(token.tokens);
+        // ANSI-aware text wrapping to terminal width
+        const pWidth = Math.min((process.stdout.columns || 80) - 6, 90);
+        if (wrapAnsi && strip(pText).length > pWidth) {
+          return wrapAnsi(pText, pWidth, { hard: true, trim: false }) + '\n\n';
+        }
+        return pText + '\n\n';
+      }
 
       case 'code': {
         const lang = token.lang || 'code';
@@ -8482,10 +8492,32 @@ async function chat(userMessage) {
         const displayName = SESSION.name ? `Attar-Brain (${SESSION.name})` : "Attar-Brain";
         console.log();
         console.log(co(C.bCyan, "  ✦ ") + co(C.bold, C.bCyan, displayName));
-        // Minimal pre-processing: ensure code fences have newlines around them
-        let mdText = responseText
-          .replace(/([^\n])(```)/g, '$1\n\n$2')    // newline before ```
-          .replace(/(```\w*?)([^\n])/g, '$1\n$2');  // newline after ```lang
+        // Pre-processing: local LLMs output compact markdown without proper newlines.
+        // Must inject newlines so marked.lexer() can correctly tokenize.
+        let mdText = responseText;
+
+        // Decode HTML entities (GLM outputs &#39; for ', &amp; for &, etc.)
+        mdText = mdText.replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code)));
+        mdText = mdText.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
+
+        // Code fences: ensure newlines around them
+        mdText = mdText.replace(/([^\n])(```)/g, '$1\n\n$2');         // newline before ```
+        mdText = mdText.replace(/(```\w*?)([^\n`])/g, '$1\n$2');     // newline after ```lang
+
+        // Split code fences from content, only pre-process non-code parts
+        const _codeFenceRe = /(```[\w]*\n[\s\S]*?```)/g;
+        const _parts = mdText.split(_codeFenceRe);
+        for (let _i = 0; _i < _parts.length; _i++) {
+          if (!_parts[_i].startsWith('```')) {
+            _parts[_i] = _parts[_i]
+              .replace(/([^\n])(#{1,6} )/g, '$1\n\n$2')       // newline before headings
+              .replace(/([^\n])([-*] )/g, '$1\n$2')             // newline before bullets
+              .replace(/([^\n])(\d+\. )/g, '$1\n$2')            // newline before numbered lists
+              .replace(/([^\n])(\|[^|])/g, '$1\n$2')            // newline before table rows
+              .replace(/([^\n])(> )/g, '$1\n$2');               // newline before blockquotes
+          }
+        }
+        mdText = _parts.join('');
 
         // Render with custom token-level renderer (not marked-terminal)
         try {
@@ -8504,11 +8536,16 @@ async function chat(userMessage) {
 
           const lines = formatted.split('\n');
           while (lines.length > 0 && lines[lines.length - 1].trim() === '') lines.pop();
+
+          // DEC synchronized update: prevent flicker by batching output
+          // \x1b[?2026h = begin synchronized update, \x1b[?2026l = end
+          process.stdout.write('\x1b[?2026h'); // begin sync
           for (const line of lines) {
             process.stdout.write(co(C.dim, "  │ ") + line + "\n");
           }
           // Footer
           console.log("\n" + co(C.dim, "  └" + "─".repeat(Math.min(50, W() - 6))));
+          process.stdout.write('\x1b[?2026l'); // end sync
         } catch (renderErr) {
           // Fallback to raw
           process.stderr.write("[Render error: " + (renderErr.message || '').slice(0, 50) + "]\n");
@@ -9103,16 +9140,23 @@ function renderStreamToken(token) {
   // Buffer by line for code block detection
   renderState.lineBuffer += token;
 
-  // Code fence: ALWAYS inject newlines around ```
-  // Before fence: content\n```
-  renderState.lineBuffer = renderState.lineBuffer.replace(/([^\n])(```)/g, '$1\n$2');
-  // After CLOSING fence: ```\ntext (only when NOT followed by lowercase = language name)
-  // Opening fences (```python...) are handled by renderLine's knownLangs split
-  renderState.lineBuffer = renderState.lineBuffer.replace(/(```)([^\n`a-z])/g, '$1\n$2');
+  // Decode HTML entities (GLM outputs &#39; etc.)
+  renderState.lineBuffer = renderState.lineBuffer
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code)))
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
 
-  // Heading: only outside code blocks (# inside code is a comment, not a heading)
+  // Code fence: inject newlines around ```
+  renderState.lineBuffer = renderState.lineBuffer.replace(/([^\n])(```)/g, '$1\n$2');
+  renderState.lineBuffer = renderState.lineBuffer.replace(/(```\w*?)([^\n`])/g, '$1\n$2');
+
+  // Headings: inject newlines before # (only outside code blocks)
   if (!renderState.inCode) {
-    renderState.lineBuffer = renderState.lineBuffer.replace(/([^\n])(#{1,3} )/g, '$1\n$2');
+    renderState.lineBuffer = renderState.lineBuffer.replace(/([^\n])(#{1,6} )/g, '$1\n\n$2');
+    // Also before bullets and numbered lists
+    renderState.lineBuffer = renderState.lineBuffer.replace(/([^\n])([-*] )/g, '$1\n$2');
+    renderState.lineBuffer = renderState.lineBuffer.replace(/([^\n])(\d+\. )/g, '$1\n$2');
+    // Before table rows
+    renderState.lineBuffer = renderState.lineBuffer.replace(/([^\n])(\|[^|])/g, '$1\n$2');
   }
 
   const lines = renderState.lineBuffer.split("\n");
