@@ -12,81 +12,167 @@ const os       = require("os");
 const crypto   = require("crypto");
 const { execSync, spawn } = require("child_process");
 
-// ── Markdown terminal renderer (improved — token-level formatting) ──
+// ── Custom token-level markdown renderer (replaces marked-terminal) ──
+// Uses marked.lexer() for tokenization, then formats each token individually.
+// This gives full control over code blocks, tables, lists, etc.
 let markedRender;
 let cliHighlight;
 try { cliHighlight = require('cli-highlight'); } catch (_) {}
 
 try {
   const { marked } = require('marked');
-  const TerminalRenderer = require('marked-terminal');
-  const T = TerminalRenderer.default || TerminalRenderer;
-  const _w = Math.min(process.stdout.columns || 100, 100) - 6;
-  const renderer = new T({
-    // Headings: H1 = bold+italic+underline, H2 = bold+underline, H3 = bold
-    firstHeading: (text) => '\x1b[1m\x1b[3m\x1b[4m' + text + '\x1b[0m',
-    heading: (text, level) => {
-      if (level === 2) return '\x1b[1m\x1b[4m' + text + '\x1b[0m';
-      return '\x1b[1m' + text + '\x1b[0m';
-    },
-    // Inline code: blue (semantic "permission" color)
-    codespan: (text) => '\x1b[34m' + text + '\x1b[0m',
-    // Text formatting
-    strong: (text) => '\x1b[1m' + text + '\x1b[0m',
-    em: (text) => '\x1b[3m' + text + '\x1b[0m',
-    // Blockquote: dim vertical bar prefix + italic text
-    blockquote: (text) => text.split('\n').map(l => '\x1b[2m│\x1b[0m \x1b[3m' + l + '\x1b[0m').join('\n'),
-    // Links: blue underline + OSC 8 hyperlink (if terminal supports it)
-    href: (href, title, text) => {
-      const display = text || title || href;
-      // OSC 8 hyperlink support (clickable in modern terminals)
-      if (process.env.TERM_PROGRAM === 'vscode' || process.env.WT_SESSION || process.env.TERM === 'xterm-256color') {
-        return `\x1b]8;;${href}\x07\x1b[34m\x1b[4m${display}\x1b[0m\x1b]8;;\x07`;
+
+  // Format inline tokens (bold, italic, code, link, text)
+  function _fmtInline(tokens) {
+    if (!tokens) return '';
+    return tokens.map(t => {
+      switch (t.type) {
+        case 'strong': return C.bold + _fmtInline(t.tokens) + C.reset;
+        case 'em':     return C.italic + _fmtInline(t.tokens) + C.reset;
+        case 'codespan': return '\x1b[34m' + t.text + '\x1b[0m'; // blue
+        case 'link': {
+          const display = _fmtInline(t.tokens) || t.text || t.href;
+          if (_colorLevel >= 3) { // OSC 8 clickable
+            return `\x1b]8;;${t.href}\x07\x1b[34m\x1b[4m${display}\x1b[0m\x1b]8;;\x07`;
+          }
+          return '\x1b[34m\x1b[4m' + display + '\x1b[0m';
+        }
+        case 'text':   return t.text;
+        case 'br':     return '\n';
+        default:       return t.raw || t.text || '';
       }
-      return '\x1b[34m\x1b[4m' + display + '\x1b[0m';
-    },
-    // List formatting
-    list: (body, ordered) => body,
-    listitem: (text) => text,
-    // Layout
-    showSectionPrefix: false,
-    reflowText: true,
-    width: _w,
-    tab: 2,
-    emoji: false,
-    unescape: true,
-    // Tables: Unicode box drawing, dim borders, bold headers
-    tableOptions: {
-      chars: {
-        top: '─', 'top-mid': '┬', 'top-left': '┌', 'top-right': '┐',
-        bottom: '─', 'bottom-mid': '┴', 'bottom-left': '└', 'bottom-right': '┘',
-        left: '│', 'left-mid': '├', mid: '─', 'mid-mid': '┼',
-        right: '│', 'right-mid': '┤', middle: '│',
-      },
-      style: { head: ['bold'], border: ['dim'] },
-    },
-  }, {
-    // Syntax highlighting theme for code blocks
-    theme: {
-      keyword: '\x1b[34m',        // blue
-      string: '\x1b[32m',         // green
-      number: '\x1b[33m',         // yellow
-      comment: '\x1b[2m\x1b[90m', // dim gray
-      function: '\x1b[36m',       // cyan
-      built_in: '\x1b[36m',       // cyan
-      literal: '\x1b[34m',        // blue
-      type: '\x1b[36m\x1b[3m',    // cyan italic
-      attr: '\x1b[33m',           // yellow
-      class: '\x1b[33m',          // yellow
-      params: '\x1b[37m',         // white
-      title: '\x1b[36m',          // cyan
-      regexp: '\x1b[31m',         // red
-      tag: '\x1b[34m',            // blue
-      name: '\x1b[34m',           // blue
-    },
-  });
-  marked.setOptions({ renderer });
-  markedRender = (text) => marked.parse(text);
+    }).join('');
+  }
+
+  // Format a single block token
+  function _fmtToken(token) {
+    const R = C.reset;
+    switch (token.type) {
+      case 'heading': {
+        const text = _fmtInline(token.tokens);
+        if (token.depth === 1) return '\n' + C.bold + C.italic + C.under + text + R + '\n\n';
+        if (token.depth === 2) return '\n' + C.bold + C.under + text + R + '\n\n';
+        return '\n' + C.bold + text + R + '\n\n';
+      }
+      case 'paragraph':
+        return _fmtInline(token.tokens) + '\n\n';
+
+      case 'code': {
+        const lang = token.lang || 'code';
+        let highlighted = token.text;
+        if (cliHighlight && lang !== 'code') {
+          try { highlighted = cliHighlight.highlight(token.text, { language: lang }); }
+          catch (_) {}
+        }
+        const lines = highlighted.split('\n');
+        let out = '\n' + C.dim + '┌─ ' + R + C.yellow + lang + R + '\n';
+        for (const line of lines) {
+          out += C.dim + '│ ' + R + line + R + '\n';
+        }
+        out += C.dim + '└' + '─'.repeat(Math.min(40, (process.stdout.columns || 80) - 8)) + R + '\n\n';
+        return out;
+      }
+
+      case 'table': {
+        // Measure column widths from actual content
+        const allRows = [token.header, ...token.rows];
+        const numCols = token.header.length;
+        const colWidths = new Array(numCols).fill(0);
+
+        // Calculate max width per column
+        for (const row of allRows) {
+          for (let i = 0; i < row.length; i++) {
+            const text = _fmtInline(row[i].tokens);
+            const width = strip(text).length;
+            colWidths[i] = Math.max(colWidths[i], width);
+          }
+        }
+
+        // Cap to terminal width
+        const available = (process.stdout.columns || 80) - 8 - numCols - 1;
+        const total = colWidths.reduce((s, w) => s + w, 0);
+        if (total > available) {
+          const ratio = available / total;
+          for (let i = 0; i < numCols; i++) {
+            colWidths[i] = Math.max(4, Math.floor(colWidths[i] * ratio));
+          }
+        }
+
+        // Pad cell content
+        function _padCell(text, width) {
+          const visLen = strip(text).length;
+          if (visLen > width) return text.slice(0, width - 1) + '…';
+          return text + ' '.repeat(Math.max(0, width - visLen));
+        }
+
+        // Render
+        let out = '\n';
+        // Top border
+        out += C.dim + '┌' + colWidths.map(w => '─'.repeat(w + 2)).join('┬') + '┐' + R + '\n';
+        // Header
+        out += C.dim + '│' + R;
+        for (let i = 0; i < numCols; i++) {
+          const text = _fmtInline(token.header[i].tokens);
+          out += ' ' + C.bold + _padCell(text, colWidths[i]) + R + C.dim + ' │' + R;
+        }
+        out += '\n';
+        // Separator
+        out += C.dim + '├' + colWidths.map(w => '─'.repeat(w + 2)).join('┼') + '┤' + R + '\n';
+        // Data rows
+        for (const row of token.rows) {
+          out += C.dim + '│' + R;
+          for (let i = 0; i < numCols; i++) {
+            const text = i < row.length ? _fmtInline(row[i].tokens) : '';
+            out += ' ' + _padCell(text, colWidths[i]) + C.dim + ' │' + R;
+          }
+          out += '\n';
+        }
+        // Bottom border
+        out += C.dim + '└' + colWidths.map(w => '─'.repeat(w + 2)).join('┴') + '┘' + R + '\n\n';
+        return out;
+      }
+
+      case 'list': {
+        let out = '';
+        token.items.forEach((item, idx) => {
+          const bullet = token.ordered
+            ? C.bMagenta + (token.start + idx) + '. ' + R
+            : C.bCyan + '• ' + R;
+          const text = _fmtInline(item.tokens?.[0]?.tokens || item.tokens);
+          out += '  ' + bullet + text + '\n';
+          // Nested content
+          if (item.tokens?.length > 1) {
+            for (let t = 1; t < item.tokens.length; t++) {
+              out += '    ' + _fmtToken(item.tokens[t]);
+            }
+          }
+        });
+        return out + '\n';
+      }
+
+      case 'blockquote': {
+        const inner = (token.tokens || []).map(t => _fmtToken(t)).join('');
+        return inner.split('\n').map(l => C.dim + '│ ' + R + C.italic + l + R).join('\n') + '\n';
+      }
+
+      case 'hr':
+        return C.dim + '─'.repeat(Math.min(40, (process.stdout.columns || 80) - 8)) + R + '\n\n';
+
+      case 'space':
+        return '\n';
+
+      case 'html':
+        return C.dim + token.text.replace(/<[^>]+>/g, '') + R + '\n';
+
+      default:
+        return token.raw || '';
+    }
+  }
+
+  markedRender = (text) => {
+    const tokens = marked.lexer(text);
+    return tokens.map(t => _fmtToken(t)).join('');
+  };
 } catch (_) {}
 
 // ── Smart-fix dependency tree (optional) ──
@@ -8396,30 +8482,12 @@ async function chat(userMessage) {
         const displayName = SESSION.name ? `Attar-Brain (${SESSION.name})` : "Attar-Brain";
         console.log();
         console.log(co(C.bCyan, "  ✦ ") + co(C.bold, C.bCyan, displayName));
-        // Pre-process: inject newlines so marked can parse elements.
-        // Step 1: Isolate code fences
-        const _knownLangs = 'python|javascript|typescript|bash|sh|json|html|css|java|go|rust|cpp|c|sql|yaml|xml|ruby|php|csharp|text|jsx|tsx|diff|dockerfile|makefile';
+        // Minimal pre-processing: ensure code fences have newlines around them
         let mdText = responseText
-          .replace(/([^\n])(```)/g, '$1\n\n$2')                                              // newline before any ```
-          .replace(new RegExp('(```(?:' + _knownLangs + '))([^\\n`])', 'g'), '$1\n$2')       // newline after ```lang (opening: known langs only)
-          .replace(/(```)(\n?)([A-Z*|_#\-\s])/g, '$1\n\n$3');                                // newline after ``` (closing: followed by uppercase/special)
+          .replace(/([^\n])(```)/g, '$1\n\n$2')    // newline before ```
+          .replace(/(```\w*?)([^\n])/g, '$1\n$2');  // newline after ```lang
 
-        // Step 2: Split at code fences, only pre-process NON-CODE parts
-        const codeFenceRe = /(```[\w]*\n[\s\S]*?```)/g;
-        const parts = mdText.split(codeFenceRe);
-        for (let i = 0; i < parts.length; i++) {
-          if (!parts[i].startsWith('```')) {
-            // Non-code: inject newlines before headings, bullets, numbered lists
-            parts[i] = parts[i]
-              .replace(/([^\n])(#{1,3} )/g, '$1\n\n$2')
-              .replace(/([^\n])([-*] )/g, '$1\n$2')
-              .replace(/([^\n])(\d+\. )/g, '$1\n$2')
-              .replace(/([^\n])(\|[-|])/g, '$1\n$2');
-          }
-        }
-        mdText = parts.join('');
-
-        // Render with marked-terminal
+        // Render with custom token-level renderer (not marked-terminal)
         try {
           let formatted = markedRender(mdText);
 
@@ -8427,8 +8495,7 @@ async function chat(userMessage) {
           formatted = formatted.replace(
             /([A-Za-z0-9][\w-]*\/[A-Za-z0-9][\w.-]*)#(\d+)/g,
             (m, repo, num) => {
-              // OSC 8 hyperlink if supported
-              if (process.env.TERM_PROGRAM === 'vscode' || process.env.WT_SESSION) {
+              if (_colorLevel >= 3) {
                 return `\x1b]8;;https://github.com/${repo}/issues/${num}\x07\x1b[34m${m}\x1b[0m\x1b]8;;\x07`;
               }
               return '\x1b[34m' + m + '\x1b[0m';
@@ -8442,8 +8509,9 @@ async function chat(userMessage) {
           }
           // Footer
           console.log("\n" + co(C.dim, "  └" + "─".repeat(Math.min(50, W() - 6))));
-        } catch (_) {
+        } catch (renderErr) {
           // Fallback to raw
+          process.stderr.write("[Render error: " + (renderErr.message || '').slice(0, 50) + "]\n");
           process.stdout.write(co(C.cyan, "  ╰─ ") + responseText + "\n");
         }
       } else {
