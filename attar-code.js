@@ -8538,7 +8538,7 @@ async function chat(userMessage) {
       // ── Detect: task completion — STOP the loop ──────────────
       // If model says "done"/"completed"/"ready for next" without tool calls, it's finished.
       // This MUST be checked BEFORE the planning detection to prevent false continuation.
-      const completionSignals = /\b(task completed|successfully created|project is ready|all files are ready|ready for your next|what would you like|what else|is there anything else|i'm ready for|ready for any future|what can i help|how can i help|do you approve|approve this plan|waiting for approval|waiting for your approval|ready for approval|once you say|once approved|plan saved|approve\?)\b/i;
+      const completionSignals = /\b(task completed|successfully created|project is ready|all files are ready|ready for your next|what would you like|would you like|what else|is there anything else|i'm ready for|ready for any future|what can i help|how can i help|do you approve|approve this plan|waiting for approval|waiting for your approval|ready for approval|once you say|once approved|plan saved|approve\?|do you want me to|shall i|any questions|hope this helps|let me know if|feel free to ask)\b/i;
       const isCompletion = completionSignals.test(responseText) && toolCalls.length === 0;
       if (isCompletion) {
         // Model is done — don't nudge, don't continue
@@ -8591,8 +8591,30 @@ async function chat(userMessage) {
       // IMPORTANT: "created" / "completed" / "installed" are PAST tense = task done, don't nudge.
       const planningWords = /\b(let me|i need to|i'll|i will|now i|next i|let's|going to|should|set up)\b/i;
       const pastTenseCompletion = /\b(created|completed|installed|finished|done|ready|set up successfully|built successfully)\b/i;
-      const isStillPlanning = planningWords.test(responseText) && !pastTenseCompletion.test(responseText)
-        && !isCompletion && retryCount < 4;
+
+      // Three-signal context-aware detection — prevents false nudges on complete answers
+      // Signal 1: User asked a question → text response IS the answer
+      const userMsg = SESSION._currentUserMessage || '';
+      const isQuestion = /[?]\s*$/.test(userMsg.trim()) ||
+        /^(how|what|why|when|where|who|explain|describe|search|find|show|tell|list|i need.*(?:explain|search|know|understand))/i.test(userMsg);
+
+      // Signal 2: Response has substantive content (code blocks, long text)
+      const hasSubstantiveContent = responseText.length > 500 ||
+        /```[\s\S]*?```/.test(responseText) ||
+        responseText.split('\n').length > 15;
+
+      // Signal 3: Recent search activity (model is synthesizing results, not stalling)
+      const recentMsgs = SESSION.messages.slice(-6);
+      const justDidSearch = recentMsgs.some(m =>
+        m.role === 'tool' && ['kb_search','web_search','web_fetch','search_all','kb_read_section'].includes(m._toolName));
+
+      const isStillPlanning = planningWords.test(responseText)
+        && !pastTenseCompletion.test(responseText)
+        && !isCompletion
+        && !isQuestion              // user asked a question = text is the answer
+        && !hasSubstantiveContent   // long/code response = complete answer
+        && !justDidSearch           // just searched = synthesizing results
+        && retryCount < 4;
       const hasToolHistory = SESSION.messages.some(m => m.tool_calls?.length > 0);
 
       if (isStillPlanning && hasToolHistory) {
