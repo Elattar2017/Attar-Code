@@ -63,6 +63,7 @@ class Chunker {
             section_path: section.section_path,
             chunk_index: chunks.length,
             token_estimate: tokenCount,
+            page_start: section.page_start || null,
           });
         }
       } else {
@@ -77,6 +78,7 @@ class Chunker {
               section_path: section.section_path,
               chunk_index: chunks.length,
               token_estimate: this._estimateTokens(text),
+              page_start: section.page_start || null,
             });
           }
         }
@@ -134,16 +136,18 @@ class Chunker {
     let currentLines = [];
     let currentPath = docTitle || '';
     let inCodeBlock = false;
-    let currentPage = null; // Track page from <!-- page:N --> markers
+    let currentPage = null;  // Track page from <!-- page:N --> markers
+    let sectionPage = null;  // Page where current section started
 
     const PAGE_MARKER_RE = /^<!--\s*page:(\d+)\s*-->$/;
 
     const flushSection = () => {
       const text = currentLines.join('\n');
       if (text.trim() !== '') {
-        sections.push({ content: text, section_path: currentPath || docTitle || '', page_start: currentPage });
+        sections.push({ content: text, section_path: currentPath || docTitle || '', page_start: sectionPage || currentPage });
       }
       currentLines = [];
+      sectionPage = currentPage; // next section starts at current page
     };
 
     for (const line of lines) {
