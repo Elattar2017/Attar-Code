@@ -12,28 +12,42 @@ const os       = require("os");
 const crypto   = require("crypto");
 const { execSync, spawn } = require("child_process");
 
-// ── Markdown terminal renderer (Claude Code-style output) ──
-// Claude Code uses: bold+italic+underline for H1, bold for H2+, blue for inline code,
-// dim borders on tables, no section prefix, reflowed text.
+// ── Markdown terminal renderer (improved — token-level formatting) ──
 let markedRender;
+let cliHighlight;
+try { cliHighlight = require('cli-highlight'); } catch (_) {}
+
 try {
   const { marked } = require('marked');
   const TerminalRenderer = require('marked-terminal');
   const T = TerminalRenderer.default || TerminalRenderer;
   const _w = Math.min(process.stdout.columns || 100, 100) - 6;
   const renderer = new T({
-    // Headings: H1 = bold+italic+underline, H2+ = bold (matches Claude Code)
+    // Headings: H1 = bold+italic+underline, H2 = bold+underline, H3 = bold
     firstHeading: (text) => '\x1b[1m\x1b[3m\x1b[4m' + text + '\x1b[0m',
-    heading: (text) => '\x1b[1m' + text + '\x1b[0m',
-    // Inline code: blue (Claude Code's "permission" color)
+    heading: (text, level) => {
+      if (level === 2) return '\x1b[1m\x1b[4m' + text + '\x1b[0m';
+      return '\x1b[1m' + text + '\x1b[0m';
+    },
+    // Inline code: blue (semantic "permission" color)
     codespan: (text) => '\x1b[34m' + text + '\x1b[0m',
     // Text formatting
     strong: (text) => '\x1b[1m' + text + '\x1b[0m',
     em: (text) => '\x1b[3m' + text + '\x1b[0m',
-    // Blockquote: dim + italic
-    blockquote: (text) => '\x1b[2m\x1b[3m' + text + '\x1b[0m',
-    // Links: blue underline
-    href: (href) => '\x1b[34m\x1b[4m' + href + '\x1b[0m',
+    // Blockquote: dim vertical bar prefix + italic text
+    blockquote: (text) => text.split('\n').map(l => '\x1b[2m│\x1b[0m \x1b[3m' + l + '\x1b[0m').join('\n'),
+    // Links: blue underline + OSC 8 hyperlink (if terminal supports it)
+    href: (href, title, text) => {
+      const display = text || title || href;
+      // OSC 8 hyperlink support (clickable in modern terminals)
+      if (process.env.TERM_PROGRAM === 'vscode' || process.env.WT_SESSION || process.env.TERM === 'xterm-256color') {
+        return `\x1b]8;;${href}\x07\x1b[34m\x1b[4m${display}\x1b[0m\x1b]8;;\x07`;
+      }
+      return '\x1b[34m\x1b[4m' + display + '\x1b[0m';
+    },
+    // List formatting
+    list: (body, ordered) => body,
+    listitem: (text) => text,
     // Layout
     showSectionPrefix: false,
     reflowText: true,
@@ -52,26 +66,28 @@ try {
       style: { head: ['bold'], border: ['dim'] },
     },
   }, {
-    // Syntax highlighting theme for code blocks (cli-highlight)
+    // Syntax highlighting theme for code blocks
     theme: {
-      keyword: '\x1b[34m',     // blue
-      string: '\x1b[32m',      // green
-      number: '\x1b[33m',      // yellow
+      keyword: '\x1b[34m',        // blue
+      string: '\x1b[32m',         // green
+      number: '\x1b[33m',         // yellow
       comment: '\x1b[2m\x1b[90m', // dim gray
-      function: '\x1b[36m',    // cyan
-      built_in: '\x1b[36m',    // cyan
-      literal: '\x1b[34m',     // blue
-      type: '\x1b[36m\x1b[3m', // cyan italic
-      attr: '\x1b[33m',        // yellow
+      function: '\x1b[36m',       // cyan
+      built_in: '\x1b[36m',       // cyan
+      literal: '\x1b[34m',        // blue
+      type: '\x1b[36m\x1b[3m',    // cyan italic
+      attr: '\x1b[33m',           // yellow
+      class: '\x1b[33m',          // yellow
+      params: '\x1b[37m',         // white
+      title: '\x1b[36m',          // cyan
+      regexp: '\x1b[31m',         // red
+      tag: '\x1b[34m',            // blue
+      name: '\x1b[34m',           // blue
     },
   });
   marked.setOptions({ renderer });
   markedRender = (text) => marked.parse(text);
 } catch (_) {}
-
-// ── Syntax highlighting for code blocks (fallback if marked-terminal unavailable) ──
-let cliHighlight;
-try { cliHighlight = require('cli-highlight'); } catch (_) {}
 
 // ── Smart-fix dependency tree (optional) ──
 let smartFix;
@@ -5855,8 +5871,13 @@ function printToolRunning(name, detail) {
 }
 
 function printToolDone(result) {
-  const lines = String(result).split("\n").filter(Boolean).slice(0, 5);
-  for (const l of lines) console.log(co(C.dim, "     ") + co(C.gray, l.slice(0, W()-6)));
+  const MAX_PREVIEW_LINES = 3;
+  const allLines = String(result).split("\n").filter(Boolean);
+  const preview = allLines.slice(0, MAX_PREVIEW_LINES);
+  for (const l of preview) console.log(co(C.dim, "     ") + co(C.gray, l.slice(0, W()-6)));
+  if (allLines.length > MAX_PREVIEW_LINES) {
+    console.log(co(C.dim, "     … +" + (allLines.length - MAX_PREVIEW_LINES) + " lines"));
+  }
 }
 
 function printToolError(err) {
@@ -8384,9 +8405,21 @@ async function chat(userMessage) {
 
         // Render with marked-terminal
         try {
-          const formatted = markedRender(mdText);
+          let formatted = markedRender(mdText);
+
+          // Post-processing: linkify GitHub issue refs (owner/repo#123)
+          formatted = formatted.replace(
+            /([A-Za-z0-9][\w-]*\/[A-Za-z0-9][\w.-]*)#(\d+)/g,
+            (m, repo, num) => {
+              // OSC 8 hyperlink if supported
+              if (process.env.TERM_PROGRAM === 'vscode' || process.env.WT_SESSION) {
+                return `\x1b]8;;https://github.com/${repo}/issues/${num}\x07\x1b[34m${m}\x1b[0m\x1b]8;;\x07`;
+              }
+              return '\x1b[34m' + m + '\x1b[0m';
+            }
+          );
+
           const lines = formatted.split('\n');
-          // Remove trailing empty lines
           while (lines.length > 0 && lines[lines.length - 1].trim() === '') lines.pop();
           for (const line of lines) {
             process.stdout.write(co(C.dim, "  │ ") + line + "\n");
@@ -9014,27 +9047,27 @@ function _highlightCode(line, lang) {
 }
 
 function renderLine(line) {
-  const prefix = co(C.gray, "  │  ");
+  const prefix = co(C.gray, "  │ ");
 
-  // Skip empty heading markers (model outputs "# \n" as section breaks)
+  // Skip empty heading markers
   if (/^#{1,3}\s*$/.test(line)) return;
 
-  // Add blank line before headings for visual separation
+  // Blank line before headings for visual separation
   if (/^#{1,3} /.test(line) && !renderState._lastLineWasBlank) {
     process.stdout.write(prefix + "\n");
   }
   renderState._lastLineWasBlank = (line.trim() === '');
 
+  // ── Code blocks ──
   if (line.startsWith("```")) {
     renderState.inCode = !renderState.inCode;
     if (renderState.inCode) {
       let langLine = line.slice(3).trim();
       let codeLine = '';
-
-      // Split language from content if merged: "pythonfrom bs4" → lang="python", code="from bs4"
       const knownLangs = ['python','javascript','typescript','bash','sh','json','html','css',
         'java','go','rust','cpp','c','sql','yaml','toml','xml','ruby','php','csharp','text',
-        'jsx','tsx','scss','markdown','md','diff','dockerfile','makefile','nginx','graphql'];
+        'jsx','tsx','scss','markdown','md','diff','dockerfile','makefile','nginx','graphql',
+        'kotlin','swift','dart','lua','scala','r','powershell','zsh','fish'];
       for (const lang of knownLangs) {
         if (langLine.toLowerCase().startsWith(lang) && langLine.length > lang.length) {
           codeLine = langLine.slice(lang.length).trimStart();
@@ -9042,32 +9075,74 @@ function renderLine(line) {
           break;
         }
       }
-
       renderState.lang = langLine || "code";
-      process.stdout.write("\n" + co(C.gray, "  │  ┌─ ") + co(C.yellow, renderState.lang) + "\n");
+      process.stdout.write("\n" + co(C.gray, "  │ ┌─ ") + co(C.dim, C.yellow, renderState.lang) + "\n");
       if (codeLine) {
-        process.stdout.write(co(C.gray, "  │  │ ") + _highlightCode(codeLine, renderState.lang) + C.reset + "\n");
+        process.stdout.write(co(C.gray, "  │ │ ") + _highlightCode(codeLine, renderState.lang) + C.reset + "\n");
       }
     } else {
-      process.stdout.write(co(C.gray, "  │  └" + "─".repeat(Math.min(38,W()-10))) + "\n");
+      process.stdout.write(co(C.gray, "  │ └" + "─".repeat(Math.min(40, W() - 10))) + "\n");
     }
     return;
   }
 
   if (renderState.inCode) {
-    process.stdout.write(co(C.gray, "  │  │ ") + _highlightCode(line, renderState.lang) + C.reset + "\n");
+    process.stdout.write(co(C.gray, "  │ │ ") + _highlightCode(line, renderState.lang) + C.reset + "\n");
     return;
   }
 
-  // Format prose
+  // ── Blockquotes ──
+  if (line.startsWith('>')) {
+    const text = line.replace(/^>\s*/, '');
+    process.stdout.write(prefix + co(C.dim, "│ ") + co(C.italic, C.dim, text) + C.reset + "\n");
+    return;
+  }
+
+  // ── Horizontal rule ──
+  if (/^---+\s*$/.test(line) || /^\*\*\*+\s*$/.test(line)) {
+    process.stdout.write(prefix + co(C.dim, "─".repeat(Math.min(40, W() - 10))) + "\n");
+    return;
+  }
+
+  // ── Table rows ──
+  if (/^\|.+\|/.test(line)) {
+    // Separator row
+    if (/^\|[-:\s|]+\|$/.test(line)) {
+      const cols = line.split('|').filter(Boolean).length;
+      process.stdout.write(prefix + co(C.dim, "├" + ("─".repeat(14) + "┼").repeat(Math.max(1, cols - 1)) + "─".repeat(14) + "┤") + "\n");
+      return;
+    }
+    // Header/data row: colorize pipes dim, bold headers
+    const formatted = line.replace(/\|/g, co(C.dim, "│"));
+    if (!renderState._tableHeaderDone) {
+      process.stdout.write(prefix + co(C.bold, formatted) + C.reset + "\n");
+      renderState._tableHeaderDone = true;
+    } else {
+      process.stdout.write(prefix + formatted + C.reset + "\n");
+    }
+    return;
+  } else {
+    renderState._tableHeaderDone = false;
+  }
+
+  // ── Format prose ──
   let out = line
+    // Bold
     .replace(/\*\*(.*?)\*\*/g, C.bold + "$1" + C.reset)
-    .replace(/`([^`]+)`/g, co(C.bgBlack, C.bYellow, " $1 "))
+    // Italic
+    .replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, C.italic + "$1" + C.reset)
+    // Inline code: blue (matches post-render)
+    .replace(/`([^`]+)`/g, '\x1b[34m' + "$1" + '\x1b[0m')
+    // Headings
     .replace(/^### (.+)/, co(C.bold, C.bMagenta, "$1"))
     .replace(/^## (.+)/,  co(C.bold, C.bCyan,    "$1"))
-    .replace(/^# (.+)/,   co(C.bold, C.bWhite,   "$1"))
-    .replace(/^[-•] /,    co(C.bCyan, "• "))
-    .replace(/^(\d+)\. /, co(C.bMagenta, "$1. "));
+    .replace(/^# (.+)/,   '\x1b[1m\x1b[3m\x1b[4m' + "$1" + '\x1b[0m')
+    // Bullets: styled markers
+    .replace(/^(\s*)[-•] /,  "$1" + co(C.bCyan, "• "))
+    // Numbered lists
+    .replace(/^(\s*)(\d+)\. /, "$1" + co(C.bMagenta, "$2. "))
+    // Links: [text](url)
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '\x1b[34m\x1b[4m' + "$1" + '\x1b[0m');
 
   process.stdout.write(prefix + out + C.reset + "\n");
 }
