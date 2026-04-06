@@ -257,17 +257,33 @@ const MAX_SKILLS              = 3;
 const MAX_SKILL_CHARS         = 4000;
 
 // ══════════════════════════════════════════════════════════════════
-// ANSI
+// ANSI — with NO_COLOR / FORCE_COLOR / CI awareness
 // ══════════════════════════════════════════════════════════════════
+
+// Detect color level: 0=none, 1=16, 2=256, 3=truecolor
+const _colorLevel = (() => {
+  if (process.env.NO_COLOR !== undefined || process.env.FORCE_COLOR === '0') return 0;
+  if (process.env.FORCE_COLOR === '3' || process.env.COLORTERM === 'truecolor') return 3;
+  if (process.env.FORCE_COLOR === '2' || process.env.TERM?.includes('256color')) return 2;
+  if (process.env.FORCE_COLOR === '1') return 1;
+  if (!process.stdout.isTTY) return 0; // pipes/CI
+  if (process.env.CI) return 1; // CI environments: basic colors only
+  if (process.env.TERM_PROGRAM === 'vscode' || process.env.WT_SESSION) return 3; // modern terminals
+  return 2; // default: 256-color
+})();
+
+const _noColor = _colorLevel === 0;
+const _e = (code) => _noColor ? '' : code; // escape-if-color
+
 const C = {
-  reset:"\x1b[0m", bold:"\x1b[1m", dim:"\x1b[2m", italic:"\x1b[3m",
-  under:"\x1b[4m",
-  black:"\x1b[30m", red:"\x1b[31m", green:"\x1b[32m", yellow:"\x1b[33m",
-  blue:"\x1b[34m", magenta:"\x1b[35m", cyan:"\x1b[36m", white:"\x1b[37m",
-  gray:"\x1b[90m",
-  bRed:"\x1b[91m", bGreen:"\x1b[92m", bYellow:"\x1b[93m", bBlue:"\x1b[94m",
-  bMagenta:"\x1b[95m", bCyan:"\x1b[96m", bWhite:"\x1b[97m",
-  bgBlack:"\x1b[40m", bgRed:"\x1b[41m", bgGreen:"\x1b[42m", bgBlue:"\x1b[44m",
+  reset: _e("\x1b[0m"), bold: _e("\x1b[1m"), dim: _e("\x1b[2m"), italic: _e("\x1b[3m"),
+  under: _e("\x1b[4m"),
+  black: _e("\x1b[30m"), red: _e("\x1b[31m"), green: _e("\x1b[32m"), yellow: _e("\x1b[33m"),
+  blue: _e("\x1b[34m"), magenta: _e("\x1b[35m"), cyan: _e("\x1b[36m"), white: _e("\x1b[37m"),
+  gray: _e("\x1b[90m"),
+  bRed: _e("\x1b[91m"), bGreen: _e("\x1b[92m"), bYellow: _e("\x1b[93m"), bBlue: _e("\x1b[94m"),
+  bMagenta: _e("\x1b[95m"), bCyan: _e("\x1b[96m"), bWhite: _e("\x1b[97m"),
+  bgBlack: _e("\x1b[40m"), bgRed: _e("\x1b[41m"), bgGreen: _e("\x1b[42m"), bgBlue: _e("\x1b[44m"),
 };
 const W = () => process.stdout.columns || 80;
 const strip = s => s.replace(/\x1b\[[0-9;]*m/g, "");
@@ -9104,21 +9120,40 @@ function renderLine(line) {
     return;
   }
 
-  // ── Table rows ──
+  // ── Table rows (responsive to terminal width) ──
   if (/^\|.+\|/.test(line)) {
-    // Separator row
+    const cells = line.split('|').slice(1, -1); // remove empty first/last from split
+    const numCols = cells.length;
+
+    // Separator row: build from actual column count + available width
     if (/^\|[-:\s|]+\|$/.test(line)) {
-      const cols = line.split('|').filter(Boolean).length;
-      process.stdout.write(prefix + co(C.dim, "├" + ("─".repeat(14) + "┼").repeat(Math.max(1, cols - 1)) + "─".repeat(14) + "┤") + "\n");
+      const availWidth = Math.max(30, W() - 8); // minus prefix + borders
+      const colWidth = Math.max(5, Math.floor((availWidth - numCols - 1) / numCols));
+      let sep = co(C.dim, "├");
+      for (let c = 0; c < numCols; c++) {
+        sep += co(C.dim, "─".repeat(colWidth));
+        sep += co(C.dim, c < numCols - 1 ? "┼" : "┤");
+      }
+      process.stdout.write(prefix + sep + "\n");
       return;
     }
-    // Header/data row: colorize pipes dim, bold headers
-    const formatted = line.replace(/\|/g, co(C.dim, "│"));
+
+    // Data/header row: pad each cell to equal width
+    const availWidth = Math.max(30, W() - 8);
+    const colWidth = Math.max(5, Math.floor((availWidth - numCols - 1) / numCols));
+    let row = co(C.dim, "│");
+    for (const cell of cells) {
+      const trimmed = cell.trim();
+      const display = trimmed.length > colWidth - 2 ? trimmed.slice(0, colWidth - 3) + '…' : trimmed;
+      const padded = display + ' '.repeat(Math.max(0, colWidth - 2 - strip(display).length));
+      row += ' ' + padded + co(C.dim, "│");
+    }
+
     if (!renderState._tableHeaderDone) {
-      process.stdout.write(prefix + co(C.bold, formatted) + C.reset + "\n");
+      process.stdout.write(prefix + co(C.bold, row) + C.reset + "\n");
       renderState._tableHeaderDone = true;
     } else {
-      process.stdout.write(prefix + formatted + C.reset + "\n");
+      process.stdout.write(prefix + row + C.reset + "\n");
     }
     return;
   } else {
